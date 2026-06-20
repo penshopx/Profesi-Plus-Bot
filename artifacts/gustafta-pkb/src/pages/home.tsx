@@ -1,0 +1,273 @@
+import { useState } from "react";
+import { useLocation } from "wouter";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award } from "lucide-react";
+import { listConversations, createConversation, deleteConversation, type Conversation } from "@/lib/api";
+
+const MODES = [
+  {
+    id: "A",
+    icon: Briefcase,
+    label: "Pengalaman Kerja",
+    sublabel: "Berbasis proyek & ESIMPAN",
+    description: "Wawancara mendalam tentang pengalaman nyata di lapangan. Cocok untuk TKK yang memiliki proyek aktif atau baru selesai.",
+    color: "from-blue-500 to-cyan-500",
+    bg: "bg-blue-50 border-blue-200",
+    highlight: "text-blue-700",
+  },
+  {
+    id: "B",
+    icon: BookOpen,
+    label: "Hasil Belajar",
+    sublabel: "Webinar, video, modul, buku",
+    description: "Wawancara reflektif tentang proses belajar mandiri. Cocok untuk TKK yang aktif mengikuti pelatihan atau membaca.",
+    color: "from-emerald-500 to-teal-500",
+    bg: "bg-emerald-50 border-emerald-200",
+    highlight: "text-emerald-700",
+  },
+  {
+    id: "Hybrid",
+    icon: Layers,
+    label: "Hybrid",
+    sublabel: "Gabungan pengalaman + belajar",
+    description: "Kombinasi terkuat. Menggabungkan pengalaman lapangan dengan pembelajaran formal untuk Exum yang komprehensif.",
+    color: "from-violet-500 to-purple-500",
+    bg: "bg-violet-50 border-violet-200",
+    highlight: "text-violet-700",
+  },
+];
+
+const JENJANG_OPTIONS = ["Jenjang 7 (100 SKPK)", "Jenjang 8 (150 SKPK)", "Jenjang 9 (200 SKPK)"];
+
+export default function Home() {
+  const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
+  const [showNew, setShowNew] = useState(false);
+  const [selectedMode, setSelectedMode] = useState("");
+  const [jabker, setJabker] = useState("");
+  const [jenjang, setJenjang] = useState("");
+
+  const { data: conversations = [], isLoading } = useQuery({
+    queryKey: ["conversations"],
+    queryFn: listConversations,
+  });
+
+  const createMut = useMutation({
+    mutationFn: () =>
+      createConversation({
+        title: `Exum PKB — ${jabker || "TKK"} (${selectedMode === "A" ? "Pengalaman" : selectedMode === "B" ? "Hasil Belajar" : "Hybrid"})`,
+        mode: selectedMode,
+        jabker,
+        jenjang,
+      }),
+    onSuccess: (conv) => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      navigate(`/chat/${conv.id}`);
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: deleteConversation,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+  });
+
+  const phaseLabel: Record<string, string> = {
+    profiling: "Profiling",
+    context: "Konteks",
+    core_interview: "Wawancara Inti",
+    evidence: "Bukti & Data",
+    synthesis: "Sintesis",
+    done: "Selesai",
+  };
+
+  const phaseColor: Record<string, string> = {
+    profiling: "bg-blue-100 text-blue-700",
+    context: "bg-yellow-100 text-yellow-700",
+    core_interview: "bg-orange-100 text-orange-700",
+    evidence: "bg-purple-100 text-purple-700",
+    synthesis: "bg-teal-100 text-teal-700",
+    done: "bg-green-100 text-green-700",
+  };
+
+  return (
+    <div className="min-h-screen bg-background flex">
+      {/* Sidebar */}
+      <aside className="w-72 bg-sidebar text-sidebar-foreground flex flex-col shrink-0">
+        <div className="p-6 border-b border-sidebar-border">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-9 h-9 rounded-xl bg-sidebar-primary/20 flex items-center justify-center">
+              <FileText className="w-5 h-5 text-sidebar-primary" />
+            </div>
+            <div>
+              <h1 className="text-base font-bold tracking-tight">Gustafta PKB</h1>
+              <p className="text-[11px] text-sidebar-foreground/60">Exum Interviewer v2.0</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4">
+          <button
+            data-testid="button-new-session"
+            onClick={() => setShowNew(true)}
+            className="w-full flex items-center gap-2 bg-sidebar-primary text-sidebar-primary-foreground rounded-xl px-4 py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity"
+          >
+            <Plus className="w-4 h-4" />
+            Sesi Baru
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-3 pb-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40 px-3 mb-2">
+            Riwayat Sesi
+          </p>
+          {isLoading ? (
+            <div className="space-y-2 px-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-14 rounded-xl bg-sidebar-accent/40 animate-pulse" />
+              ))}
+            </div>
+          ) : conversations.length === 0 ? (
+            <p className="text-xs text-sidebar-foreground/40 px-3 py-4 text-center">Belum ada sesi. Mulai yang baru!</p>
+          ) : (
+            <div className="space-y-1">
+              {conversations.map((c) => (
+                <div
+                  key={c.id}
+                  data-testid={`conversation-item-${c.id}`}
+                  className="group flex items-start gap-2 rounded-xl px-3 py-2.5 cursor-pointer hover:bg-sidebar-accent transition-colors"
+                  onClick={() => navigate(`/chat/${c.id}`)}
+                >
+                  <MessageSquare className="w-4 h-4 mt-0.5 text-sidebar-primary/70 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate text-sidebar-foreground">{c.title}</p>
+                    <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${phaseColor[c.phase] || "bg-sidebar-accent text-sidebar-foreground/60"}`}>
+                      {phaseLabel[c.phase] || c.phase}
+                    </span>
+                  </div>
+                  <button
+                    data-testid={`button-delete-${c.id}`}
+                    onClick={(e) => { e.stopPropagation(); deleteMut.mutate(c.id); }}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-destructive/20 hover:text-destructive transition-all"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-sidebar-border">
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-sidebar-accent/50">
+            <Award className="w-4 h-4 text-yellow-400 shrink-0" />
+            <p className="text-[11px] text-sidebar-foreground/70 leading-tight">
+              Exum bernilai <span className="font-bold text-yellow-400">25 SKPK</span> sesuai Permen PUPR No. 12/2021
+            </p>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main area */}
+      <main className="flex-1 flex flex-col items-center justify-center p-8">
+        {showNew ? (
+          <div className="w-full max-w-2xl">
+            <h2 className="text-2xl font-bold text-foreground mb-1">Buat Sesi Wawancara Baru</h2>
+            <p className="text-muted-foreground text-sm mb-8">Pilih mode penulisan Exum PKB Anda</p>
+
+            <div className="space-y-3 mb-8">
+              {MODES.map((m) => {
+                const Icon = m.icon;
+                const active = selectedMode === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    data-testid={`mode-option-${m.id}`}
+                    onClick={() => setSelectedMode(m.id)}
+                    className={`w-full text-left rounded-2xl border-2 p-4 transition-all ${active ? `border-primary ring-2 ring-primary/20 bg-primary/5` : "border-border hover:border-muted-foreground/40 bg-card"}`}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${m.color} flex items-center justify-center shrink-0`}>
+                        <Icon className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground">{m.label}</span>
+                          <span className="text-xs text-muted-foreground">{m.sublabel}</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-0.5">{m.description}</p>
+                      </div>
+                      {active && <ChevronRight className="w-5 h-5 text-primary shrink-0 mt-1" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedMode && (
+              <div className="space-y-4 mb-8 animate-in fade-in slide-in-from-bottom-2">
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Jabatan Kerja (Jabker)</label>
+                  <input
+                    data-testid="input-jabker"
+                    type="text"
+                    value={jabker}
+                    onChange={(e) => setJabker(e.target.value)}
+                    placeholder="Contoh: Ahli Teknik Bangunan Gedung, Site Engineer, Project Manager..."
+                    className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Jenjang SKK</label>
+                  <select
+                    data-testid="select-jenjang"
+                    value={jenjang}
+                    onChange={(e) => setJenjang(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  >
+                    <option value="">Pilih jenjang SKK...</option>
+                    {JENJANG_OPTIONS.map((j) => <option key={j} value={j}>{j}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowNew(false)}
+                className="flex-1 rounded-xl border border-border bg-card px-6 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                data-testid="button-start-session"
+                disabled={!selectedMode || createMut.isPending}
+                onClick={() => createMut.mutate()}
+                className="flex-1 rounded-xl bg-primary text-primary-foreground px-6 py-2.5 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+              >
+                {createMut.isPending ? "Memulai..." : "Mulai Wawancara"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center max-w-md">
+            <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+              <MessageSquare className="w-10 h-10 text-primary" />
+            </div>
+            <h2 className="text-2xl font-bold text-foreground mb-2">Selamat Datang di Gustafta PKB</h2>
+            <p className="text-muted-foreground text-sm leading-relaxed mb-6">
+              Pewawancara mandiri untuk membantu Anda membuat <span className="font-semibold text-foreground">Executive Summary PKB</span> berkualitas tinggi (10-15 halaman, 25 SKPK) sesuai Permen PUPR No. 12 Tahun 2021.
+            </p>
+            <button
+              data-testid="button-get-started"
+              onClick={() => setShowNew(true)}
+              className="inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 font-semibold hover:opacity-90 transition-opacity"
+            >
+              <Plus className="w-4 h-4" />
+              Buat Exum Baru
+            </button>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
