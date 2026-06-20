@@ -6,7 +6,7 @@ import {
   Plus, Trash2, Youtube, Video, Monitor, Briefcase, Camera, FolderOpen,
   ChevronDown, ChevronUp, BookOpen, HardHat, X, Link, FileCheck, Shield,
   MessageSquare, AlertCircle, BarChart3, ChevronRight,
-  Copy, CheckCheck, Zap, SlidersHorizontal,
+  Copy, CheckCheck, Zap, SlidersHorizontal, Printer,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import {
@@ -1034,6 +1034,70 @@ export default function ChatPage() {
     setTimeout(() => setCopied(false), 2500);
   };
 
+  const handlePrint = () => {
+    if (!exum) return;
+    const jabkerTitle = conv?.jabker?.replace(/\s+/g, "_") || "TKK";
+    const docTitle = `Executive Summary PKB — ${conv?.jabker ?? "TKK"}`;
+
+    // Simple markdown → HTML conversion sufficient for GPT-4o output
+    const md2html = (md: string) => {
+      const lines = md.split("\n");
+      const out: string[] = [];
+      let inUl = false;
+      for (const raw of lines) {
+        const line = raw.trimEnd();
+        if (line.startsWith("### ")) { if (inUl) { out.push("</ul>"); inUl = false; } out.push(`<h3>${esc(line.slice(4))}</h3>`); }
+        else if (line.startsWith("## ")) { if (inUl) { out.push("</ul>"); inUl = false; } out.push(`<h2>${esc(line.slice(3))}</h2>`); }
+        else if (line.startsWith("# ")) { if (inUl) { out.push("</ul>"); inUl = false; } out.push(`<h1>${esc(line.slice(2))}</h1>`); }
+        else if (/^[*-] /.test(line)) { if (!inUl) { out.push("<ul>"); inUl = true; } out.push(`<li>${inline(line.slice(2))}</li>`); }
+        else if (line === "") { if (inUl) { out.push("</ul>"); inUl = false; } out.push(""); }
+        else { if (inUl) { out.push("</ul>"); inUl = false; } out.push(`<p>${inline(line)}</p>`); }
+      }
+      if (inUl) out.push("</ul>");
+      return out.join("\n");
+    };
+
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const inline = (s: string) => esc(s)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/_(.+?)_/g, "<em>$1</em>")
+      .replace(/`(.+?)`/g, "<code>$1</code>");
+
+    const bodyHtml = md2html(exum);
+    const win = window.open("", "_blank", "width=900,height=1000");
+    if (!win) { alert("Izinkan popup untuk mencetak."); return; }
+    win.document.write(`<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>${esc(docTitle)}</title>
+<style>
+  @page { size: A4; margin: 20mm 25mm; }
+  body { font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.7; color: #111; max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 18pt; text-align: center; margin: 0 0 6pt; }
+  h2 { font-size: 14pt; margin: 24pt 0 6pt; border-bottom: 1.5pt solid #333; padding-bottom: 4pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; font-weight: bold; margin: 16pt 0 4pt; page-break-after: avoid; }
+  p { margin: 0 0 8pt; text-align: justify; }
+  ul, ol { margin: 0 0 10pt; padding-left: 22pt; }
+  li { margin-bottom: 3pt; }
+  strong { font-weight: bold; }
+  em { font-style: italic; }
+  code { font-family: monospace; font-size: 10pt; background: #f4f4f4; padding: 1pt 3pt; border-radius: 2pt; }
+  .meta { text-align: center; color: #555; font-size: 10pt; margin-bottom: 24pt; }
+  @media print { body { margin: 0; } }
+</style>
+</head>
+<body>
+<div class="meta">Jabatan Kerja: <strong>${esc(conv?.jabker ?? "-")}</strong> &nbsp;|&nbsp; ${esc(conv?.jenjang ?? "")} &nbsp;|&nbsp; ${esc(docTitle)}</div>
+${bodyHtml}
+<script>window.addEventListener("load",function(){ window.print(); });<\/script>
+</body>
+</html>`);
+    win.document.close();
+    void jabkerTitle;
+  };
+
   const exumWordCount = exum ? exum.split(/\s+/).filter(Boolean).length : 0;
 
   const phaseIdx = PHASE_STEPS.indexOf(currentPhase);
@@ -1145,6 +1209,10 @@ export default function ChatPage() {
                 className="flex items-center gap-1.5 bg-muted text-foreground px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-muted/80 transition-colors">
                 {copied ? <><CheckCheck className="w-3.5 h-3.5 text-green-600" /> Tersalin!</> : <><Copy className="w-3.5 h-3.5" /> Salin</>}
               </button>
+              <button onClick={handlePrint}
+                className="flex items-center gap-1.5 bg-muted text-foreground px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-muted/80 transition-colors">
+                <Printer className="w-3.5 h-3.5" /> Cetak PDF
+              </button>
               <button onClick={handleDownload}
                 className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90">
                 <Download className="w-3.5 h-3.5" /> Unduh .md
@@ -1183,6 +1251,10 @@ export default function ChatPage() {
             <button onClick={handleDownload}
               className="flex items-center gap-1.5 bg-white border border-green-300 text-green-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-green-50 transition-colors">
               <Download className="w-3.5 h-3.5" /> Unduh .md
+            </button>
+            <button onClick={handlePrint}
+              className="flex items-center gap-1.5 bg-white border border-green-300 text-green-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-green-50 transition-colors">
+              <Printer className="w-3.5 h-3.5" /> Cetak PDF
             </button>
             <button onClick={() => { setExum(null); handleGenerateExum(); }} disabled={generating}
               title="Generate ulang Exum (misalnya setelah menambah serpihan baru)"

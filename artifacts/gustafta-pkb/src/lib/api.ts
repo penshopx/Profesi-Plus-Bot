@@ -8,6 +8,7 @@ export interface Conversation {
   jenjang: string | null;
   phase: string;
   exumContent: string | null;
+  evidenceCount: number;
   createdAt: string;
 }
 

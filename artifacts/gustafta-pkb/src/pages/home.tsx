@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Clock } from "lucide-react";
+import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Package } from "lucide-react";
 import { listConversations, createConversation, deleteConversation, fetchJabkerList, type Conversation } from "@/lib/api";
 
 const MODES = [
@@ -178,7 +178,12 @@ export default function Home() {
                             {phaseLabel[c.phase] || c.phase}
                           </span>
                           {c.jabker && (
-                            <span className="text-[10px] text-sidebar-foreground/50 truncate max-w-[100px]">{c.jabker}</span>
+                            <span className="text-[10px] text-sidebar-foreground/50 truncate max-w-[80px]">{c.jabker}</span>
+                          )}
+                          {c.evidenceCount > 0 && (
+                            <span className="flex items-center gap-0.5 text-[10px] text-sidebar-foreground/40">
+                              <Package className="w-2.5 h-2.5" />{c.evidenceCount}
+                            </span>
                           )}
                         </div>
                         {!isDone && (

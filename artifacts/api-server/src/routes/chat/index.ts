@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, count } from "drizzle-orm";
 import { db, conversations, messages, evidenceItems } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { openai } from "../../lib/openai";
@@ -11,7 +11,13 @@ const router: IRouter = Router();
 
 router.get("/chat/conversations", async (req, res): Promise<void> => {
   const rows = await db.select().from(conversations).orderBy(asc(conversations.createdAt));
-  res.json(rows);
+  const counts = await db
+    .select({ conversationId: evidenceItems.conversationId, count: count() })
+    .from(evidenceItems)
+    .groupBy(evidenceItems.conversationId);
+  const countMap: Record<number, number> = {};
+  counts.forEach((c) => { countMap[c.conversationId] = Number(c.count); });
+  res.json(rows.map((r) => ({ ...r, evidenceCount: countMap[r.id] ?? 0 })));
 });
 
 router.post("/chat/conversations", async (req, res): Promise<void> => {
@@ -396,6 +402,20 @@ ${
 **6. DAMPAK DAN MANFAAT YANG DIPEROLEH** (1,5 halaman)
 **7. REKOMENDASI DAN RENCANA TINDAK LANJUT** (1,5 halaman)
 **8. KESIMPULAN** (0,5 halaman)`
+  : mode === "Hybrid"
+    ? `STRUKTUR EXUM (Mode Hybrid — Pengalaman + Hasil Belajar):
+# EXECUTIVE SUMMARY
+## Pengembangan Keprofesian Berkelanjutan — Hybrid (Pengalaman & Pembelajaran)
+
+**1. PENDAHULUAN DAN IDENTITAS JABATAN KERJA** (1 halaman)
+**2. RINGKASAN EKSEKUTIF** (1 halaman)
+**3. KONTEKS PROYEK DAN LATAR BELAKANG PEMBELAJARAN** (1,5-2 halaman — gabungkan proyek + motivasi belajar)
+**4. RUANG LINGKUP PEKERJAAN DAN PENGALAMAN LAPANGAN** (1,5-2 halaman — STAR dari proyek utama)
+**5. HASIL PEMBELAJARAN DAN REFLEKSI** (1,5-2 halaman — dari video/webinar/diklatkerja, metode Sokratik)
+**6. SINERGI PENGALAMAN + PENGETAHUAN (BENANG MERAH SKK)** (2-2,5 halaman — bagaimana keduanya saling memperkuat, kaitkan ke unit SKK spesifik)
+**7. CAPAIAN TERUKUR DAN BUKTI KOMPETENSI** (1,5-2 halaman — angka kuantitatif, dokumen ESIMPAN)
+**8. PEMBELAJARAN DAN RENCANA TINDAK LANJUT** (1 halaman)
+**9. KESIMPULAN** (0,5 halaman)`
     : `STRUKTUR EXUM (Mode Pengalaman Kerja):
 # EXECUTIVE SUMMARY
 ## Pengembangan Keprofesian Berkelanjutan — Pengalaman Kerja
