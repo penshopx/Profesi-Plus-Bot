@@ -758,7 +758,7 @@ function EvidencePanel({ convId, jabker, evidence, onRefresh }: {
 }) {
   const [wizardType, setWizardType] = useState<"learning" | "work_experience" | null>(null);
   const [saving, setSaving] = useState(false);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(evidence.length > 0);
   const [filter, setFilter] = useState<EvidFilter>("all");
   const qc = useQueryClient();
 
@@ -979,6 +979,7 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<(() => void) | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { data: conv, isLoading, refetch } = useQuery({
     queryKey: ["conversation", id],
@@ -994,6 +995,34 @@ export default function ChatPage() {
   useEffect(() => {
     if (conv?.exumContent && !exum) setExum(conv.exumContent);
   }, [conv?.exumContent]);
+
+  // Auto-send greeting when a brand-new session has no messages yet
+  const autoGreetedRef = useRef(false);
+  useEffect(() => {
+    if (!conv || autoGreetedRef.current || streaming) return;
+    if (conv.messages && conv.messages.length === 0) {
+      autoGreetedRef.current = true;
+      // Small delay so the chat area has rendered first
+      setTimeout(() => {
+        setStreaming(true);
+        setStreamText("");
+        abortRef.current = streamMessage(
+          id,
+          "Halo Pak Budi, saya siap memulai.",
+          (chunk) => setStreamText((prev) => prev + chunk),
+          (phase) => {
+            setStreaming(false);
+            setStreamText("");
+            setCurrentPhase(phase);
+            qc.invalidateQueries({ queryKey: ["conversation", id] });
+            qc.invalidateQueries({ queryKey: ["conversations"] });
+            setTimeout(() => textareaRef.current?.focus(), 50);
+          },
+          (err) => { setStreaming(false); setStreamText(`Terjadi kesalahan: ${err}`); }
+        );
+      }, 400);
+    }
+  }, [conv?.id, conv?.messages?.length]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1021,8 +1050,9 @@ export default function ChatPage() {
         });
         qc.invalidateQueries({ queryKey: ["conversation", id] });
         qc.invalidateQueries({ queryKey: ["conversations"] });
+        setTimeout(() => textareaRef.current?.focus(), 50);
       },
-      (err) => { setStreaming(false); setStreamText(`Terjadi kesalahan: ${err}`); }
+      (err) => { setStreaming(false); setStreamText(`Terjadi kesalahan: ${err}`); textareaRef.current?.focus(); }
     );
   }, [id, input, streaming, qc]);
 
@@ -1275,7 +1305,7 @@ export default function ChatPage() {
           </div>
           <div className="flex-1 overflow-y-auto p-6 bg-background">
             <div className="max-w-4xl mx-auto bg-card border border-border rounded-2xl p-8 shadow-sm">
-              <div className="prose prose-sm md:prose max-w-none text-foreground">
+              <div className="prose prose-base max-w-none text-foreground [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:border-b [&_h2]:border-border [&_h2]:pb-2 [&_h3]:text-base [&_h3]:font-bold [&_p]:text-justify [&_p]:leading-relaxed">
                 <ReactMarkdown>{exum}</ReactMarkdown>
               </div>
             </div>
@@ -1425,13 +1455,14 @@ export default function ChatPage() {
         })()}
         <div className="max-w-3xl mx-auto flex gap-2.5 items-end">
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={streaming || generating}
             placeholder={
               currentPhase === "done"
-                ? "Tanya Pak Budi soal isi Exum, atau minta clarifikasi..."
+                ? "Tanya Pak Budi soal isi Exum, atau minta klarifikasi..."
                 : "Ketik jawaban Anda... (Enter untuk kirim, Shift+Enter untuk baris baru)"
             }
             rows={1}
