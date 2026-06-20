@@ -151,6 +151,19 @@ export async function deleteEvidence(conversationId: number, evidenceId: number)
   });
 }
 
+export async function patchEvidence(
+  conversationId: number,
+  evidenceId: number,
+  data: { socratiDialog: SocratiDialog; socratiCompleted: boolean }
+): Promise<EvidenceItem> {
+  const r = await fetch(`${BASE}/chat/conversations/${conversationId}/evidence/${evidenceId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return r.json();
+}
+
 // ─── Generate Exum ────────────────────────────────────────────────────────────
 
 export async function generateExum(

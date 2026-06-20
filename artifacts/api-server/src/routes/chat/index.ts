@@ -119,6 +119,19 @@ router.delete("/chat/conversations/:id/evidence/:evidenceId", async (req, res): 
   res.sendStatus(204);
 });
 
+router.patch("/chat/conversations/:id/evidence/:evidenceId", async (req, res): Promise<void> => {
+  const evidenceId = parseInt(req.params.evidenceId, 10);
+  const { socratiDialog, socratiCompleted } = req.body;
+  const socratiStr = socratiDialog ? JSON.stringify(socratiDialog) : null;
+  const [item] = await db
+    .update(evidenceItems)
+    .set({ socratiDialog: socratiStr, socratiCompleted: socratiCompleted === true })
+    .where(eq(evidenceItems.id, evidenceId))
+    .returning();
+  if (!item) { res.status(404).json({ error: "Evidence not found" }); return; }
+  res.json(item);
+});
+
 // ─── Messages / Chat ──────────────────────────────────────────────────────────
 
 router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> => {
