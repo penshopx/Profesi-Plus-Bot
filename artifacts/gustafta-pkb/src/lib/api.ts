@@ -7,6 +7,7 @@ export interface Conversation {
   jabker: string | null;
   jenjang: string | null;
   phase: string;
+  exumContent: string | null;
   createdAt: string;
 }
 

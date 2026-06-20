@@ -945,11 +945,15 @@ export default function ChatPage() {
   }, [conv?.phase]);
 
   useEffect(() => {
+    if (conv?.exumContent && !exum) setExum(conv.exumContent);
+  }, [conv?.exumContent]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conv?.messages, streamText]);
 
-  const sendMsg = useCallback(() => {
-    const content = input.trim();
+  const sendMsg = useCallback((directMsg?: string) => {
+    const content = (directMsg ?? input).trim();
     if (!content || streaming) return;
     setInput("");
     setStreaming(true);
@@ -1071,9 +1075,9 @@ export default function ChatPage() {
           </button>
         )}
         {exum && (
-          <button onClick={handleDownload}
+          <button onClick={() => setShowExumModal(true)}
             className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90 shrink-0">
-            <Download className="w-3.5 h-3.5" /> Download Exum
+            <FileText className="w-3.5 h-3.5" /> Lihat Exum
           </button>
         )}
       </header>
@@ -1159,13 +1163,22 @@ export default function ChatPage() {
       <div className="flex-1 overflow-y-auto px-4 py-5">
         <div className="max-w-3xl mx-auto space-y-4">
           {messages.length === 0 && !streaming && (
-            <div className="text-center py-12">
+            <div className="text-center py-12 px-4">
               <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
                 <Briefcase className="w-8 h-8 text-primary" />
               </div>
               <p className="font-semibold text-foreground mb-1">Pak Budi siap memulai wawancara</p>
-              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                Tambahkan serpihan bukti di panel atas (dengan Dialog Sokratik), lalu ketik pesan untuk memulai wawancara.
+              <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-5">
+                Tambahkan serpihan bukti di panel atas untuk memperkuat Exum Anda, lalu mulai wawancara.
+              </p>
+              <button
+                onClick={() => sendMsg("Halo Pak Budi, saya siap memulai wawancara PKB saya.")}
+                className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-5 py-2.5 rounded-2xl text-sm font-semibold hover:opacity-90 transition-opacity shadow-sm">
+                <Send className="w-4 h-4" />
+                Mulai Wawancara dengan Pak Budi
+              </button>
+              <p className="text-[11px] text-muted-foreground mt-3">
+                atau ketik langsung di kotak chat di bawah
               </p>
             </div>
           )}
@@ -1270,7 +1283,7 @@ export default function ChatPage() {
             }}
           />
           <button
-            onClick={sendMsg}
+            onClick={() => sendMsg()}
             disabled={!input.trim() || streaming || generating || currentPhase === "done"}
             className="w-11 h-11 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shrink-0 disabled:opacity-40 hover:opacity-90 transition-opacity">
             {streaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}

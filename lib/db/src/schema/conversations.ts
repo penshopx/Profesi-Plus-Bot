@@ -9,6 +9,7 @@ export const conversations = pgTable("conversations", {
   jabker: text("jabker"),
   jenjang: text("jenjang"),
   phase: text("phase").notNull().default("profiling"),
+  exumContent: text("exum_content"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

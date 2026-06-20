@@ -218,7 +218,9 @@ router.post("/chat/generate-exum", async (req, res): Promise<void> => {
     });
 
     const content = response.choices[0]?.message?.content ?? "";
-    await db.update(conversations).set({ phase: "done" }).where(eq(conversations.id, conversationId));
+    await db.update(conversations)
+      .set({ phase: "done", exumContent: content })
+      .where(eq(conversations.id, conversationId));
 
     res.json({ content, conversationId });
   } catch (err) {
