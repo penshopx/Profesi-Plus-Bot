@@ -449,55 +449,101 @@ function AddEvidenceWizard({ type, jabker, onClose, onSave, saving }: AddEvidenc
 }
 
 // ─── Evidence Card ────────────────────────────────────────────────────────────
+function extractYoutubeId(url: string): string | null {
+  try {
+    const u = new URL(url.startsWith("http") ? url : `https://${url}`);
+    if (u.hostname.includes("youtube.com")) {
+      if (u.pathname.startsWith("/shorts/")) return u.pathname.split("/shorts/")[1].split("/")[0];
+      if (u.pathname.startsWith("/embed/")) return u.pathname.split("/embed/")[1].split("/")[0];
+      return u.searchParams.get("v");
+    }
+    if (u.hostname === "youtu.be") return u.pathname.slice(1).split("?")[0];
+  } catch {}
+  return null;
+}
+
 function EvidenceCard({ item, onDelete }: { item: EvidenceItem; onDelete: () => void }) {
   const cat = getCatConfig(item.category);
   const Icon = cat.icon;
+  const ytId = item.url ? extractYoutubeId(item.url) : null;
+  const thumbnailUrl = ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null;
+  const openUrl = item.url ? (item.url.startsWith("http") ? item.url : `https://${item.url}`) : null;
+
   return (
-    <div className="group relative bg-card border border-border rounded-xl p-3 hover:border-primary/40 transition-all hover:shadow-sm">
-      <div className="flex items-start gap-2.5">
-        <div className={`w-8 h-8 rounded-lg ${cat.bg} flex items-center justify-center shrink-0`}>
-          <Icon className={`w-4 h-4 ${cat.color}`} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start gap-1">
-            <p className="text-xs font-semibold text-foreground leading-tight flex-1 truncate">{item.title}</p>
-            {item.socratiCompleted && (
-              <span title="Dialog Sokratik selesai" className="shrink-0">
-                <MessageSquare className="w-3.5 h-3.5 text-green-500" />
-              </span>
-            )}
+    <div className="group relative bg-card border border-border rounded-xl overflow-hidden hover:border-primary/40 transition-all hover:shadow-sm">
+      {/* YouTube thumbnail strip */}
+      {thumbnailUrl && openUrl && (
+        <a href={openUrl} target="_blank" rel="noopener noreferrer" className="block relative">
+          <img
+            src={thumbnailUrl}
+            alt={item.title}
+            className="w-full h-24 object-cover"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center shadow">
+              <Youtube className="w-5 h-5 text-red-600 ml-0.5" />
+            </div>
           </div>
-          <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${cat.bg} ${cat.color}`}>
-            {cat.label}
-          </span>
-          {item.url && (
-            <a href={item.url.startsWith("http") ? item.url : `https://${item.url}`}
-              target="_blank" rel="noopener noreferrer"
-              className="block mt-1 text-[10px] text-primary truncate hover:underline">
-              {item.url.length > 38 ? item.url.slice(0, 38) + "..." : item.url}
-            </a>
-          )}
-          {item.description && (
-            <p className="mt-1 text-[10px] text-muted-foreground line-clamp-2">{item.description}</p>
-          )}
-          {item.skkUnitCode ? (
-            <div className="mt-2 bg-primary/5 border border-primary/20 rounded-lg px-2 py-1.5">
-              <p className="text-[10px] font-mono text-primary/70">{item.skkUnitCode}</p>
-              <p className="text-[10px] font-semibold text-foreground line-clamp-1">{item.skkUnitName}</p>
+          <div className="absolute top-1.5 right-1.5">
+            <span className="bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">YouTube</span>
+          </div>
+        </a>
+      )}
+
+      <div className="p-3">
+        <div className="flex items-start gap-2.5">
+          {!thumbnailUrl && (
+            <div className={`w-8 h-8 rounded-lg ${cat.bg} flex items-center justify-center shrink-0`}>
+              <Icon className={`w-4 h-4 ${cat.color}`} />
             </div>
-          ) : item.skkNotes ? (
-            <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
-              <p className="text-[10px] font-semibold text-amber-700 flex items-center gap-1 mb-0.5">
-                <Shield className="w-2.5 h-2.5" /> SKK
-              </p>
-              <p className="text-[10px] text-amber-800 line-clamp-2">{item.skkNotes}</p>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start gap-1">
+              <p className="text-xs font-semibold text-foreground leading-tight flex-1">{item.title}</p>
+              {item.socratiCompleted && (
+                <span title="Dialog Sokratik selesai" className="shrink-0">
+                  <MessageSquare className="w-3.5 h-3.5 text-green-500" />
+                </span>
+              )}
             </div>
-          ) : null}
+
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium ${cat.bg} ${cat.color}`}>
+                {cat.label}
+              </span>
+              {openUrl && (
+                <a href={openUrl} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 text-[10px] text-primary hover:underline">
+                  <Link className="w-2.5 h-2.5" />
+                  {thumbnailUrl ? "Buka video" : (item.url!.length > 28 ? item.url!.slice(0, 28) + "…" : item.url)}
+                </a>
+              )}
+            </div>
+
+            {item.description && (
+              <p className="mt-1.5 text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">{item.description}</p>
+            )}
+
+            {item.skkUnitCode ? (
+              <div className="mt-2 bg-primary/5 border border-primary/20 rounded-lg px-2 py-1.5">
+                <p className="text-[10px] font-mono text-primary/70">{item.skkUnitCode}</p>
+                <p className="text-[10px] font-semibold text-foreground line-clamp-1">{item.skkUnitName}</p>
+              </div>
+            ) : item.skkNotes ? (
+              <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                <p className="text-[10px] font-semibold text-amber-700 flex items-center gap-1 mb-0.5">
+                  <Shield className="w-2.5 h-2.5" /> SKK
+                </p>
+                <p className="text-[10px] text-amber-800 line-clamp-2">{item.skkNotes}</p>
+              </div>
+            ) : null}
+          </div>
+          <button onClick={onDelete}
+            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-all shrink-0">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
-        <button onClick={onDelete}
-          className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-all shrink-0">
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
       </div>
     </div>
   );
