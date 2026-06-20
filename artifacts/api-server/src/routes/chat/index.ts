@@ -57,7 +57,10 @@ router.get("/chat/conversations/:id/evidence", async (req, res): Promise<void> =
 
 router.post("/chat/conversations/:id/evidence", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
-  const { type, category, title, url, description, skkNotes } = req.body;
+  const {
+    type, category, title, url, description, skkNotes,
+    skkUnitCode, skkUnitName, socratiDialog, socratiCompleted, tier,
+  } = req.body;
   if (!type || !title) {
     res.status(400).json({ error: "type and title are required" });
     return;
@@ -65,9 +68,24 @@ router.post("/chat/conversations/:id/evidence", async (req, res): Promise<void> 
   const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
   if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
 
+  const socratiStr = socratiDialog ? JSON.stringify(socratiDialog) : null;
+
   const [item] = await db
     .insert(evidenceItems)
-    .values({ conversationId: id, type, category: category ?? "", title, url, description, skkNotes })
+    .values({
+      conversationId: id,
+      type,
+      category: category ?? "",
+      title,
+      url,
+      description,
+      skkNotes,
+      skkUnitCode: skkUnitCode ?? null,
+      skkUnitName: skkUnitName ?? null,
+      socratiDialog: socratiStr,
+      socratiCompleted: socratiCompleted === true,
+      tier: tier ?? "self",
+    })
     .returning();
   res.status(201).json(item);
 });
@@ -234,7 +252,14 @@ function detectNextPhase(currentPhase: string, mode: string, msgCount: number, l
   return currentPhase;
 }
 
-type EvidenceRow = { type: string; category: string; title: string; url: string | null; description: string | null; skkNotes: string | null };
+interface SocratiEntry { q1: string; a1: string; q2: string; a2: string; q3: string; a3: string; q4: string; a4: string }
+
+type EvidenceRow = {
+  type: string; category: string; title: string; url: string | null;
+  description: string | null; skkNotes: string | null;
+  skkUnitCode: string | null; skkUnitName: string | null;
+  socratiDialog: string | null; socratiCompleted: boolean; tier: string;
+};
 
 function buildEvidenceContext(evidence: EvidenceRow[]): string {
   if (!evidence.length) return "";
@@ -242,29 +267,58 @@ function buildEvidenceContext(evidence: EvidenceRow[]): string {
   const learning = evidence.filter((e) => e.type === "learning");
   const workExp = evidence.filter((e) => e.type === "work_experience");
 
-  const lines: string[] = ["\n\n=== BUKTI & SUMBER PENGETAHUAN PKB ==="];
+  const lines: string[] = ["\n\n=== BUKTI & SUMBER PENGETAHUAN PKB (SERPIHAN) ==="];
+  lines.push("Setiap serpihan di bawah ini telah melalui Dialog Sokratik dengan Pak Budi untuk menggali pemahaman TKK secara mendalam.\n");
 
   if (learning.length) {
-    lines.push("\n📚 PEMBELAJARAN PKB (Video/Webinar/Diklatkerja):");
+    lines.push("📚 PEMBELAJARAN PKB (Video/Webinar/Diklatkerja):");
     learning.forEach((e, i) => {
-      lines.push(`  ${i + 1}. [${e.category || "Video"}] ${e.title}`);
-      if (e.url) lines.push(`     Link: ${e.url}`);
-      if (e.description) lines.push(`     Deskripsi: ${e.description}`);
-      if (e.skkNotes) lines.push(`     ✅ Kesesuaian SKK: ${e.skkNotes}`);
+      lines.push(`\n  SERPIHAN L${i + 1}: [${e.category || "Video"}] ${e.title}`);
+      if (e.url) lines.push(`    Link: ${e.url}`);
+      if (e.description) lines.push(`    Deskripsi: ${e.description}`);
+      if (e.skkUnitCode && e.skkUnitName) {
+        lines.push(`    ✅ Unit SKK: ${e.skkUnitCode} — ${e.skkUnitName}`);
+      } else if (e.skkNotes) {
+        lines.push(`    ✅ Kesesuaian SKK: ${e.skkNotes}`);
+      }
+      if (e.socratiCompleted && e.socratiDialog) {
+        try {
+          const d: SocratiEntry = JSON.parse(e.socratiDialog);
+          lines.push(`    💬 Dialog Sokratik:`);
+          if (d.q1 && d.a1) lines.push(`      Pak Budi: "${d.q1}"\n      TKK: "${d.a1}"`);
+          if (d.q2 && d.a2) lines.push(`      Pak Budi: "${d.q2}"\n      TKK: "${d.a2}"`);
+          if (d.q3 && d.a3) lines.push(`      Pak Budi: "${d.q3}"\n      TKK: "${d.a3}"`);
+          if (d.q4 && d.a4) lines.push(`      Pak Budi: "${d.q4}"\n      TKK: "${d.a4}"`);
+        } catch {}
+      }
     });
   }
 
   if (workExp.length) {
     lines.push("\n🏗️ PENGALAMAN PEKERJAAN (Bukti Lapangan):");
     workExp.forEach((e, i) => {
-      lines.push(`  ${i + 1}. [${e.category || "Dokumen"}] ${e.title}`);
-      if (e.url) lines.push(`     Referensi: ${e.url}`);
-      if (e.description) lines.push(`     Keterangan: ${e.description}`);
-      if (e.skkNotes) lines.push(`     ✅ Kesesuaian SKK: ${e.skkNotes}`);
+      lines.push(`\n  SERPIHAN K${i + 1}: [${e.category || "Dokumen"}] ${e.title}`);
+      if (e.url) lines.push(`    Referensi: ${e.url}`);
+      if (e.description) lines.push(`    Keterangan: ${e.description}`);
+      if (e.skkUnitCode && e.skkUnitName) {
+        lines.push(`    ✅ Unit SKK: ${e.skkUnitCode} — ${e.skkUnitName}`);
+      } else if (e.skkNotes) {
+        lines.push(`    ✅ Kesesuaian SKK: ${e.skkNotes}`);
+      }
+      if (e.socratiCompleted && e.socratiDialog) {
+        try {
+          const d: SocratiEntry = JSON.parse(e.socratiDialog);
+          lines.push(`    💬 Dialog Sokratik:`);
+          if (d.q1 && d.a1) lines.push(`      Pak Budi: "${d.q1}"\n      TKK: "${d.a1}"`);
+          if (d.q2 && d.a2) lines.push(`      Pak Budi: "${d.q2}"\n      TKK: "${d.a2}"`);
+          if (d.q3 && d.a3) lines.push(`      Pak Budi: "${d.q3}"\n      TKK: "${d.a3}"`);
+          if (d.q4 && d.a4) lines.push(`      Pak Budi: "${d.q4}"\n      TKK: "${d.a4}"`);
+        } catch {}
+      }
     });
   }
 
-  lines.push("\nGUNAKAN semua bukti di atas sebagai referensi konkret dalam wawancara dan penulisan Exum.");
+  lines.push("\nGUNAKAN narasi TKK dari setiap serpihan di atas sebagai bahan utama wawancara dan penulisan Exum — gunakan kata-kata TKK sendiri.");
   return lines.join("\n");
 }
 
@@ -280,14 +334,33 @@ function buildExumPrompt(
 
   const evidenceContext = buildEvidenceContext(evidence);
 
+  const socratiSummary = evidence
+    .filter((e) => e.socratiCompleted && e.socratiDialog)
+    .map((e, i) => {
+      try {
+        const d: SocratiEntry = JSON.parse(e.socratiDialog!);
+        return `Serpihan ${i + 1} (${e.title}): pemahaman mendalam TKK — "${d.a1}" | "${d.a2}"`;
+      } catch { return ""; }
+    })
+    .filter(Boolean)
+    .join("\n");
+
+  const skkCovered = [...new Set(
+    evidence
+      .filter((e) => e.skkUnitCode)
+      .map((e) => `${e.skkUnitCode} — ${e.skkUnitName}`)
+  )].join("\n  - ");
+
   return `Kamu adalah penulis profesional yang ahli dalam membuat Executive Summary (Exum) PKB (Pengembangan Keprofesian Berkelanjutan) sesuai Permen PUPR No. 12 Tahun 2021 dan SK Dirjen Bina Konstruksi No. 114 Tahun 2024.
 
-Berdasarkan transkrip wawancara dan bukti-bukti di bawah ini, buatlah Executive Summary yang lengkap, profesional, dan berkualitas tinggi (setara 10-15 halaman A4).
+Berdasarkan transkrip wawancara dan serpihan bukti di bawah ini, buatlah Executive Summary yang lengkap, profesional, dan berkualitas tinggi (setara 10-15 halaman A4).
 
 INFORMASI PENULIS:
 - Jabatan Kerja: ${jabker ?? "Tenaga Ahli Konstruksi"}
 - Jenjang SKK: ${jenjang ?? "Ahli"}
 - Mode Exum: ${modeLabel}
+${skkCovered ? `\nUNIT SKK YANG DICAKUP:\n  - ${skkCovered}` : ""}
+${socratiSummary ? `\nINTISARI PEMAHAMAN TKK (dari Dialog Sokratik):\n${socratiSummary}` : ""}
 ${evidenceContext}
 
 TRANSKRIP WAWANCARA:
@@ -296,10 +369,12 @@ ${transcript}
 INSTRUKSI PENULISAN:
 1. Tulis dalam bahasa Indonesia yang profesional, akademis, dan mudah dipahami
 2. Gunakan struktur yang rapi dengan heading dan sub-heading yang jelas
-3. Sebutkan secara eksplisit sumber-sumber pembelajaran / bukti lapangan yang ada dalam Bukti & Sumber Pengetahuan PKB
-4. Kaitkan setiap bagian dengan unit SKK yang disebutkan dalam catatan kesesuaian
-5. Perkuat dengan data kuantitatif dari wawancara
-6. Panjang total setara 10-15 halaman A4 (2500-4000 kata)
+3. WAJIB merujuk narasi dan kata-kata TKK dari Dialog Sokratik di setiap serpihan
+4. Sebutkan secara eksplisit kode dan nama unit SKK yang dicakup setiap bagian
+5. Kaitkan setiap bagian dengan unit SKK yang relevan (SK DJBK No. 114/2024)
+6. Perkuat dengan data kuantitatif dari wawancara
+7. Panjang total setara 10-15 halaman A4 (2500-4000 kata)
+8. Exum harus mencerminkan perjalanan belajar NYATA TKK — bukan generik
 
 ${
   mode === "B"
@@ -323,7 +398,7 @@ ${
 **2. RINGKASAN EKSEKUTIF** (1-1,5 halaman)
 **3. LATAR BELAKANG DAN KONTEKS PROYEK** (1,5-2 halaman)
 **4. RUANG LINGKUP DAN PERAN TENAGA KERJA KONSTRUKSI** (1,5-2 halaman)
-**5. TANTANGAN UTAMA** (1,5-2 halaman)
+**5. TANTANGAN UTAMA DAN ANALISIS MASALAH** (1,5-2 halaman)
 **6. PENDEKATAN DAN METODOLOGI YANG DITERAPKAN** (2-3 halaman)
 **7. CAPAIAN DAN HASIL** (2-3 halaman — sertakan data kuantitatif)
 **8. PEMBELAJARAN DAN REKOMENDASI** (1-1,5 halaman)

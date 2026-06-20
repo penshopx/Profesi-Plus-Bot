@@ -18,6 +18,13 @@ export interface Message {
   createdAt: string;
 }
 
+export interface SocratiDialog {
+  q1: string; a1: string;
+  q2: string; a2: string;
+  q3: string; a3: string;
+  q4: string; a4: string;
+}
+
 export interface EvidenceItem {
   id: number;
   conversationId: number;
@@ -27,12 +34,29 @@ export interface EvidenceItem {
   url: string | null;
   description: string | null;
   skkNotes: string | null;
+  skkUnitCode: string | null;
+  skkUnitName: string | null;
+  socratiDialog: string | null;
+  socratiCompleted: boolean;
+  tier: string;
   createdAt: string;
 }
 
 export interface ConversationWithMessages extends Conversation {
   messages: Message[];
   evidence: EvidenceItem[];
+}
+
+export interface SkkUnit {
+  code: string;
+  name: string;
+  description: string;
+}
+
+export interface SkkUnitsResponse {
+  jabker: string;
+  jenjang: string;
+  units: SkkUnit[];
 }
 
 export async function listConversations(): Promise<Conversation[]> {
@@ -63,6 +87,13 @@ export async function deleteConversation(id: number): Promise<void> {
   await fetch(`${BASE}/chat/conversations/${id}`, { method: "DELETE" });
 }
 
+// ─── SKK ──────────────────────────────────────────────────────────────────────
+
+export async function fetchSkkUnits(jabker: string): Promise<SkkUnitsResponse> {
+  const r = await fetch(`${BASE}/skk/units?jabker=${encodeURIComponent(jabker)}`);
+  return r.json();
+}
+
 // ─── Evidence ─────────────────────────────────────────────────────────────────
 
 export async function listEvidence(conversationId: number): Promise<EvidenceItem[]> {
@@ -79,6 +110,11 @@ export async function createEvidence(
     url?: string;
     description?: string;
     skkNotes?: string;
+    skkUnitCode?: string;
+    skkUnitName?: string;
+    socratiDialog?: SocratiDialog;
+    socratiCompleted?: boolean;
+    tier?: string;
   }
 ): Promise<EvidenceItem> {
   const r = await fetch(`${BASE}/chat/conversations/${conversationId}/evidence`, {

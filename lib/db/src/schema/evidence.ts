@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { conversations } from "./conversations";
@@ -14,6 +14,11 @@ export const evidenceItems = pgTable("evidence_items", {
   url: text("url"),
   description: text("description"),
   skkNotes: text("skk_notes"),
+  skkUnitCode: text("skk_unit_code"),
+  skkUnitName: text("skk_unit_name"),
+  socratiDialog: text("socrati_dialog"),
+  socratiCompleted: boolean("socrati_completed").default(false).notNull(),
+  tier: text("tier").default("self").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
