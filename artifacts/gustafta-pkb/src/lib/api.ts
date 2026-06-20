@@ -18,8 +18,21 @@ export interface Message {
   createdAt: string;
 }
 
+export interface EvidenceItem {
+  id: number;
+  conversationId: number;
+  type: "learning" | "work_experience";
+  category: string;
+  title: string;
+  url: string | null;
+  description: string | null;
+  skkNotes: string | null;
+  createdAt: string;
+}
+
 export interface ConversationWithMessages extends Conversation {
   messages: Message[];
+  evidence: EvidenceItem[];
 }
 
 export async function listConversations(): Promise<Conversation[]> {
@@ -50,7 +63,43 @@ export async function deleteConversation(id: number): Promise<void> {
   await fetch(`${BASE}/chat/conversations/${id}`, { method: "DELETE" });
 }
 
-export async function generateExum(conversationId: number): Promise<{ content: string; conversationId: number }> {
+// ─── Evidence ─────────────────────────────────────────────────────────────────
+
+export async function listEvidence(conversationId: number): Promise<EvidenceItem[]> {
+  const r = await fetch(`${BASE}/chat/conversations/${conversationId}/evidence`);
+  return r.json();
+}
+
+export async function createEvidence(
+  conversationId: number,
+  data: {
+    type: string;
+    category: string;
+    title: string;
+    url?: string;
+    description?: string;
+    skkNotes?: string;
+  }
+): Promise<EvidenceItem> {
+  const r = await fetch(`${BASE}/chat/conversations/${conversationId}/evidence`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return r.json();
+}
+
+export async function deleteEvidence(conversationId: number, evidenceId: number): Promise<void> {
+  await fetch(`${BASE}/chat/conversations/${conversationId}/evidence/${evidenceId}`, {
+    method: "DELETE",
+  });
+}
+
+// ─── Generate Exum ────────────────────────────────────────────────────────────
+
+export async function generateExum(
+  conversationId: number
+): Promise<{ content: string; conversationId: number }> {
   const r = await fetch(`${BASE}/chat/generate-exum`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -58,6 +107,8 @@ export async function generateExum(conversationId: number): Promise<{ content: s
   });
   return r.json();
 }
+
+// ─── Streaming ────────────────────────────────────────────────────────────────
 
 export function streamMessage(
   conversationId: number,
@@ -70,12 +121,15 @@ export function streamMessage(
 
   (async () => {
     try {
-      const response = await fetch(`${BASE}/chat/conversations/${conversationId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
-        signal: controller.signal,
-      });
+      const response = await fetch(
+        `${BASE}/chat/conversations/${conversationId}/messages`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+          signal: controller.signal,
+        }
+      );
 
       const reader = response.body?.getReader();
       if (!reader) { onError("No stream"); return; }
