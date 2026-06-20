@@ -55,7 +55,10 @@ export interface SkkUnit {
 
 export interface SkkUnitsResponse {
   jabker: string;
-  jenjang: string;
+  isKnown: boolean;
+  jenjang?: string;
+  klasifikasi?: string;
+  subklasifikasi?: string;
   units: SkkUnit[];
 }
 
@@ -92,6 +95,12 @@ export async function deleteConversation(id: number): Promise<void> {
 export async function fetchSkkUnits(jabker: string): Promise<SkkUnitsResponse> {
   const r = await fetch(`${BASE}/skk/units?jabker=${encodeURIComponent(jabker)}`);
   return r.json();
+}
+
+export async function fetchJabkerList(): Promise<string[]> {
+  const r = await fetch(`${BASE}/skk/jabkers`);
+  const data = await r.json();
+  return data.jabkers ?? [];
 }
 
 // ─── Evidence ─────────────────────────────────────────────────────────────────

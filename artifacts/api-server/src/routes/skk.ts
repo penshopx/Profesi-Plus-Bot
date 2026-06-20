@@ -39,11 +39,12 @@ router.get("/skk/units", (req, res): void => {
   }
   const group = findJabkerGroup(jabker);
   if (!group) {
-    res.json({ jabker, units: [] });
+    res.json({ jabker, isKnown: false, units: [] });
     return;
   }
   res.json({
     jabker: group.name,
+    isKnown: true,
     jenjang: group.jenjang,
     klasifikasi: group.klasifikasi,
     subklasifikasi: group.subklasifikasi,

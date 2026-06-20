@@ -86,6 +86,9 @@ function AddEvidenceWizard({ type, jabker, onClose, onSave, saving }: AddEvidenc
   const [selectedUnit, setSelectedUnit] = useState<SkkUnit | null>(null);
   const [skkUnits, setSkkUnits] = useState<SkkUnit[]>([]);
   const [loadingSkk, setLoadingSkk] = useState(false);
+  const [jabkerIsKnown, setJabkerIsKnown] = useState<boolean | null>(null);
+  const [manualCode, setManualCode] = useState("");
+  const [manualName, setManualName] = useState("");
 
   const showUrl = type === "learning" || category === "esimpan";
   const questions = title ? getSocratiQuestions(type, title) : ["", "", "", ""];
@@ -108,6 +111,7 @@ function AddEvidenceWizard({ type, jabker, onClose, onSave, saving }: AddEvidenc
     try {
       const res = await fetchSkkUnits(jabker);
       setSkkUnits(res.units ?? []);
+      setJabkerIsKnown(res.isKnown ?? false);
     } finally {
       setLoadingSkk(false);
     }
@@ -136,9 +140,11 @@ function AddEvidenceWizard({ type, jabker, onClose, onSave, saving }: AddEvidenc
       q3: questions[2], a3: answers[2],
       q4: questions[3], a4: answers[3],
     };
+    const finalCode = selectedUnit?.code ?? (manualCode.trim() || undefined);
+    const finalName = selectedUnit?.name ?? (manualName.trim() || undefined);
     onSave({
       category, title, url: url || undefined, description: description || undefined,
-      skkUnitCode: selectedUnit?.code, skkUnitName: selectedUnit?.name,
+      skkUnitCode: finalCode, skkUnitName: finalName,
       socratiDialog: dialog,
       socratiCompleted: answers.every((a) => a.trim().length > 0),
     });
@@ -327,9 +333,47 @@ function AddEvidenceWizard({ type, jabker, onClose, onSave, saving }: AddEvidenc
                     <Loader2 className="w-5 h-5 animate-spin text-primary mr-2" />
                     <span className="text-sm text-muted-foreground">Memuat unit SKK...</span>
                   </div>
-                ) : skkUnits.length === 0 ? (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
-                    Unit SKK tidak ditemukan untuk jabatan kerja ini. Anda tetap dapat menyimpan tanpa tag SKK.
+                ) : !jabkerIsKnown && skkUnits.length === 0 ? (
+                  <div className="space-y-3">
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+                      <p className="font-semibold mb-1">Jabatan kerja ini belum ada dalam database.</p>
+                      <p>Masukkan kode dan nama unit kompetensi dari sertifikat SKK Anda secara manual (opsional).</p>
+                    </div>
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">
+                          Kode Unit Kompetensi
+                        </label>
+                        <input
+                          type="text"
+                          value={manualCode}
+                          onChange={(e) => setManualCode(e.target.value)}
+                          placeholder="Contoh: M.71.XXX.001.01"
+                          className="w-full rounded-xl border border-border bg-card px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">
+                          Nama Unit Kompetensi
+                        </label>
+                        <input
+                          type="text"
+                          value={manualName}
+                          onChange={(e) => setManualName(e.target.value)}
+                          placeholder="Contoh: Melakukan Pengendalian Mutu Pekerjaan"
+                          className="w-full rounded-xl border border-border bg-card px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                        />
+                      </div>
+                      {manualCode.trim() && manualName.trim() && (
+                        <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                          <p className="text-[11px] text-green-800">Unit manual akan disimpan bersama bukti ini.</p>
+                        </div>
+                      )}
+                      <p className="text-[10px] text-muted-foreground italic">
+                        Biarkan kosong untuk menyimpan tanpa tag unit SKK.
+                      </p>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-52 overflow-y-auto pr-1">

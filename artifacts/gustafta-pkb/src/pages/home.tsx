@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award } from "lucide-react";
-import { listConversations, createConversation, deleteConversation, type Conversation } from "@/lib/api";
+import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2 } from "lucide-react";
+import { listConversations, createConversation, deleteConversation, fetchJabkerList, type Conversation } from "@/lib/api";
 
 const MODES = [
   {
@@ -46,6 +46,31 @@ export default function Home() {
   const [selectedMode, setSelectedMode] = useState("");
   const [jabker, setJabker] = useState("");
   const [jenjang, setJenjang] = useState("");
+  const [showJabkerDropdown, setShowJabkerDropdown] = useState(false);
+  const jabkerRef = useRef<HTMLDivElement>(null);
+
+  const { data: jabkerList = [] } = useQuery({
+    queryKey: ["jabkerList"],
+    queryFn: fetchJabkerList,
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const filteredJabkers = jabker.trim().length > 0
+    ? jabkerList.filter((j) => j.toLowerCase().includes(jabker.toLowerCase())).slice(0, 8)
+    : [];
+  const jabkerIsKnown = jabker.trim().length > 0 && jabkerList.some(
+    (j) => j.toLowerCase() === jabker.toLowerCase().trim()
+  );
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (jabkerRef.current && !jabkerRef.current.contains(e.target as Node)) {
+        setShowJabkerDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   const { data: conversations = [], isLoading } = useQuery({
     queryKey: ["conversations"],
@@ -205,16 +230,53 @@ export default function Home() {
 
             {selectedMode && (
               <div className="space-y-4 mb-8 animate-in fade-in slide-in-from-bottom-2">
-                <div>
+                <div ref={jabkerRef} className="relative">
                   <label className="text-sm font-medium text-foreground block mb-1.5">Jabatan Kerja (Jabker)</label>
-                  <input
-                    data-testid="input-jabker"
-                    type="text"
-                    value={jabker}
-                    onChange={(e) => setJabker(e.target.value)}
-                    placeholder="Contoh: Ahli Teknik Bangunan Gedung, Site Engineer, Project Manager..."
-                    className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                  />
+                  <div className="relative">
+                    <input
+                      data-testid="input-jabker"
+                      type="text"
+                      value={jabker}
+                      onChange={(e) => { setJabker(e.target.value); setShowJabkerDropdown(true); }}
+                      onFocus={() => setShowJabkerDropdown(true)}
+                      placeholder="Ketik jabatan kerja atau cari dari daftar..."
+                      className="w-full rounded-xl border border-border bg-card px-4 py-2.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    />
+                    {jabker.trim().length > 0 && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        {jabkerIsKnown
+                          ? <CheckCircle2 className="w-4 h-4 text-green-500" />
+                          : <AlertCircle className="w-4 h-4 text-amber-500" />
+                        }
+                      </div>
+                    )}
+                  </div>
+                  {showJabkerDropdown && filteredJabkers.length > 0 && (
+                    <div className="absolute z-50 mt-1 w-full bg-card border border-border rounded-xl shadow-lg max-h-52 overflow-y-auto">
+                      {filteredJabkers.map((j) => (
+                        <button
+                          key={j}
+                          type="button"
+                          onClick={() => { setJabker(j); setShowJabkerDropdown(false); }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors first:rounded-t-xl last:rounded-b-xl"
+                        >
+                          {j}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {jabker.trim().length > 2 && !jabkerIsKnown && (
+                    <p className="mt-1.5 text-xs text-amber-600 flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      Jabker ini belum ada di database — Anda tetap dapat melanjutkan, unit SKK dapat diisi manual nanti.
+                    </p>
+                  )}
+                  {jabkerIsKnown && (
+                    <p className="mt-1.5 text-xs text-green-600 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      Jabker ini ada dalam database SKK kami.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground block mb-1.5">Jenjang SKK</label>
