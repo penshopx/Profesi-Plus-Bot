@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import {
-  getConversation, streamMessage, generateExum, createEvidence, deleteEvidence,
+  getConversation, streamMessage, generateExum, advancePhase, createEvidence, deleteEvidence,
   fetchSkkUnits,
   type Message, type EvidenceItem, type SkkUnit, type SocratiDialog,
 } from "@/lib/api";
@@ -926,6 +926,7 @@ export default function ChatPage() {
   const [currentPhase, setCurrentPhase] = useState("profiling");
   const [exum, setExum] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
   const [showExumModal, setShowExumModal] = useState(false);
   const [phaseToast, setPhaseToast] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -992,6 +993,26 @@ export default function ChatPage() {
       qc.invalidateQueries({ queryKey: ["conversation", id] });
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleAdvancePhase = async () => {
+    setAdvancing(true);
+    try {
+      const result = await advancePhase(id);
+      setCurrentPhase((prev) => {
+        if (result.phase !== prev) {
+          setPhaseToast(result.phase);
+          setTimeout(() => setPhaseToast(null), 4500);
+        }
+        return result.phase;
+      });
+      qc.invalidateQueries({ queryKey: ["conversation", id] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    } catch {
+      // silently ignore if cannot advance
+    } finally {
+      setAdvancing(false);
     }
   };
 
@@ -1067,6 +1088,14 @@ export default function ChatPage() {
           {PHASE_LABELS[currentPhase] || currentPhase}
         </span>
 
+        {currentPhase !== "done" && currentPhase !== "synthesis" && (
+          <button onClick={handleAdvancePhase} disabled={advancing || streaming}
+            title="Lewati ke fase berikutnya secara manual"
+            className="flex items-center gap-1 bg-muted text-muted-foreground px-2.5 py-1.5 rounded-xl text-xs font-medium hover:bg-muted/80 hover:text-foreground transition-colors disabled:opacity-40 shrink-0">
+            {advancing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">Lanjut Fase</span>
+          </button>
+        )}
         {canGenerate && !exum && (
           <button onClick={handleGenerateExum} disabled={generating}
             className="flex items-center gap-1.5 bg-accent text-accent-foreground px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-60 shrink-0">
@@ -1139,21 +1168,27 @@ export default function ChatPage() {
       {/* Exum result banner */}
       {exum && (
         <div className="border-b border-green-200 bg-green-50/60 px-4 py-2.5 shrink-0">
-          <div className="max-w-3xl mx-auto flex items-center gap-3 flex-wrap">
+          <div className="max-w-3xl mx-auto flex items-center gap-2 flex-wrap">
             <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
             <span className="text-sm font-semibold text-green-800 flex-1">Executive Summary PKB berhasil dibuat</span>
             <span className="text-xs text-green-700">{exumWordCount.toLocaleString()} kata</span>
             <button onClick={() => setShowExumModal(true)}
               className="flex items-center gap-1.5 bg-white border border-green-300 text-green-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-green-50 transition-colors">
-              <FileText className="w-3.5 h-3.5" /> Lihat Dokumen
+              <FileText className="w-3.5 h-3.5" /> Lihat
             </button>
             <button onClick={handleCopyExum}
               className="flex items-center gap-1.5 bg-white border border-green-300 text-green-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-green-50 transition-colors">
               {copied ? <><CheckCheck className="w-3.5 h-3.5" /> Tersalin!</> : <><Copy className="w-3.5 h-3.5" /> Salin</>}
             </button>
             <button onClick={handleDownload}
-              className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90">
+              className="flex items-center gap-1.5 bg-white border border-green-300 text-green-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-green-50 transition-colors">
               <Download className="w-3.5 h-3.5" /> Unduh .md
+            </button>
+            <button onClick={() => { setExum(null); handleGenerateExum(); }} disabled={generating}
+              title="Generate ulang Exum (misalnya setelah menambah serpihan baru)"
+              className="flex items-center gap-1.5 bg-white border border-amber-300 text-amber-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-amber-50 transition-colors disabled:opacity-50">
+              {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+              {generating ? "Membuat ulang..." : "Regenerate"}
             </button>
           </div>
         </div>

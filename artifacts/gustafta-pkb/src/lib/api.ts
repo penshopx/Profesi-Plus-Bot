@@ -154,6 +154,15 @@ export async function generateExum(
   return r.json();
 }
 
+export async function advancePhase(conversationId: number): Promise<{ phase: string }> {
+  const r = await fetch(`${BASE}/chat/conversations/${conversationId}/advance-phase`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!r.ok) throw new Error("Cannot advance phase");
+  return r.json();
+}
+
 // ─── Streaming ────────────────────────────────────────────────────────────────
 
 export function streamMessage(

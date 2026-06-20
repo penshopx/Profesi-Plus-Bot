@@ -164,9 +164,18 @@ router.post("/chat/conversations/:id/messages", async (req, res): Promise<void> 
       }
     }
 
-    await db.insert(messages).values({ conversationId: convId, role: "assistant", content: fullResponse });
+    const MARKER = "[[FASE_NAIK]]";
+    const hasMarker = fullResponse.includes(MARKER);
+    const cleanResponse = fullResponse.replace(MARKER, "").trimEnd();
 
-    const nextPhase = detectNextPhase(conv.phase, conv.mode, existingMsgs.length, fullResponse);
+    await db.insert(messages).values({ conversationId: convId, role: "assistant", content: cleanResponse });
+
+    const phases = ["profiling", "context", "core_interview", "evidence", "synthesis", "done"];
+    const currentIdx = phases.indexOf(conv.phase);
+    let nextPhase = conv.phase;
+    if (hasMarker && currentIdx >= 0 && currentIdx < phases.length - 2) {
+      nextPhase = phases[currentIdx + 1];
+    }
     if (nextPhase !== conv.phase) {
       await db.update(conversations).set({ phase: nextPhase }).where(eq(conversations.id, convId));
     }
@@ -178,6 +187,24 @@ router.post("/chat/conversations/:id/messages", async (req, res): Promise<void> 
     res.write(`data: ${JSON.stringify({ error: "AI error occurred" })}\n\n`);
     res.end();
   }
+});
+
+// ─── Manual Phase Advance ─────────────────────────────────────────────────────
+
+router.post("/chat/conversations/:id/advance-phase", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
+  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+
+  const phases = ["profiling", "context", "core_interview", "evidence", "synthesis", "done"];
+  const currentIdx = phases.indexOf(conv.phase);
+  if (currentIdx < 0 || currentIdx >= phases.length - 2) {
+    res.status(400).json({ error: "Cannot advance phase from current state", phase: conv.phase });
+    return;
+  }
+  const nextPhase = phases[currentIdx + 1];
+  await db.update(conversations).set({ phase: nextPhase }).where(eq(conversations.id, id));
+  res.json({ phase: nextPhase });
 });
 
 // ─── Generate Exum ────────────────────────────────────────────────────────────
@@ -230,29 +257,6 @@ router.post("/chat/generate-exum", async (req, res): Promise<void> => {
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function detectNextPhase(currentPhase: string, mode: string, msgCount: number, lastResponse: string): string {
-  const phases = ["profiling", "context", "core_interview", "evidence", "synthesis", "done"];
-  const currentIdx = phases.indexOf(currentPhase);
-  if (currentIdx === -1) return currentPhase;
-
-  const lower = lastResponse.toLowerCase();
-  const progressKeywords = [
-    "baik, sekarang", "selanjutnya", "mari kita lanjut", "fase berikutnya",
-    "terima kasih", "sudah cukup", "siap untuk", "kita sudah", "lanjut ke",
-  ];
-  const shouldAdvance = progressKeywords.some((kw) => lower.includes(kw));
-
-  const minMsgsPerPhase: Record<string, number> = {
-    profiling: 2, context: 4, core_interview: 8, evidence: 10, synthesis: 12,
-  };
-
-  const minMsgs = minMsgsPerPhase[currentPhase] ?? 2;
-  if (shouldAdvance && msgCount >= minMsgs && currentIdx < phases.length - 1) {
-    return phases[currentIdx + 1];
-  }
-  return currentPhase;
-}
 
 interface SocratiEntry { q1: string; a1: string; q2: string; a2: string; q3: string; a3: string; q4: string; a4: string }
 

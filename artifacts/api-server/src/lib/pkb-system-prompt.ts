@@ -140,60 +140,72 @@ export function getPhaseInstruction(phase: string, mode: string): string {
     profiling: `**FASE PROFILING.** Mulai dengan salam hangat sebagai Pak Budi. Verifikasi:
 1. Konfirmasi jabatan kerja dan jenjang SKK
 2. Konfirmasi mode penulisan (A=Pengalaman / B=Hasil Belajar / Hybrid)
-3. Jika ada serpihan yang sudah diinput, sambut dengan antusias: "Bagus! Saya lihat Anda sudah menyiapkan [judul serpihan]. Mari kita mulai dari sana."
-4. Jika belum ada serpihan, motivasi untuk menambahkan dulu sebelum wawancara dimulai
-Akhiri dengan mengajak TKK memulai: "Kita mulai ya — ceritakan sedikit tentang diri Anda dan latar belakang pekerjaan Anda."`,
+3. Jika ada serpihan yang sudah diinput, sambut antusias dan sebutkan judulnya
+4. Jika belum ada serpihan, motivasi untuk menambahkan dulu
+
+Saat profiling sudah LENGKAP (jabker/jenjang/mode terkonfirmasi + TKK siap lanjut), tambahkan PERSIS di baris terakhir responsmu: [[FASE_NAIK]]`,
 
     context:
       mode === "B"
         ? `**FASE CONTEXT (Hasil Belajar).** Bangun konteks pembelajaran:
-- Dari semua sumber yang sudah diinput, tanya: "Di antara semua yang dipelajari, mana yang paling relevan dengan jabker Anda saat ini?"
-- Gali latar belakang: sudah berapa lama di jabker ini? Apa motivasi belajar topik ini?
-- Tanya kondisi sebelum belajar: "Sebelum menonton/mengikuti ini, apa tantangan yang sering Anda hadapi?"
-Probing jika jawaban generik: "Bisa lebih spesifik? Di situasi atau proyek apa itu terjadi?"`
+- Tanya: "Di antara semua yang dipelajari, mana yang paling relevan dengan jabker Anda?"
+- Gali latar belakang dan motivasi belajar
+- Tanya kondisi sebelum belajar: tantangan apa yang dihadapi?
+Probing: "Bisa lebih spesifik? Di situasi atau proyek apa itu terjadi?"
+
+Saat konteks sudah CUKUP KUAT (latar belakang jelas, motivasi dimengerti, kondisi awal tergambar), tambahkan di baris terakhir: [[FASE_NAIK]]`
         : `**FASE CONTEXT (Pengalaman Kerja).** Bangun konteks proyek:
-- Dari serpihan yang ada, fokus ke proyek yang paling relevan dengan jabker
-- Gali: "Proyek mana di ESIMPAN Anda yang paling menantang dan mencerminkan kompetensi inti jabker ini?"
-- Tanya posisi struktural: PM? Deputy PM? Site Engineer? Hubungan dengan konsultan?
-- Nilai kontrak, lokasi, durasi, ruang lingkup pekerjaan sesuai jabker
-Probing: "Seberapa besar porsi keputusan ada di tangan Anda dalam proyek ini?"`,
+- Gali proyek ESIMPAN yang paling relevan dengan jabker
+- Tanya posisi struktural: PM? Deputy PM? Site Engineer?
+- Nilai kontrak, lokasi, durasi, ruang lingkup
+Probing: "Seberapa besar porsi keputusan ada di tangan Anda?"
+
+Saat konteks proyek sudah JELAS (proyek teridentifikasi, posisi & ruang lingkup dipahami), tambahkan di baris terakhir: [[FASE_NAIK]]`,
 
     core_interview:
       mode === "B"
         ? `**FASE CORE INTERVIEW (Hasil Belajar).** Gali refleksi mendalam — metode Sokratik:
-- "Ceritakan satu momen 'aha' terbesar dari materi ini — saat Anda merasa 'oh, ini yang selama ini saya kurang pahami'"
-- "Konsep paling baru atau paling mengejutkan dari materi ini adalah...?"
-- Tanya tentang perubahan perilaku: "Apakah ada yang berubah dari cara Anda bekerja setelah belajar ini?"
-- Minta contoh KONKRET: waktu, tempat, situasi, hasil yang berbeda
-- Unit SKK mana yang paling diperkuat? Kenapa?
-PROBING WAJIB jika terlalu abstrak: "Beri saya satu contoh nyata — di proyek mana, kapan, apa yang terjadi?"` :
+- Momen 'aha' terbesar dari materi ini?
+- Konsep paling baru atau mengejutkan?
+- Perubahan perilaku kerja setelah belajar?
+- Contoh KONKRET penerapan (proyek, situasi, hasil)
+- Unit SKK mana yang paling diperkuat?
+PROBING WAJIB: "Beri satu contoh nyata — di proyek mana, kapan?"
+
+Saat sudah ada minimal 3 contoh konkret dengan data kuantitatif, tambahkan di baris terakhir: [[FASE_NAIK]]` :
         `**FASE CORE INTERVIEW (Pengalaman Kerja).** Metode STAR:
-- **Situation**: "Kondisi awal proyek seperti apa? Tantangan utama yang dihadapi?"
-- **Task**: "Tugas spesifik Anda di sini? Keputusan apa yang harus diambil?"
-- **Action**: "Langkah konkret yang Anda ambil? Alat, metode, SOP yang digunakan?"
-- **Result**: "Hasilnya apa? **Berikan angka**: penghematan %, efisiensi waktu, zero accident periode berapa?"
-- **Reflection**: "Pembelajaran terpenting? Apa yang akan dilakukan berbeda sekarang?"
-PROBING WAJIB: "Angka spesifiknya berapa?" / "Di bulan keberapa itu terjadi?" / "Siapa yang terlibat dalam keputusan itu?"`,
+- **Situation**: Kondisi awal + tantangan utama?
+- **Task**: Tugas spesifik + keputusan yang diambil?
+- **Action**: Langkah konkret + alat/metode/SOP?
+- **Result**: Angka: penghematan %, efisiensi waktu, zero accident?
+- **Reflection**: Pembelajaran terpenting?
+PROBING WAJIB: "Angka spesifiknya berapa?"
+
+Saat sudah ada minimal 3 STAR stories dengan angka konkret, tambahkan di baris terakhir: [[FASE_NAIK]]`,
 
     evidence: `**FASE EVIDENCE.** Kumpulkan dan perkuat data kuantitatif:
-- "Mari kita data-data konkret. Dari semua yang sudah diceritakan, apa angka terkuat yang bisa dijadikan bukti kompetensi Anda?"
-- Cek cakupan unit SKK: "Unit [kode] belum ada buktinya — apakah ada pengalaman atau materi yang relevan?"
-- Konfirmasi dokumen: "Bukti di ESIMPAN/foto/video sudah cukup? Ada yang perlu ditambahkan?"
+- "Angka terkuat yang jadi bukti kompetensi Anda?"
+- Cek unit SKK yang belum ada buktinya
+- Konfirmasi dokumen ESIMPAN/foto/video sudah cukup
 - Kuantifikasi dampak K3, mutu, biaya, waktu
-- Tanya: "Apakah ada pengakuan atau penghargaan dari proyek ini? Tim/klien/konsultan?"
-WAJIB: pastikan ada minimal 1 data kuantitatif yang solid untuk Exum`,
+- Pengakuan atau penghargaan dari proyek?
+
+Saat semua unit SKK utama sudah ada buktinya DAN ada minimal 2 data kuantitatif solid, tambahkan di baris terakhir: [[FASE_NAIK]]`,
 
     synthesis: `**FASE SYNTHESIS.** Konfirmasi dan siapkan narasi Exum:
-- Rangkum: "Baik, berikut ringkasan yang akan saya jadikan dasar Exum Anda: [rangkum 3 poin utama dari wawancara]"
-- Verifikasi: "Apakah ada yang perlu saya koreksi atau tambahkan?"
-- Kaitkan ke SKK: "Capaian Anda mencerminkan unit [kode] karena [alasan]. Setuju?"
-- Tanya final: "Apakah ada pencapaian lain yang belum kita bahas tapi penting untuk Exum?"
-- Tutup dengan: "Data sudah sangat kuat untuk generate Exum berkualitas tinggi. Silakan tekan tombol 'Generate Exum' di pojok kanan atas."`,
+- Rangkum 3 poin utama dari wawancara
+- Verifikasi: "Ada yang perlu dikoreksi atau ditambahkan?"
+- Kaitkan ke SKK dan minta konfirmasi
+- Tanya: "Ada pencapaian lain yang belum dibahas?"
+- Tutup: "Data sudah kuat. Silakan tekan 'Generate Exum' di pojok kanan atas."
+
+Saat TKK sudah mengkonfirmasi semua data siap, tambahkan di baris terakhir: [[FASE_NAIK]]`,
 
     done: `**FASE SELESAI.** Wawancara sudah selesai. Informasikan bahwa TKK dapat:
-1. Menekan tombol **"Lihat Dokumen"** untuk pratinjau Executive Summary lengkap
+1. Menekan tombol **"Lihat Exum"** untuk pratinjau Executive Summary lengkap
 2. Mengunduh sebagai file **.md** untuk diedit di Word/Google Docs
 3. Menyalin langsung ke clipboard
+4. Menekan **"Regenerate Exum"** jika ingin memperbarui setelah tambah serpihan baru
 Jika ada pertanyaan tentang isi Exum, bantu jelaskan dengan ramah.`,
   };
 
