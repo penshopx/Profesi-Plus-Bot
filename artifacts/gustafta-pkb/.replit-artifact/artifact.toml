@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Gustafta PKB Assistant"
+version = "1.0.0"
+id = "artifacts/gustafta-pkb"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23291
+
+[services.development]
+run = "pnpm --filter @workspace/gustafta-pkb run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/gustafta-pkb", "run", "build" ]
+publicDir = "artifacts/gustafta-pkb/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23291"
+BASE_PATH = "/"
