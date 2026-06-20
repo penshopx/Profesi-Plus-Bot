@@ -522,7 +522,7 @@ function AddEvidenceWizard({ type, jabker, onClose, onSave, saving }: AddEvidenc
           ) : (
             <div className="flex-1 flex flex-col gap-1.5">
               <button
-                onClick={step === "info" ? goNext : goNext}
+                onClick={goNext}
                 disabled={step === "info" ? !canNextInfo : !canNextQ}
                 className="w-full rounded-xl bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
                 {step === "info" ? "Mulai Dialog Pak Budi" : "Lanjut"}
@@ -1307,6 +1307,41 @@ export default function ChatPage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportTranscript = () => {
+    if (!messages.length) return;
+    const jabker = conv?.jabker ?? "TKK";
+    const mode = conv?.mode === "A" ? "Pengalaman Kerja" : conv?.mode === "B" ? "Hasil Belajar" : "Hybrid";
+    const lines: string[] = [
+      `# Transkrip Wawancara Pak Budi`,
+      ``,
+      `**Jabatan Kerja:** ${jabker}`,
+      `**Jenjang:** ${conv?.jenjang ?? "-"}`,
+      `**Mode:** ${mode}`,
+      `**Fase terakhir:** ${PHASE_LABELS[conv?.phase ?? "profiling"] ?? conv?.phase}`,
+      `**Total serpihan:** ${evidence.length}`,
+      ``,
+      `---`,
+      ``,
+    ];
+    messages
+      .filter(m => !(m.role === "user" && m.content === AUTO_GREETING))
+      .forEach(m => {
+        const time = formatTime(m.createdAt);
+        const speaker = m.role === "assistant" ? "**Pak Budi**" : "**Anda**";
+        lines.push(`### ${speaker} — ${time}`);
+        lines.push(``);
+        lines.push(m.content);
+        lines.push(``);
+      });
+    const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Transkrip_PKB_${jabker.replace(/\s+/g, "_")}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleCopyExum = async () => {
     if (!exum) return;
     await navigator.clipboard.writeText(exum);
@@ -1411,6 +1446,14 @@ export default function ChatPage() {
         }`}>
           {PHASE_LABELS[currentPhase] || currentPhase}
         </span>
+
+        <button
+          onClick={handleExportTranscript}
+          disabled={messages.length === 0}
+          title="Unduh transkrip percakapan (.md)"
+          className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-30 shrink-0">
+          <Download className="w-4 h-4" />
+        </button>
 
         {currentPhase !== "done" && currentPhase !== "synthesis" && (
           <button onClick={handleAdvancePhase} disabled={advancing || streaming}

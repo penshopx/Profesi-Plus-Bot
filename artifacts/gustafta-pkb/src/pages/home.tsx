@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Package } from "lucide-react";
+import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Package, Search, X } from "lucide-react";
 import { listConversations, createConversation, deleteConversation, fetchJabkerList, type Conversation } from "@/lib/api";
 
 const MODES = [
@@ -44,6 +44,9 @@ export default function Home() {
   const queryClient = useQueryClient();
   const [showNew, setShowNew] = useState(false);
   const [selectedMode, setSelectedMode] = useState("");
+  const [sidebarSearch, setSidebarSearch] = useState("");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [filterPhase, setFilterPhase] = useState<string>("all");
   const [jabker, setJabker] = useState("");
   const [jenjang, setJenjang] = useState("");
   const [showJabkerDropdown, setShowJabkerDropdown] = useState(false);
@@ -93,7 +96,10 @@ export default function Home() {
 
   const deleteMut = useMutation({
     mutationFn: deleteConversation,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+    onSuccess: () => {
+      setDeleteConfirmId(null);
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
   });
 
   const phaseLabel: Record<string, string> = {
@@ -141,6 +147,37 @@ export default function Home() {
           </button>
         </div>
 
+        {/* Search + filter */}
+        <div className="px-3 pb-2 space-y-2">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-sidebar-foreground/30 pointer-events-none" />
+            <input
+              type="text"
+              value={sidebarSearch}
+              onChange={(e) => setSidebarSearch(e.target.value)}
+              placeholder="Cari sesi..."
+              className="w-full rounded-xl bg-sidebar-accent/60 border border-sidebar-border/50 pl-7 pr-7 py-1.5 text-xs text-sidebar-foreground placeholder:text-sidebar-foreground/30 focus:outline-none focus:ring-1 focus:ring-sidebar-primary/40"
+            />
+            {sidebarSearch && (
+              <button onClick={() => setSidebarSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-sidebar-foreground/30 hover:text-sidebar-foreground transition-colors">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          <div className="flex gap-1 flex-wrap">
+            {["all", "done", "synthesis", "evidence", "profiling"].map(f => (
+              <button key={f} onClick={() => setFilterPhase(f === filterPhase ? "all" : f)}
+                className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors ${
+                  filterPhase === f
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                    : "bg-sidebar-accent/60 text-sidebar-foreground/50 hover:text-sidebar-foreground"
+                }`}>
+                {f === "all" ? "Semua" : f === "done" ? "Selesai" : f === "synthesis" ? "Sintesis" : f === "evidence" ? "Bukti" : "Profiling"}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto px-3 pb-4">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40 px-3 mb-2">
             Riwayat Sesi
@@ -155,7 +192,14 @@ export default function Home() {
             <p className="text-xs text-sidebar-foreground/40 px-3 py-4 text-center">Belum ada sesi. Mulai yang baru!</p>
           ) : (
             <div className="space-y-1">
-              {conversations.map((c) => {
+              {conversations
+                .filter(c =>
+                  (filterPhase === "all" || c.phase === filterPhase) &&
+                  (!sidebarSearch.trim() ||
+                    c.title.toLowerCase().includes(sidebarSearch.toLowerCase()) ||
+                    (c.jabker ?? "").toLowerCase().includes(sidebarSearch.toLowerCase()))
+                )
+                .map((c) => {
                 const modeIcon = c.mode === "A" ? Briefcase : c.mode === "B" ? BookOpen : Layers;
                 const ModeIcon = modeIcon;
                 const modeColor = c.mode === "A" ? "text-blue-400" : c.mode === "B" ? "text-emerald-400" : "text-violet-400";
@@ -202,7 +246,7 @@ export default function Home() {
                       </div>
                       <button
                         data-testid={`button-delete-${c.id}`}
-                        onClick={(e) => { e.stopPropagation(); deleteMut.mutate(c.id); }}
+                        onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(c.id); }}
                         className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-destructive/20 hover:text-destructive transition-all shrink-0"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -214,6 +258,33 @@ export default function Home() {
             </div>
           )}
         </div>
+
+        {/* Delete confirmation modal */}
+        {deleteConfirmId !== null && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xs p-6 animate-in fade-in slide-in-from-bottom-3">
+              <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center mb-3">
+                <Trash2 className="w-5 h-5 text-destructive" />
+              </div>
+              <h3 className="font-semibold text-foreground mb-1">Hapus sesi ini?</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Semua pesan, serpihan, dan Exum dalam sesi ini akan terhapus permanen.
+              </p>
+              <div className="flex gap-2.5">
+                <button onClick={() => setDeleteConfirmId(null)}
+                  className="flex-1 rounded-xl border border-border bg-card py-2.5 text-sm font-medium hover:bg-muted transition-colors">
+                  Batal
+                </button>
+                <button
+                  onClick={() => deleteMut.mutate(deleteConfirmId)}
+                  disabled={deleteMut.isPending}
+                  className="flex-1 rounded-xl bg-destructive text-destructive-foreground py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">
+                  {deleteMut.isPending ? "Menghapus..." : "Ya, Hapus"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="p-4 border-t border-sidebar-border">
           <div className="flex items-center gap-2 p-3 rounded-xl bg-sidebar-accent/50">
