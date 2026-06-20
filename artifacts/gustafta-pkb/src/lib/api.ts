@@ -241,3 +241,100 @@ export function streamMessage(
 
   return () => controller.abort();
 }
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+export interface DbUser {
+  id: number;
+  clerkId: string;
+  role: string;
+  name: string;
+  email: string;
+  createdAt: string;
+}
+
+export async function getMe(): Promise<DbUser> {
+  const res = await fetch(`${BASE}/users/me`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch user");
+  return res.json();
+}
+
+export async function listAllUsers(): Promise<DbUser[]> {
+  const res = await fetch(`${BASE}/users`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch users");
+  return res.json();
+}
+
+export async function updateUserRole(id: number, role: string): Promise<DbUser> {
+  const res = await fetch(`${BASE}/users/${id}/role`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) throw new Error("Failed to update role");
+  return res.json();
+}
+
+// ─── Videos ───────────────────────────────────────────────────────────────────
+
+export interface VideoUploader {
+  id: number;
+  name: string;
+  role: string;
+}
+
+export interface VideoItem {
+  id: number;
+  title: string;
+  url: string;
+  platform: string;
+  jabker: string | null;
+  skkUnitCode: string | null;
+  skkUnitName: string | null;
+  description: string | null;
+  tags: string | null;
+  createdAt: string;
+  uploader: VideoUploader | null;
+}
+
+export async function listVideos(params?: { jabker?: string; q?: string; skk?: string }): Promise<VideoItem[]> {
+  const qs = new URLSearchParams();
+  if (params?.jabker) qs.set("jabker", params.jabker);
+  if (params?.q) qs.set("q", params.q);
+  if (params?.skk) qs.set("skk", params.skk);
+  const url = `${BASE}/videos${qs.toString() ? "?" + qs.toString() : ""}`;
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch videos");
+  return res.json();
+}
+
+export async function createVideo(data: {
+  title: string;
+  url: string;
+  jabker?: string;
+  skkUnitCode?: string;
+  skkUnitName?: string;
+  description?: string;
+  tags?: string;
+}): Promise<VideoItem> {
+  const res = await fetch(`${BASE}/videos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Failed to create video");
+  }
+  return res.json();
+}
+
+export async function deleteVideo(id: number): Promise<void> {
+  const res = await fetch(`${BASE}/videos/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to delete video");
+}
