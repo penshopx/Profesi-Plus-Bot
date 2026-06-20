@@ -6,6 +6,7 @@ import {
   Plus, Trash2, Youtube, Video, Monitor, Briefcase, Camera, FolderOpen,
   ChevronDown, ChevronUp, BookOpen, HardHat, X, Link, FileCheck, Shield,
   MessageSquare, AlertCircle, BarChart3, ChevronRight,
+  Copy, CheckCheck, Zap, SlidersHorizontal,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import {
@@ -239,9 +240,26 @@ function AddEvidenceWizard({ type, jabker, onClose, onSave, saving }: AddEvidenc
                     <Link className="w-3 h-3 inline mr-1" />
                     {type === "learning" ? "Link / URL" : "Nomor Registrasi ESIMPAN"}
                   </label>
-                  <input type="text" value={url} onChange={(e) => setUrl(e.target.value)}
-                    placeholder={type === "learning" ? "https://youtube.com/..." : "Masukkan nomor registrasi / link ESIMPAN"}
-                    className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary" />
+                  <div className="relative">
+                    <input type="text" value={url}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setUrl(val);
+                        if (type === "learning" && val) {
+                          try {
+                            const u = new URL(val.startsWith("http") ? val : `https://${val}`);
+                            if (u.hostname.includes("youtube.com") || u.hostname === "youtu.be") setCategory("youtube");
+                          } catch {}
+                        }
+                      }}
+                      placeholder={type === "learning" ? "https://youtube.com/... (kategori otomatis terdeteksi)" : "Masukkan nomor registrasi / link ESIMPAN"}
+                      className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary" />
+                    {url && category === "youtube" && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5">
+                        <Youtube className="w-2.5 h-2.5" /> YouTube
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -538,6 +556,8 @@ function EvidenceCard({ item, onDelete }: { item: EvidenceItem; onDelete: () => 
                 <p className="text-[10px] text-amber-800 line-clamp-2">{item.skkNotes}</p>
               </div>
             ) : null}
+
+            <EvidenceDialogExpand item={item} />
           </div>
           <button onClick={onDelete}
             className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-all shrink-0">
@@ -545,6 +565,51 @@ function EvidenceCard({ item, onDelete }: { item: EvidenceItem; onDelete: () => 
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function EvidenceDialogExpand({ item }: { item: EvidenceItem }) {
+  const [open, setOpen] = useState(false);
+  if (!item.socratiDialog) return null;
+  let dialog: Record<string, string> | null = null;
+  try { dialog = JSON.parse(item.socratiDialog); } catch {}
+  if (!dialog) return null;
+  const pairs = [
+    { q: dialog.q1, a: dialog.a1 },
+    { q: dialog.q2, a: dialog.a2 },
+    { q: dialog.q3, a: dialog.a3 },
+    { q: dialog.q4, a: dialog.a4 },
+  ].filter(p => p.q && p.a);
+  if (!pairs.length) return null;
+
+  return (
+    <div className="mt-2 border-t border-border/50 pt-1.5">
+      <button
+        onClick={() => setOpen(p => !p)}
+        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors w-full group/btn">
+        <MessageSquare className="w-2.5 h-2.5 text-green-500" />
+        <span className="font-medium">Dialog Sokratik ({pairs.length} pertanyaan)</span>
+        {open
+          ? <ChevronUp className="w-2.5 h-2.5 ml-auto" />
+          : <ChevronDown className="w-2.5 h-2.5 ml-auto" />}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2.5 animate-in fade-in slide-in-from-top-1">
+          {pairs.map((p, i) => (
+            <div key={i} className="space-y-1">
+              <div className="flex gap-1.5">
+                <span className="text-[9px] bg-blue-100 text-blue-600 px-1 py-0.5 rounded font-bold shrink-0 mt-0.5">P{i + 1}</span>
+                <p className="text-[10px] text-blue-700 leading-snug font-medium">{p.q}</p>
+              </div>
+              <div className="flex gap-1.5">
+                <span className="text-[9px] bg-green-100 text-green-600 px-1 py-0.5 rounded font-bold shrink-0 mt-0.5">J</span>
+                <p className="text-[10px] text-foreground/80 bg-muted/60 rounded-lg px-2 py-1 leading-relaxed">{p.a}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -641,6 +706,8 @@ function GapAnalysisPanel({ jabker, evidence }: { jabker: string; evidence: Evid
 }
 
 // ─── Evidence Panel ───────────────────────────────────────────────────────────
+type EvidFilter = "all" | "skk" | "dialog";
+
 function EvidencePanel({ convId, jabker, evidence, onRefresh }: {
   convId: number;
   jabker: string;
@@ -650,10 +717,17 @@ function EvidencePanel({ convId, jabker, evidence, onRefresh }: {
   const [wizardType, setWizardType] = useState<"learning" | "work_experience" | null>(null);
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState(true);
+  const [filter, setFilter] = useState<EvidFilter>("all");
   const qc = useQueryClient();
 
-  const learning = evidence.filter((e) => e.type === "learning");
-  const workExp = evidence.filter((e) => e.type === "work_experience");
+  function applyFilter(items: EvidenceItem[]): EvidenceItem[] {
+    if (filter === "skk") return items.filter(e => e.skkUnitCode || e.skkNotes);
+    if (filter === "dialog") return items.filter(e => e.socratiCompleted);
+    return items;
+  }
+
+  const learning = applyFilter(evidence.filter((e) => e.type === "learning"));
+  const workExp = applyFilter(evidence.filter((e) => e.type === "work_experience"));
 
   const handleSave = async (data: {
     category: string; title: string; url?: string; description?: string;
@@ -713,6 +787,27 @@ function EvidencePanel({ convId, jabker, evidence, onRefresh }: {
 
         {expanded && (
           <>
+            {/* Filter tabs */}
+            {evidence.length > 0 && (
+              <div className="px-4 pb-2 flex items-center gap-1.5">
+                <SlidersHorizontal className="w-3 h-3 text-muted-foreground shrink-0" />
+                {([
+                  { id: "all", label: `Semua (${evidence.length})` },
+                  { id: "skk", label: `Sudah SKK (${evidence.filter(e => e.skkUnitCode || e.skkNotes).length})` },
+                  { id: "dialog", label: `Sudah Dialog (${evidence.filter(e => e.socratiCompleted).length})` },
+                ] as { id: EvidFilter; label: string }[]).map(tab => (
+                  <button key={tab.id} onClick={() => setFilter(tab.id)}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-all ${
+                      filter === tab.id
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    }`}>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="px-4 pb-4">
               <div className="grid grid-cols-2 gap-3">
                 {/* Pembelajaran PKB column */}
@@ -831,7 +926,9 @@ export default function ChatPage() {
   const [currentPhase, setCurrentPhase] = useState("profiling");
   const [exum, setExum] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [showExumFull, setShowExumFull] = useState(false);
+  const [showExumModal, setShowExumModal] = useState(false);
+  const [phaseToast, setPhaseToast] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<(() => void) | null>(null);
@@ -864,7 +961,13 @@ export default function ChatPage() {
       (phase) => {
         setStreaming(false);
         setStreamText("");
-        setCurrentPhase(phase);
+        setCurrentPhase((prev) => {
+          if (phase !== prev) {
+            setPhaseToast(phase);
+            setTimeout(() => setPhaseToast(null), 4500);
+          }
+          return phase;
+        });
         qc.invalidateQueries({ queryKey: ["conversation", id] });
         qc.invalidateQueries({ queryKey: ["conversations"] });
       },
@@ -890,14 +993,23 @@ export default function ChatPage() {
 
   const handleDownload = () => {
     if (!exum) return;
-    const blob = new Blob([exum], { type: "text/plain;charset=utf-8" });
+    const blob = new Blob([exum], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Executive_Summary_PKB_${conv?.jabker?.replace(/\s+/g, "_") || "TKK"}.txt`;
+    a.download = `Executive_Summary_PKB_${conv?.jabker?.replace(/\s+/g, "_") || "TKK"}.md`;
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const handleCopyExum = async () => {
+    if (!exum) return;
+    await navigator.clipboard.writeText(exum);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  const exumWordCount = exum ? exum.split(/\s+/).filter(Boolean).length : 0;
 
   const phaseIdx = PHASE_STEPS.indexOf(currentPhase);
   const canGenerate = currentPhase === "synthesis" || currentPhase === "done";
@@ -974,28 +1086,71 @@ export default function ChatPage() {
         onRefresh={() => refetch()}
       />
 
-      {/* Exum result banner */}
-      {exum && (
-        <div className="border-b border-green-200 bg-green-50/60 px-4 py-3 shrink-0">
-          <div className="max-w-3xl mx-auto">
-            <div className="flex items-center gap-3 mb-2">
-              <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
-              <span className="text-sm font-semibold text-green-800">Executive Summary PKB berhasil dibuat</span>
-              <button onClick={() => setShowExumFull((p) => !p)}
-                className="ml-auto text-xs text-green-700 underline flex items-center gap-1">
-                {showExumFull ? "Sembunyikan" : "Tampilkan Pratinjau"}
-                {showExumFull ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      {/* Phase transition toast */}
+      {phaseToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2.5 bg-primary text-primary-foreground px-5 py-3 rounded-2xl shadow-xl text-sm font-medium">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>Fase wawancara naik ke: <strong>{PHASE_LABELS[phaseToast] ?? phaseToast}</strong></span>
+          </div>
+        </div>
+      )}
+
+      {/* Exum full-screen modal */}
+      {showExumModal && exum && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex flex-col animate-in fade-in">
+          <div className="flex items-center justify-between px-6 py-4 bg-card border-b border-border shrink-0">
+            <div className="flex items-center gap-3">
+              <FileText className="w-5 h-5 text-primary" />
+              <div>
+                <h2 className="font-semibold text-foreground text-sm">Executive Summary PKB</h2>
+                <p className="text-xs text-muted-foreground">{conv?.jabker} · {exumWordCount.toLocaleString()} kata</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={handleCopyExum}
+                className="flex items-center gap-1.5 bg-muted text-foreground px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-muted/80 transition-colors">
+                {copied ? <><CheckCheck className="w-3.5 h-3.5 text-green-600" /> Tersalin!</> : <><Copy className="w-3.5 h-3.5" /> Salin</>}
               </button>
               <button onClick={handleDownload}
-                className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90">
-                <Download className="w-3.5 h-3.5" /> Download
+                className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90">
+                <Download className="w-3.5 h-3.5" /> Unduh .md
+              </button>
+              <button onClick={() => setShowExumModal(false)}
+                className="p-2 rounded-xl hover:bg-muted transition-colors">
+                <X className="w-4 h-4 text-muted-foreground" />
               </button>
             </div>
-            {showExumFull && (
-              <div className="prose prose-sm max-w-none text-green-900 bg-white/80 rounded-xl p-4 border border-green-200 max-h-64 overflow-y-auto">
+          </div>
+          <div className="flex-1 overflow-y-auto p-6 bg-background">
+            <div className="max-w-4xl mx-auto bg-card border border-border rounded-2xl p-8 shadow-sm">
+              <div className="prose prose-sm md:prose max-w-none text-foreground">
                 <ReactMarkdown>{exum}</ReactMarkdown>
               </div>
-            )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Exum result banner */}
+      {exum && (
+        <div className="border-b border-green-200 bg-green-50/60 px-4 py-2.5 shrink-0">
+          <div className="max-w-3xl mx-auto flex items-center gap-3 flex-wrap">
+            <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+            <span className="text-sm font-semibold text-green-800 flex-1">Executive Summary PKB berhasil dibuat</span>
+            <span className="text-xs text-green-700">{exumWordCount.toLocaleString()} kata</span>
+            <button onClick={() => setShowExumModal(true)}
+              className="flex items-center gap-1.5 bg-white border border-green-300 text-green-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-green-50 transition-colors">
+              <FileText className="w-3.5 h-3.5" /> Lihat Dokumen
+            </button>
+            <button onClick={handleCopyExum}
+              className="flex items-center gap-1.5 bg-white border border-green-300 text-green-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-green-50 transition-colors">
+              {copied ? <><CheckCheck className="w-3.5 h-3.5" /> Tersalin!</> : <><Copy className="w-3.5 h-3.5" /> Salin</>}
+            </button>
+            <button onClick={handleDownload}
+              className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90">
+              <Download className="w-3.5 h-3.5" /> Unduh .md
+            </button>
           </div>
         </div>
       )}
@@ -1070,7 +1225,30 @@ export default function ChatPage() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-border bg-card px-4 py-3 shrink-0">
+      <div className="border-t border-border bg-card px-4 pt-2.5 pb-3 shrink-0">
+        {/* Quick reply chips */}
+        {currentPhase !== "done" && !streaming && (() => {
+          const chips: Record<string, string[]> = {
+            profiling: ["Ya, saya siap", "Boleh dijelaskan dulu?", "Saya TKK Ahli"],
+            context: ["Lanjutkan ke berikutnya", "Saya punya contoh konkret", "Izin tambahkan detail"],
+            core_interview: ["Saya jelaskan prosesnya", "Tantangannya adalah...", "Hasilnya terukur"],
+            evidence: ["Ada data kuantitatifnya", "Angkanya sekitar...", "Buktinya di ESIMPAN"],
+            synthesis: ["Sudah lengkap semua", "Ada yang perlu ditambah", "Siap generate Exum"],
+          };
+          const list = chips[currentPhase] ?? [];
+          if (!list.length) return null;
+          return (
+            <div className="flex gap-1.5 mb-2 flex-wrap">
+              <Zap className="w-3 h-3 text-muted-foreground shrink-0 mt-1" />
+              {list.map(chip => (
+                <button key={chip} onClick={() => setInput(prev => prev ? prev + " " + chip : chip)}
+                  className="text-[11px] px-2.5 py-1 rounded-full bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors border border-border">
+                  {chip}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
         <div className="max-w-3xl mx-auto flex gap-2.5 items-end">
           <textarea
             value={input}
@@ -1079,7 +1257,7 @@ export default function ChatPage() {
             disabled={streaming || generating || currentPhase === "done"}
             placeholder={
               currentPhase === "done"
-                ? "Wawancara selesai — unduh Exum Anda di atas."
+                ? "Wawancara selesai — lihat Exum di atas."
                 : "Ketik jawaban Anda... (Enter untuk kirim, Shift+Enter untuk baris baru)"
             }
             rows={1}

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Clock } from "lucide-react";
 import { listConversations, createConversation, deleteConversation, fetchJabkerList, type Conversation } from "@/lib/api";
 
 const MODES = [
@@ -155,29 +155,57 @@ export default function Home() {
             <p className="text-xs text-sidebar-foreground/40 px-3 py-4 text-center">Belum ada sesi. Mulai yang baru!</p>
           ) : (
             <div className="space-y-1">
-              {conversations.map((c) => (
-                <div
-                  key={c.id}
-                  data-testid={`conversation-item-${c.id}`}
-                  className="group flex items-start gap-2 rounded-xl px-3 py-2.5 cursor-pointer hover:bg-sidebar-accent transition-colors"
-                  onClick={() => navigate(`/chat/${c.id}`)}
-                >
-                  <MessageSquare className="w-4 h-4 mt-0.5 text-sidebar-primary/70 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate text-sidebar-foreground">{c.title}</p>
-                    <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${phaseColor[c.phase] || "bg-sidebar-accent text-sidebar-foreground/60"}`}>
-                      {phaseLabel[c.phase] || c.phase}
-                    </span>
-                  </div>
-                  <button
-                    data-testid={`button-delete-${c.id}`}
-                    onClick={(e) => { e.stopPropagation(); deleteMut.mutate(c.id); }}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-destructive/20 hover:text-destructive transition-all"
+              {conversations.map((c) => {
+                const modeIcon = c.mode === "A" ? Briefcase : c.mode === "B" ? BookOpen : Layers;
+                const ModeIcon = modeIcon;
+                const modeColor = c.mode === "A" ? "text-blue-400" : c.mode === "B" ? "text-emerald-400" : "text-violet-400";
+                const phases = ["profiling","context","core_interview","evidence","synthesis","done"];
+                const phaseProgress = Math.max(0, phases.indexOf(c.phase)) / (phases.length - 1);
+                const isDone = c.phase === "done";
+                return (
+                  <div
+                    key={c.id}
+                    data-testid={`conversation-item-${c.id}`}
+                    className="group rounded-xl px-3 py-2.5 cursor-pointer hover:bg-sidebar-accent transition-colors"
+                    onClick={() => navigate(`/chat/${c.id}`)}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
+                    <div className="flex items-start gap-2">
+                      <ModeIcon className={`w-3.5 h-3.5 mt-0.5 ${modeColor} shrink-0`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate text-sidebar-foreground leading-tight">{c.title}</p>
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${phaseColor[c.phase] || "bg-sidebar-accent text-sidebar-foreground/60"}`}>
+                            {phaseLabel[c.phase] || c.phase}
+                          </span>
+                          {c.jabker && (
+                            <span className="text-[10px] text-sidebar-foreground/50 truncate max-w-[100px]">{c.jabker}</span>
+                          )}
+                        </div>
+                        {!isDone && (
+                          <div className="mt-1.5 w-full bg-sidebar-accent rounded-full h-1">
+                            <div
+                              className="h-1 rounded-full bg-sidebar-primary/60 transition-all"
+                              style={{ width: `${phaseProgress * 100}%` }}
+                            />
+                          </div>
+                        )}
+                        {isDone && (
+                          <div className="mt-1 flex items-center gap-1 text-[10px] text-green-400">
+                            <CheckCircle2 className="w-2.5 h-2.5" /> Exum siap
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        data-testid={`button-delete-${c.id}`}
+                        onClick={(e) => { e.stopPropagation(); deleteMut.mutate(c.id); }}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-destructive/20 hover:text-destructive transition-all shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
