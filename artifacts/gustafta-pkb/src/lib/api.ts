@@ -88,6 +88,15 @@ export async function getConversation(id: number): Promise<ConversationWithMessa
   return r.json();
 }
 
+export async function updateConversation(id: number, data: { title: string }): Promise<Conversation> {
+  const r = await fetch(`${BASE}/chat/conversations/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return r.json();
+}
+
 export async function deleteConversation(id: number): Promise<void> {
   await fetch(`${BASE}/chat/conversations/${id}`, { method: "DELETE" });
 }

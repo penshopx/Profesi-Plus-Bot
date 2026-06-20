@@ -6,14 +6,56 @@ import {
   Plus, Trash2, Youtube, Video, Monitor, Briefcase, Camera, FolderOpen,
   ChevronDown, ChevronUp, BookOpen, HardHat, X, Link, FileCheck, Shield,
   MessageSquare, AlertCircle, BarChart3, ChevronRight,
-  Copy, CheckCheck, Zap, SlidersHorizontal, Printer,
+  Copy, CheckCheck, Zap, SlidersHorizontal, Printer, Pencil,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import {
   getConversation, streamMessage, generateExum, advancePhase, createEvidence, deleteEvidence,
-  fetchSkkUnits,
+  fetchSkkUnits, updateConversation,
   type Message, type EvidenceItem, type SkkUnit, type SocratiDialog,
 } from "@/lib/api";
+
+// ─── Markdown → HTML helpers (module-level, used by print & HTML export) ──────
+function mdEsc(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function mdInline(s: string) {
+  return mdEsc(s)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/_(.+?)_/g, "<em>$1</em>")
+    .replace(/`(.+?)`/g, "<code>$1</code>");
+}
+function mdToHtml(md: string): string {
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let inUl = false;
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (line.startsWith("### ")) { if (inUl) { out.push("</ul>"); inUl = false; } out.push(`<h3>${mdInline(line.slice(4))}</h3>`); }
+    else if (line.startsWith("## ")) { if (inUl) { out.push("</ul>"); inUl = false; } out.push(`<h2>${mdInline(line.slice(3))}</h2>`); }
+    else if (line.startsWith("# ")) { if (inUl) { out.push("</ul>"); inUl = false; } out.push(`<h1>${mdInline(line.slice(2))}</h1>`); }
+    else if (/^[*-] /.test(line)) { if (!inUl) { out.push("<ul>"); inUl = true; } out.push(`<li>${mdInline(line.slice(2))}</li>`); }
+    else if (line === "") { if (inUl) { out.push("</ul>"); inUl = false; } out.push(""); }
+    else { if (inUl) { out.push("</ul>"); inUl = false; } out.push(`<p>${mdInline(line)}</p>`); }
+  }
+  if (inUl) out.push("</ul>");
+  return out.join("\n");
+}
+
+const EXUM_PRINT_CSS = `
+  @page { size: A4; margin: 20mm 25mm; }
+  body { font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.7; color: #111; max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 18pt; text-align: center; margin: 0 0 6pt; }
+  h2 { font-size: 14pt; margin: 24pt 0 6pt; border-bottom: 1.5pt solid #333; padding-bottom: 4pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; font-weight: bold; margin: 16pt 0 4pt; page-break-after: avoid; }
+  p { margin: 0 0 8pt; text-align: justify; }
+  ul, ol { margin: 0 0 10pt; padding-left: 22pt; }
+  li { margin-bottom: 3pt; }
+  strong { font-weight: bold; }
+  em { font-style: italic; }
+  code { font-family: monospace; font-size: 10pt; background: #f4f4f4; padding: 1pt 3pt; border-radius: 2pt; }
+  .meta { text-align: center; color: #555; font-size: 10pt; margin-bottom: 24pt; }
+  @media print { body { margin: 0; } }
+`;
 
 // ─── Phase config ─────────────────────────────────────────────────────────────
 const PHASE_STEPS = ["profiling", "context", "core_interview", "evidence", "synthesis", "done"];
@@ -930,9 +972,13 @@ export default function ChatPage() {
   const [showExumModal, setShowExumModal] = useState(false);
   const [phaseToast, setPhaseToast] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [savingTitle, setSavingTitle] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<(() => void) | null>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   const { data: conv, isLoading, refetch } = useQuery({
     queryKey: ["conversation", id],
@@ -982,6 +1028,26 @@ export default function ChatPage() {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+  };
+
+  const startEditTitle = () => {
+    setTitleDraft(conv?.title ?? "");
+    setEditingTitle(true);
+    setTimeout(() => titleInputRef.current?.select(), 50);
+  };
+
+  const commitTitle = async () => {
+    const newTitle = titleDraft.trim();
+    if (!newTitle || newTitle === conv?.title) { setEditingTitle(false); return; }
+    setSavingTitle(true);
+    try {
+      await updateConversation(id, { title: newTitle });
+      qc.invalidateQueries({ queryKey: ["conversation", id] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    } finally {
+      setSavingTitle(false);
+      setEditingTitle(false);
+    }
   };
 
   const handleGenerateExum = async () => {
@@ -1036,66 +1102,29 @@ export default function ChatPage() {
 
   const handlePrint = () => {
     if (!exum) return;
-    const jabkerTitle = conv?.jabker?.replace(/\s+/g, "_") || "TKK";
     const docTitle = `Executive Summary PKB — ${conv?.jabker ?? "TKK"}`;
-
-    // Simple markdown → HTML conversion sufficient for GPT-4o output
-    const md2html = (md: string) => {
-      const lines = md.split("\n");
-      const out: string[] = [];
-      let inUl = false;
-      for (const raw of lines) {
-        const line = raw.trimEnd();
-        if (line.startsWith("### ")) { if (inUl) { out.push("</ul>"); inUl = false; } out.push(`<h3>${esc(line.slice(4))}</h3>`); }
-        else if (line.startsWith("## ")) { if (inUl) { out.push("</ul>"); inUl = false; } out.push(`<h2>${esc(line.slice(3))}</h2>`); }
-        else if (line.startsWith("# ")) { if (inUl) { out.push("</ul>"); inUl = false; } out.push(`<h1>${esc(line.slice(2))}</h1>`); }
-        else if (/^[*-] /.test(line)) { if (!inUl) { out.push("<ul>"); inUl = true; } out.push(`<li>${inline(line.slice(2))}</li>`); }
-        else if (line === "") { if (inUl) { out.push("</ul>"); inUl = false; } out.push(""); }
-        else { if (inUl) { out.push("</ul>"); inUl = false; } out.push(`<p>${inline(line)}</p>`); }
-      }
-      if (inUl) out.push("</ul>");
-      return out.join("\n");
-    };
-
-    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const inline = (s: string) => esc(s)
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*(.+?)\*/g, "<em>$1</em>")
-      .replace(/_(.+?)_/g, "<em>$1</em>")
-      .replace(/`(.+?)`/g, "<code>$1</code>");
-
-    const bodyHtml = md2html(exum);
+    const bodyHtml = mdToHtml(exum);
+    const metaLine = `<div class="meta">Jabatan Kerja: <strong>${mdEsc(conv?.jabker ?? "-")}</strong> &nbsp;|&nbsp; ${mdEsc(conv?.jenjang ?? "")} &nbsp;|&nbsp; ${mdEsc(docTitle)}</div>`;
     const win = window.open("", "_blank", "width=900,height=1000");
     if (!win) { alert("Izinkan popup untuk mencetak."); return; }
-    win.document.write(`<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="utf-8">
-<title>${esc(docTitle)}</title>
-<style>
-  @page { size: A4; margin: 20mm 25mm; }
-  body { font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.7; color: #111; max-width: 720px; margin: 0 auto; }
-  h1 { font-size: 18pt; text-align: center; margin: 0 0 6pt; }
-  h2 { font-size: 14pt; margin: 24pt 0 6pt; border-bottom: 1.5pt solid #333; padding-bottom: 4pt; page-break-after: avoid; }
-  h3 { font-size: 12pt; font-weight: bold; margin: 16pt 0 4pt; page-break-after: avoid; }
-  p { margin: 0 0 8pt; text-align: justify; }
-  ul, ol { margin: 0 0 10pt; padding-left: 22pt; }
-  li { margin-bottom: 3pt; }
-  strong { font-weight: bold; }
-  em { font-style: italic; }
-  code { font-family: monospace; font-size: 10pt; background: #f4f4f4; padding: 1pt 3pt; border-radius: 2pt; }
-  .meta { text-align: center; color: #555; font-size: 10pt; margin-bottom: 24pt; }
-  @media print { body { margin: 0; } }
-</style>
-</head>
-<body>
-<div class="meta">Jabatan Kerja: <strong>${esc(conv?.jabker ?? "-")}</strong> &nbsp;|&nbsp; ${esc(conv?.jenjang ?? "")} &nbsp;|&nbsp; ${esc(docTitle)}</div>
-${bodyHtml}
-<script>window.addEventListener("load",function(){ window.print(); });<\/script>
-</body>
-</html>`);
+    win.document.write(`<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>${mdEsc(docTitle)}</title><style>${EXUM_PRINT_CSS}</style></head><body>${metaLine}\n${bodyHtml}<script>window.addEventListener("load",function(){ window.print(); });<\/script></body></html>`);
     win.document.close();
-    void jabkerTitle;
+  };
+
+  const handleExportHtml = () => {
+    if (!exum) return;
+    const jabkerSlug = conv?.jabker?.replace(/\s+/g, "_") || "TKK";
+    const docTitle = `Executive Summary PKB — ${conv?.jabker ?? "TKK"}`;
+    const bodyHtml = mdToHtml(exum);
+    const metaLine = `<div class="meta">Jabatan Kerja: <strong>${mdEsc(conv?.jabker ?? "-")}</strong> &nbsp;|&nbsp; ${mdEsc(conv?.jenjang ?? "")} &nbsp;|&nbsp; ${mdEsc(docTitle)}</div>`;
+    const html = `<!DOCTYPE html>\n<html lang="id">\n<head>\n<meta charset="utf-8">\n<title>${mdEsc(docTitle)}</title>\n<style>${EXUM_PRINT_CSS}\nbody { margin: 20mm; }\n</style>\n</head>\n<body>\n${metaLine}\n${bodyHtml}\n</body>\n</html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Executive_Summary_PKB_${jabkerSlug}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const exumWordCount = exum ? exum.split(/\s+/).filter(Boolean).length : 0;
@@ -1123,7 +1152,24 @@ ${bodyHtml}
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-sm font-semibold text-foreground truncate">{conv?.title ?? "Sesi Wawancara"}</h1>
+          {editingTitle ? (
+            <div className="flex items-center gap-1.5">
+              <input
+                ref={titleInputRef}
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") commitTitle(); if (e.key === "Escape") setEditingTitle(false); }}
+                onBlur={commitTitle}
+                className="text-sm font-semibold bg-muted rounded-lg px-2 py-0.5 text-foreground w-full min-w-0 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              {savingTitle && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground shrink-0" />}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 group/title cursor-pointer" onClick={startEditTitle} title="Klik untuk ubah nama sesi">
+              <h1 className="text-sm font-semibold text-foreground truncate">{conv?.title ?? "Sesi Wawancara"}</h1>
+              <Pencil className="w-3 h-3 text-muted-foreground/0 group-hover/title:text-muted-foreground transition-colors shrink-0" />
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             {conv?.jabker && <span>{conv.jabker} · </span>}
             {conv?.jenjang && <span>{conv.jenjang} · </span>}
@@ -1213,9 +1259,13 @@ ${bodyHtml}
                 className="flex items-center gap-1.5 bg-muted text-foreground px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-muted/80 transition-colors">
                 <Printer className="w-3.5 h-3.5" /> Cetak PDF
               </button>
+              <button onClick={handleExportHtml}
+                className="flex items-center gap-1.5 bg-muted text-foreground px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-muted/80 transition-colors">
+                <Download className="w-3.5 h-3.5" /> Word (.html)
+              </button>
               <button onClick={handleDownload}
                 className="flex items-center gap-1.5 bg-primary text-primary-foreground px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90">
-                <Download className="w-3.5 h-3.5" /> Unduh .md
+                <Download className="w-3.5 h-3.5" /> Markdown
               </button>
               <button onClick={() => setShowExumModal(false)}
                 className="p-2 rounded-xl hover:bg-muted transition-colors">
@@ -1255,6 +1305,10 @@ ${bodyHtml}
             <button onClick={handlePrint}
               className="flex items-center gap-1.5 bg-white border border-green-300 text-green-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-green-50 transition-colors">
               <Printer className="w-3.5 h-3.5" /> Cetak PDF
+            </button>
+            <button onClick={handleExportHtml}
+              className="flex items-center gap-1.5 bg-white border border-green-300 text-green-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-green-50 transition-colors">
+              <Download className="w-3.5 h-3.5" /> Word (.html)
             </button>
             <button onClick={() => { setExum(null); handleGenerateExum(); }} disabled={generating}
               title="Generate ulang Exum (misalnya setelah menambah serpihan baru)"
@@ -1374,10 +1428,10 @@ ${bodyHtml}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={streaming || generating || currentPhase === "done"}
+            disabled={streaming || generating}
             placeholder={
               currentPhase === "done"
-                ? "Wawancara selesai — lihat Exum di atas."
+                ? "Tanya Pak Budi soal isi Exum, atau minta clarifikasi..."
                 : "Ketik jawaban Anda... (Enter untuk kirim, Shift+Enter untuk baris baru)"
             }
             rows={1}
@@ -1391,7 +1445,7 @@ ${bodyHtml}
           />
           <button
             onClick={() => sendMsg()}
-            disabled={!input.trim() || streaming || generating || currentPhase === "done"}
+            disabled={!input.trim() || streaming || generating}
             className="w-11 h-11 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shrink-0 disabled:opacity-40 hover:opacity-90 transition-opacity">
             {streaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
           </button>

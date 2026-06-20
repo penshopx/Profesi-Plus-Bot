@@ -42,6 +42,22 @@ router.get("/chat/conversations/:id", async (req, res): Promise<void> => {
   res.json({ ...conv, messages: msgs, evidence });
 });
 
+router.patch("/chat/conversations/:id", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const { title } = req.body;
+  if (!title || typeof title !== "string" || !title.trim()) {
+    res.status(400).json({ error: "title is required" });
+    return;
+  }
+  const [conv] = await db
+    .update(conversations)
+    .set({ title: title.trim() })
+    .where(eq(conversations.id, id))
+    .returning();
+  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+  res.json(conv);
+});
+
 router.delete("/chat/conversations/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const [conv] = await db.delete(conversations).where(eq(conversations.id, id)).returning();
