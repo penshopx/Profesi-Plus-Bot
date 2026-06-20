@@ -57,6 +57,13 @@ const EXUM_PRINT_CSS = `
   @media print { body { margin: 0; } }
 `;
 
+function formatTime(iso: string): string {
+  try { return new Date(iso).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }); }
+  catch { return ""; }
+}
+
+const AUTO_GREETING = "Halo Pak Budi, saya siap memulai.";
+
 // ─── Phase config ─────────────────────────────────────────────────────────────
 const PHASE_STEPS = ["profiling", "context", "core_interview", "evidence", "synthesis", "done"];
 const PHASE_LABELS: Record<string, string> = {
@@ -132,6 +139,7 @@ function AddEvidenceWizard({ type, jabker, onClose, onSave, saving }: AddEvidenc
   const [jabkerIsKnown, setJabkerIsKnown] = useState<boolean | null>(null);
   const [manualCode, setManualCode] = useState("");
   const [manualName, setManualName] = useState("");
+  const [skkSearch, setSkkSearch] = useState("");
 
   const showUrl = type === "learning" || category === "esimpan";
   const questions = title ? getSocratiQuestions(type, title) : ["", "", "", ""];
@@ -436,8 +444,25 @@ function AddEvidenceWizard({ type, jabker, onClose, onSave, saving }: AddEvidenc
                     </div>
                   </div>
                 ) : (
+                  <>
+                  {skkUnits.length > 4 && (
+                    <div className="relative mb-2">
+                      <input
+                        type="text"
+                        value={skkSearch}
+                        onChange={(e) => setSkkSearch(e.target.value)}
+                        placeholder="Cari kode atau nama unit SKK..."
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs pl-8 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                      />
+                      <Shield className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                  )}
                   <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                    {skkUnits.map((unit) => (
+                    {skkUnits.filter(u =>
+                      !skkSearch.trim() ||
+                      u.code.toLowerCase().includes(skkSearch.toLowerCase()) ||
+                      u.name.toLowerCase().includes(skkSearch.toLowerCase())
+                    ).map((unit) => (
                       <button key={unit.code}
                         onClick={() => setSelectedUnit(selectedUnit?.code === unit.code ? null : unit)}
                         className={`w-full text-left p-3 rounded-xl border-2 transition-all ${
@@ -460,6 +485,7 @@ function AddEvidenceWizard({ type, jabker, onClose, onSave, saving }: AddEvidenc
                       </button>
                     ))}
                   </div>
+                  </>
                 )}
               </div>
 
@@ -494,13 +520,22 @@ function AddEvidenceWizard({ type, jabker, onClose, onSave, saving }: AddEvidenc
               {saving ? "Menyimpan..." : "Simpan Serpihan"}
             </button>
           ) : (
-            <button
-              onClick={step === "info" ? goNext : goNext}
-              disabled={step === "info" ? !canNextInfo : !canNextQ}
-              className="flex-1 rounded-xl bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
-              {step === "info" ? "Mulai Dialog Pak Budi" : "Lanjut"}
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            <div className="flex-1 flex flex-col gap-1.5">
+              <button
+                onClick={step === "info" ? goNext : goNext}
+                disabled={step === "info" ? !canNextInfo : !canNextQ}
+                className="w-full rounded-xl bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+                {step === "info" ? "Mulai Dialog Pak Budi" : "Lanjut"}
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              {step !== "info" && (
+                <button
+                  onClick={() => { setStep("skk"); loadSkk(); }}
+                  className="w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors py-0.5">
+                  Lewati dialog → langsung pilih SKK
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -760,6 +795,7 @@ function EvidencePanel({ convId, jabker, evidence, onRefresh }: {
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState(evidence.length > 0);
   const [filter, setFilter] = useState<EvidFilter>("all");
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<EvidenceItem | null>(null);
   const qc = useQueryClient();
 
   function applyFilter(items: EvidenceItem[]): EvidenceItem[] {
@@ -790,6 +826,7 @@ function EvidencePanel({ convId, jabker, evidence, onRefresh }: {
 
   const handleDelete = async (item: EvidenceItem) => {
     await deleteEvidence(convId, item.id);
+    setDeleteConfirmItem(null);
     qc.invalidateQueries({ queryKey: ["conversation", convId] });
     onRefresh();
   };
@@ -804,6 +841,36 @@ function EvidencePanel({ convId, jabker, evidence, onRefresh }: {
           onSave={handleSave}
           saving={saving}
         />
+      )}
+
+      {/* Delete confirmation */}
+      {deleteConfirmItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in fade-in slide-in-from-bottom-3">
+            <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center mb-4">
+              <Trash2 className="w-5 h-5 text-destructive" />
+            </div>
+            <h3 className="font-semibold text-foreground mb-1">Hapus serpihan ini?</h3>
+            <p className="text-sm text-muted-foreground mb-1 truncate font-medium">"{deleteConfirmItem.title}"</p>
+            {deleteConfirmItem.socratiCompleted && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                Serpihan ini sudah melewati Dialog Sokratik lengkap — data dialog akan ikut terhapus.
+              </p>
+            )}
+            {!deleteConfirmItem.socratiCompleted && <div className="mb-4" />}
+            <div className="flex gap-2.5">
+              <button onClick={() => setDeleteConfirmItem(null)}
+                className="flex-1 rounded-xl border border-border bg-card py-2.5 text-sm font-medium hover:bg-muted transition-colors">
+                Batal
+              </button>
+              <button onClick={() => handleDelete(deleteConfirmItem)}
+                className="flex-1 rounded-xl bg-destructive text-destructive-foreground py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity">
+                Ya, Hapus
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="border-b border-border bg-muted/30">
@@ -886,7 +953,7 @@ function EvidencePanel({ convId, jabker, evidence, onRefresh }: {
                       </div>
                     ) : (
                       learning.map((item) => (
-                        <EvidenceCard key={item.id} item={item} onDelete={() => handleDelete(item)} />
+                        <EvidenceCard key={item.id} item={item} onDelete={() => setDeleteConfirmItem(item)} />
                       ))
                     )}
                   </div>
@@ -926,7 +993,7 @@ function EvidencePanel({ convId, jabker, evidence, onRefresh }: {
                       </div>
                     ) : (
                       workExp.map((item) => (
-                        <EvidenceCard key={item.id} item={item} onDelete={() => handleDelete(item)} />
+                        <EvidenceCard key={item.id} item={item} onDelete={() => setDeleteConfirmItem(item)} />
                       ))
                     )}
                   </div>
@@ -1008,7 +1075,7 @@ export default function ChatPage() {
         setStreamText("");
         abortRef.current = streamMessage(
           id,
-          "Halo Pak Budi, saya siap memulai.",
+          AUTO_GREETING,
           (chunk) => setStreamText((prev) => prev + chunk),
           (phase) => {
             setStreaming(false);
@@ -1374,31 +1441,38 @@ export default function ChatPage() {
             </div>
           )}
 
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex msg-enter ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              {msg.role === "assistant" && (
-                <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center shrink-0 mr-2.5 mt-1">
-                  <span className="text-white text-[10px] font-bold">PB</span>
-                </div>
-              )}
-              <div className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground rounded-tr-sm"
-                  : "bg-card border border-border text-foreground rounded-tl-sm shadow-sm"
-              }`}>
-                {msg.role === "assistant" ? (
-                  <div className="prose prose-sm max-w-none text-foreground [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:mb-2 [&>ol]:mb-2 [&>h3]:text-sm [&>h3]:font-semibold [&>h3]:mb-1">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+          {messages
+            .filter(msg => !(msg.role === "user" && msg.content === AUTO_GREETING))
+            .map((msg) => (
+            <div key={msg.id} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"} msg-enter`}>
+              <div className={`flex ${msg.role === "user" ? "flex-row-reverse" : "flex-row"} items-end gap-2.5`}>
+                {msg.role === "assistant" && (
+                  <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center shrink-0">
+                    <span className="text-white text-[10px] font-bold">PB</span>
                   </div>
-                ) : (
-                  <p>{msg.content}</p>
+                )}
+                <div className={`max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                  msg.role === "user"
+                    ? "bg-primary text-primary-foreground rounded-tr-sm"
+                    : "bg-card border border-border text-foreground rounded-tl-sm shadow-sm"
+                }`}>
+                  {msg.role === "assistant" ? (
+                    <div className="prose prose-sm max-w-none text-foreground [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:mb-2 [&>ol]:mb-2 [&>h3]:text-sm [&>h3]:font-semibold [&>h3]:mb-1">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p>{msg.content}</p>
+                  )}
+                </div>
+                {msg.role === "user" && (
+                  <div className="w-8 h-8 rounded-xl bg-muted flex items-center justify-center shrink-0">
+                    <span className="text-muted-foreground text-[9px] font-bold">Anda</span>
+                  </div>
                 )}
               </div>
-              {msg.role === "user" && (
-                <div className="w-8 h-8 rounded-xl bg-muted flex items-center justify-center shrink-0 ml-2.5 mt-1">
-                  <span className="text-muted-foreground text-[9px] font-bold">Anda</span>
-                </div>
-              )}
+              <p className={`text-[10px] text-muted-foreground/50 mt-1 ${msg.role === "user" ? "pr-10" : "pl-10"}`}>
+                {formatTime(msg.createdAt)}
+              </p>
             </div>
           ))}
 
