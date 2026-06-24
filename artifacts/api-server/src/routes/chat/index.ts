@@ -287,8 +287,15 @@ router.post("/chat/generate-exum", async (req, res): Promise<void> => {
 
   const exumPrompt = buildExumPrompt(conv.mode, conv.jabker, conv.jenjang, transcript, evidence);
 
+  let llm: ReturnType<typeof getClientForModel>;
   try {
-    const llm = getClientForModel(conv.model ?? DEFAULT_MODEL);
+    llm = getClientForModel(conv.model ?? DEFAULT_MODEL);
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+    return;
+  }
+
+  try {
     const response = await llm.client.chat.completions.create({
       model: llm.model,
       max_tokens: 8192,

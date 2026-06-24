@@ -224,6 +224,16 @@ export function streamMessage(
         }
       );
 
+      if (!response.ok) {
+        let msg = `Terjadi kesalahan (${response.status})`;
+        try {
+          const data = await response.json();
+          if (data?.error) msg = data.error;
+        } catch {}
+        onError(msg);
+        return;
+      }
+
       const reader = response.body?.getReader();
       if (!reader) { onError("No stream"); return; }
 
