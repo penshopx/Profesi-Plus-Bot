@@ -2,10 +2,16 @@ import { Router, type IRouter } from "express";
 import { eq, asc, count } from "drizzle-orm";
 import { db, conversations, messages, evidenceItems } from "@workspace/db";
 import { logger } from "../../lib/logger";
-import { openai } from "../../lib/openai";
+import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL } from "../../lib/llm";
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
 
 const router: IRouter = Router();
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+router.get("/chat/models", async (_req, res): Promise<void> => {
+  res.json({ models: listModels(), defaultModel: DEFAULT_MODEL });
+});
 
 // ─── Conversations ────────────────────────────────────────────────────────────
 
@@ -21,14 +27,15 @@ router.get("/chat/conversations", async (req, res): Promise<void> => {
 });
 
 router.post("/chat/conversations", async (req, res): Promise<void> => {
-  const { title, mode, jabker, jenjang } = req.body;
+  const { title, mode, jabker, jenjang, model } = req.body;
   if (!title || !mode) {
     res.status(400).json({ error: "title and mode are required" });
     return;
   }
+  const selectedModel = typeof model === "string" && isKnownModel(model) ? model : DEFAULT_MODEL;
   const [conv] = await db
     .insert(conversations)
-    .values({ title, mode, jabker, jenjang, phase: "profiling" })
+    .values({ title, mode, model: selectedModel, jabker, jenjang, phase: "profiling" })
     .returning();
   res.status(201).json(conv);
 });
@@ -152,6 +159,14 @@ router.post("/chat/conversations/:id/messages", async (req, res): Promise<void> 
   const [conv] = await db.select().from(conversations).where(eq(conversations.id, convId));
   if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
 
+  let llm: ReturnType<typeof getClientForModel>;
+  try {
+    llm = getClientForModel(conv.model ?? DEFAULT_MODEL);
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+    return;
+  }
+
   await db.insert(messages).values({ conversationId: convId, role: "user", content });
 
   const existingMsgs = await db
@@ -181,8 +196,8 @@ router.post("/chat/conversations/:id/messages", async (req, res): Promise<void> 
   let fullResponse = "";
 
   try {
-    const stream = await openai.chat.completions.create({
-      model: "gpt-4o",
+    const stream = await llm.client.chat.completions.create({
+      model: llm.model,
       max_tokens: 8192,
       stream: true,
       messages: [
@@ -273,8 +288,9 @@ router.post("/chat/generate-exum", async (req, res): Promise<void> => {
   const exumPrompt = buildExumPrompt(conv.mode, conv.jabker, conv.jenjang, transcript, evidence);
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+    const llm = getClientForModel(conv.model ?? DEFAULT_MODEL);
+    const response = await llm.client.chat.completions.create({
+      model: llm.model,
       max_tokens: 8192,
       messages: [{ role: "user", content: exumPrompt }],
     });

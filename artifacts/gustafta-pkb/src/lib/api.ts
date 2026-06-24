@@ -4,12 +4,26 @@ export interface Conversation {
   id: number;
   title: string;
   mode: string;
+  model: string;
   jabker: string | null;
   jenjang: string | null;
   phase: string;
   exumContent: string | null;
   evidenceCount: number;
   createdAt: string;
+}
+
+export interface ModelOption {
+  id: string;
+  label: string;
+  provider: string;
+  providerLabel: string;
+  available: boolean;
+}
+
+export async function listModels(): Promise<{ models: ModelOption[]; defaultModel: string }> {
+  const r = await fetch(`${BASE}/chat/models`);
+  return r.json();
 }
 
 export interface Message {
@@ -72,6 +86,7 @@ export async function listConversations(): Promise<Conversation[]> {
 export async function createConversation(data: {
   title: string;
   mode: string;
+  model?: string;
   jabker?: string;
   jenjang?: string;
 }): Promise<Conversation> {

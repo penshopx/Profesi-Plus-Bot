@@ -8,6 +8,7 @@ export const conversations = pgTable("conversations", {
   userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   mode: text("mode").notNull().default("A"),
+  model: text("model").notNull().default("gpt-4o"),
   jabker: text("jabker"),
   jenjang: text("jenjang"),
   phase: text("phase").notNull().default("profiling"),

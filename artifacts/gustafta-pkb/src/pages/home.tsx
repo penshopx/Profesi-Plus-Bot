@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Package, Search, X } from "lucide-react";
-import { listConversations, createConversation, deleteConversation, fetchJabkerList, type Conversation } from "@/lib/api";
+import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Package, Search, X, Cpu } from "lucide-react";
+import { listConversations, createConversation, deleteConversation, fetchJabkerList, listModels, type Conversation } from "@/lib/api";
 
 const MODES = [
   {
@@ -49,6 +49,7 @@ export default function Home() {
   const [filterPhase, setFilterPhase] = useState<string>("all");
   const [jabker, setJabker] = useState("");
   const [jenjang, setJenjang] = useState("");
+  const [model, setModel] = useState("gpt-4o");
   const [showJabkerDropdown, setShowJabkerDropdown] = useState(false);
   const jabkerRef = useRef<HTMLDivElement>(null);
 
@@ -57,6 +58,13 @@ export default function Home() {
     queryFn: fetchJabkerList,
     staleTime: 60 * 60 * 1000,
   });
+
+  const { data: modelData } = useQuery({
+    queryKey: ["models"],
+    queryFn: listModels,
+    staleTime: 10 * 60 * 1000,
+  });
+  const models = modelData?.models ?? [];
 
   const filteredJabkers = jabker.trim().length > 0
     ? jabkerList.filter((j) => j.toLowerCase().includes(jabker.toLowerCase())).slice(0, 8)
@@ -85,6 +93,7 @@ export default function Home() {
       createConversation({
         title: `Exum PKB — ${jabker || "TKK"} (${selectedMode === "A" ? "Pengalaman" : selectedMode === "B" ? "Hasil Belajar" : "Hybrid"})`,
         mode: selectedMode,
+        model,
         jabker,
         jenjang,
       }),
@@ -393,6 +402,43 @@ export default function Home() {
                     <option value="">Pilih jenjang SKK...</option>
                     {JENJANG_OPTIONS.map((j) => <option key={j} value={j}>{j}</option>)}
                   </select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground flex items-center gap-1.5 mb-1.5">
+                    <Cpu className="w-3.5 h-3.5 text-muted-foreground" />
+                    Model AI
+                  </label>
+                  <select
+                    data-testid="select-model"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  >
+                    {models.length === 0 && <option value="gpt-4o">GPT-4o</option>}
+                    {Array.from(new Set(models.map((m) => m.providerLabel))).map((providerLabel) => (
+                      <optgroup key={providerLabel} label={providerLabel}>
+                        {models
+                          .filter((m) => m.providerLabel === providerLabel)
+                          .map((m) => (
+                            <option key={m.id} value={m.id} disabled={!m.available}>
+                              {m.label}{m.available ? "" : " — belum dikonfigurasi"}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  {(() => {
+                    const sel = models.find((m) => m.id === model);
+                    if (sel && !sel.available) {
+                      return (
+                        <p className="mt-1.5 text-xs text-amber-600 flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          API key untuk {sel.providerLabel} belum diatur — pilih model lain atau tambahkan key di Secrets.
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               </div>
             )}

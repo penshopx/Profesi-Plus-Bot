@@ -6,7 +6,7 @@ import {
   Plus, Trash2, Youtube, Video, Monitor, Briefcase, Camera, FolderOpen,
   ChevronDown, ChevronUp, BookOpen, HardHat, X, Link, FileCheck, Shield,
   MessageSquare, AlertCircle, BarChart3, ChevronRight,
-  Copy, CheckCheck, Zap, SlidersHorizontal, Printer, Pencil,
+  Copy, CheckCheck, Zap, SlidersHorizontal, Printer, Pencil, Cpu,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import {
@@ -1423,6 +1423,11 @@ export default function ChatPage() {
             {conv?.jabker && <span>{conv.jabker} · </span>}
             {conv?.jenjang && <span>{conv.jenjang} · </span>}
             Mode {conv?.mode === "A" ? "Pengalaman Kerja" : conv?.mode === "B" ? "Hasil Belajar" : "Hybrid"}
+            {conv?.model && (
+              <span className="inline-flex items-center gap-1 ml-1.5 px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-foreground/70 align-middle">
+                <Cpu className="w-2.5 h-2.5" />{conv.model}
+              </span>
+            )}
           </p>
         </div>
 
