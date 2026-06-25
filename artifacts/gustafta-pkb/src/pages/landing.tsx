@@ -3,6 +3,7 @@ import {
   FileText, ArrowRight, ShieldCheck, Layers, Database, MessagesSquare,
   Cpu, Award, CheckCircle2, FileCheck, Briefcase, Sparkles,
   ClipboardList, Target, Gauge, Building2, Video, FileStack, PencilRuler,
+  Bot, Quote, ListOrdered,
 } from "lucide-react";
 
 const STATS = [
@@ -61,11 +62,22 @@ const OUTPUTS = [
   },
 ];
 
+const FRAMEWORK = [
+  { n: "1", t: "Profiling", d: "Verifikasi jabatan kerja, jenjang, dan mode penulisan." },
+  { n: "2", t: "Konteks", d: "Bangun latar proyek atau perjalanan pembelajaran Anda." },
+  { n: "3", t: "Wawancara Inti", d: "Gali pengalaman lewat metode STAR & refleksi Sokratik." },
+  { n: "4", t: "Bukti", d: "Kumpulkan data kuantitatif dan petakan ke unit SKK." },
+  { n: "5", t: "Sintesis", d: "Rangkai narasi Executive Summary yang utuh." },
+  { n: "6", t: "Selesai", d: "Exum siap diunduh, dicetak, dan diajukan." },
+];
+
+const AI_PROVIDERS = ["OpenAI", "Gemini", "Qwen", "DeepSeek"];
+
 const FEATURES = [
   {
     icon: Cpu,
-    title: "4 Model AI pilihan",
-    body: "Pilih GPT-4o, Gemini, Qwen, atau DeepSeek untuk setiap sesi wawancara sesuai gaya dan kebutuhan Anda.",
+    title: "10 model AI pilihan",
+    body: "Pilih dari 10 model lintas OpenAI, Gemini, Qwen, dan DeepSeek untuk setiap sesi wawancara sesuai gaya dan kebutuhan Anda.",
   },
   {
     icon: Database,
@@ -191,7 +203,7 @@ export default function Landing() {
                 <CheckCircle2 className="h-3.5 w-3.5 text-accent" /> 108+ jabatan kerja
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-accent" /> 4 model AI
+                <CheckCircle2 className="h-3.5 w-3.5 text-accent" /> 4 penyedia AI
               </span>
             </div>
           </div>
@@ -368,6 +380,111 @@ export default function Landing() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Engine: agentic multi-model AI (Desire) ───────── */}
+      <section className="relative overflow-hidden bg-sidebar text-sidebar-foreground">
+        <BlueprintGrid />
+        <div className="relative mx-auto max-w-6xl px-5 py-20">
+          <div className="mx-auto mb-12 max-w-2xl text-center">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-sidebar-border bg-sidebar-accent/50 px-3.5 py-1.5 text-xs font-medium">
+              <Bot className="h-3.5 w-3.5 text-accent" /> Mesin di balik layar
+            </div>
+            <h2 className="font-serif text-3xl font-bold tracking-tight sm:text-4xl">
+              Dialog Socratik &amp; framework tulisan, dijalankan AI agentik
+            </h2>
+            <p className="mt-4 text-sidebar-foreground/70">
+              Satu AI agentik mengorkestrasi seluruh proses — bertanya, memetakan ke SKK,
+              hingga menyusun dokumen — dengan pilihan model terbaik untuk setiap sesi.
+            </p>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            {/* Socratic dialogue */}
+            <div className="rounded-2xl border border-sidebar-border bg-sidebar-accent/30 p-6">
+              <div className="mb-4 flex items-center gap-2.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/15">
+                  <Quote className="h-5 w-5 text-accent" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Model Dialog Socratik</h3>
+                  <p className="text-xs text-sidebar-foreground/60">4 pertanyaan probing per pengalaman</p>
+                </div>
+              </div>
+              <div className="space-y-2.5">
+                <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-card px-4 py-2.5 text-sm text-foreground">
+                  Saya memimpin pengawasan struktur gedung 12 lantai.
+                </div>
+                <div className="ml-auto max-w-[88%] rounded-2xl rounded-tr-sm bg-accent px-4 py-2.5 text-sm text-accent-foreground">
+                  <span className="font-semibold">Mengapa</span> metode itu yang Anda pilih, dan apa kendala terbesarnya?
+                </div>
+                <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-card px-4 py-2.5 text-sm text-foreground">
+                  Karena jadwal padat — kami menerapkan metode percepatan…
+                </div>
+                <div className="ml-auto max-w-[88%] rounded-2xl rounded-tr-sm bg-accent px-4 py-2.5 text-sm text-accent-foreground">
+                  <span className="font-semibold">Seberapa besar</span> dampaknya? Berapa angka konkretnya?
+                </div>
+              </div>
+              <p className="mt-4 text-xs text-sidebar-foreground/60">
+                Metode STAR &amp; refleksi Sokratik menggali "mengapa", "bagaimana", dan
+                bukti kuantitatif — bukan jawaban yang dangkal.
+              </p>
+            </div>
+
+            {/* Writing framework */}
+            <div className="rounded-2xl border border-sidebar-border bg-sidebar-accent/30 p-6">
+              <div className="mb-4 flex items-center gap-2.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sidebar-primary/20">
+                  <ListOrdered className="h-5 w-5 text-sidebar-primary" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Framework Tulisan</h3>
+                  <p className="text-xs text-sidebar-foreground/60">Alur baku enam fase</p>
+                </div>
+              </div>
+              <ol className="space-y-2.5">
+                {FRAMEWORK.map((f) => (
+                  <li key={f.n} className="flex gap-3">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sidebar-primary/20 text-xs font-bold text-sidebar-primary">
+                      {f.n}
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold leading-tight">{f.t}</p>
+                      <p className="text-xs text-sidebar-foreground/60">{f.d}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+
+          {/* multi-model strip */}
+          <div className="mt-5 rounded-2xl border border-sidebar-border bg-sidebar-accent/30 p-6">
+            <div className="flex flex-col items-center gap-4 text-center md:flex-row md:justify-between md:text-left">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/15">
+                  <Cpu className="h-5 w-5 text-accent" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">AI Agentik Multi-Model</h3>
+                  <p className="text-xs text-sidebar-foreground/60">
+                    10 model dari 4 penyedia — pilih yang terbaik untuk tiap sesi.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap justify-center gap-2">
+                {AI_PROVIDERS.map((p) => (
+                  <span
+                    key={p}
+                    className="rounded-lg border border-sidebar-border bg-sidebar px-3 py-1.5 text-xs font-semibold"
+                  >
+                    {p}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
