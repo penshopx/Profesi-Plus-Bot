@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
+import Home from "@/pages/home";
 import ChatPage from "@/pages/chat";
 import DashboardUser from "@/pages/dashboard/user";
 import DashboardInstruktur from "@/pages/dashboard/instruktur";
@@ -145,6 +146,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={HomeRedirect} />
+      <Route path="/sessions" component={Home} />
       <Route path="/sign-in/*?" component={SignInPage} />
       <Route path="/sign-up/*?" component={SignUpPage} />
       <Route path="/chat/:id" component={ChatPage} />

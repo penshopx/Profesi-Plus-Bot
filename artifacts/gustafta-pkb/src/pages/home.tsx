@@ -42,7 +42,9 @@ const JENJANG_OPTIONS = ["Jenjang 7 (100 SKPK)", "Jenjang 8 (150 SKPK)", "Jenjan
 export default function Home() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
-  const [showNew, setShowNew] = useState(false);
+  const [showNew, setShowNew] = useState(
+    () => new URLSearchParams(window.location.search).get("new") === "1",
+  );
   const [selectedMode, setSelectedMode] = useState("");
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);

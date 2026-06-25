@@ -81,7 +81,7 @@ export default function DashboardUser() {
         {/* Actions */}
         <div className="flex flex-wrap gap-3">
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/sessions?new=1")}
             className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
           >
             <Plus className="w-4 h-4" /> Buat Sesi Baru
