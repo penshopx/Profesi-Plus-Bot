@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import {
   FileText, ArrowRight, ShieldCheck, Layers, Database, MessagesSquare,
   Cpu, Award, CheckCircle2, FileCheck, Briefcase, Sparkles,
-  ClipboardList, Target, Gauge, Building2,
+  ClipboardList, Target, Gauge, Building2, Video, FileStack, PencilRuler,
 } from "lucide-react";
 
 const STATS = [
@@ -30,30 +30,34 @@ const PROBLEMS = [
   },
 ];
 
-const STEPS = [
+const SOURCES = [
   {
-    no: "01",
-    title: "Pilih mode & jabatan kerja",
-    body: "Mulai dari pengalaman kerja, hasil belajar, atau hybrid. Pilih jabker dari database 108 jabatan dan jenjang SKK Anda.",
+    icon: Video,
+    title: "Video Pembelajaran",
+    body: "Rekaman (recording) kegiatan belajar Anda menjadi bahan refleksi kompetensi dalam dialog.",
+  },
+  {
+    icon: FileStack,
+    title: "Pengalaman Lapangan Proyek",
+    body: "Kontrak kerja, gambar proyek, dan dokumentasi proyek lainnya sebagai bukti peran nyata Anda.",
+  },
+];
+
+const OUTPUTS = [
+  {
+    icon: ClipboardList,
+    title: "Uraian Job Deskripsi",
+    body: "Deskripsi tugas dan tanggung jawab sesuai jabatan kerja yang Anda miliki.",
+  },
+  {
     icon: Briefcase,
+    title: "Laporan Peran dalam Proyek",
+    body: "Uraian peran nyata Anda dalam pelaksanaan pekerjaan/proyek sesuai jabatan kerja.",
   },
   {
-    no: "02",
-    title: "Wawancara terpandu 6 fase",
-    body: "Pewawancara AI menggali secara Socratic melewati fase profiling, konteks, wawancara inti, bukti, hingga sintesis.",
-    icon: MessagesSquare,
-  },
-  {
-    no: "03",
-    title: "Kumpulkan bukti & pemetaan SKK",
-    body: "Setiap pengalaman dikaitkan ke unit kompetensi SKK yang relevan, lengkap dengan bukti pendukung yang terorganisir.",
     icon: FileCheck,
-  },
-  {
-    no: "04",
-    title: "Hasilkan Exum siap pakai",
-    body: "Dapatkan Executive Summary 10–15 halaman yang terstruktur, siap diunduh, dicetak, dan diajukan.",
-    icon: FileText,
+    title: "Keselarasan dengan SKK",
+    body: "Pemetaan keselarasan pengalaman Anda dengan unit kompetensi SKK yang dimiliki.",
   },
 ];
 
@@ -160,9 +164,9 @@ export default function Landing() {
               <span className="text-accent">Executive Summary PKB</span> bernilai 25 SKPK.
             </h1>
             <p className="mt-6 max-w-xl text-base leading-relaxed text-sidebar-foreground/70 sm:text-lg">
-              Pewawancara AI yang memandu Tenaga Kerja Konstruksi menyusun Exum
-              berkualitas tinggi — 10–15 halaman, terpetakan ke unit kompetensi SKK,
-              siap untuk perpanjangan sertifikat.
+              Lewat dialog dari video pembelajaran dan pengalaman proyek Anda, AI
+              menyusun Blueprint Potensi Diri — lalu merangkainya menjadi Executive
+              Summary 10–15 halaman yang terpetakan ke unit kompetensi SKK.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
@@ -278,28 +282,85 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── How it works (Interest → Desire) ──────────────── */}
+      {/* ── How it works: dialog → blueprint → output ─────── */}
       <section className="relative overflow-hidden border-y border-border bg-secondary/40">
-        <div className="mx-auto max-w-6xl px-5 py-20">
-          <div className="mx-auto mb-14 max-w-2xl text-center">
+        <div className="mx-auto max-w-5xl px-5 py-20">
+          <div className="mx-auto mb-12 max-w-2xl text-center">
             <p className="mb-2 text-sm font-bold uppercase tracking-wider text-primary">Cara kerjanya</p>
             <h2 className="font-serif text-3xl font-bold tracking-tight sm:text-4xl">
-              Dari wawancara ke dokumen, dalam empat langkah
+              Dari dialog ke Blueprint Potensi Diri
             </h2>
+            <p className="mt-4 text-muted-foreground">
+              Dialog AI menggali video pembelajaran dan pengalaman proyek Anda, lalu
+              merangkainya menjadi cetak biru potensi diri yang utuh.
+            </p>
           </div>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {STEPS.map((s) => {
+
+          {/* Stage 1 — sources */}
+          <p className="mb-4 text-center text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Dua sumber dialog
+          </p>
+          <div className="grid gap-5 sm:grid-cols-2">
+            {SOURCES.map((s) => {
               const Icon = s.icon;
               return (
-                <div key={s.no} className="relative rounded-2xl border border-border bg-card p-6 shadow-sm">
-                  <div className="mb-4 flex items-center justify-between">
-                    <span className="font-serif text-3xl font-bold text-primary/20">{s.no}</span>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-                      <Icon className="h-5 w-5 text-primary" />
-                    </div>
+                <div key={s.title} className="flex gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                    <Icon className="h-5 w-5 text-primary" />
                   </div>
-                  <h3 className="mb-2 text-base font-bold">{s.title}</h3>
-                  <p className="text-sm leading-relaxed text-muted-foreground">{s.body}</p>
+                  <div>
+                    <h3 className="mb-1 text-base font-bold">{s.title}</h3>
+                    <p className="text-sm leading-relaxed text-muted-foreground">{s.body}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Connector → dialog */}
+          <div className="flex flex-col items-center py-5" aria-hidden>
+            <div className="h-7 w-px bg-border" />
+            <div className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm">
+              <MessagesSquare className="h-4 w-4" /> Dialog terpandu AI
+            </div>
+            <div className="h-7 w-px bg-border" />
+          </div>
+
+          {/* Stage 2 — blueprint */}
+          <div className="relative overflow-hidden rounded-2xl border border-accent/30 bg-sidebar p-8 text-center text-sidebar-foreground shadow-md">
+            <BlueprintGrid />
+            <div className="relative">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-accent/15">
+                <PencilRuler className="h-6 w-6 text-accent" />
+              </div>
+              <h3 className="font-serif text-2xl font-bold">Blueprint Potensi Diri</h3>
+              <p className="mx-auto mt-2 max-w-xl text-sm text-sidebar-foreground/70">
+                Cetak biru yang memetakan kompetensi, pengalaman, dan potensi Anda —
+                menjadi fondasi seluruh dokumen.
+              </p>
+            </div>
+          </div>
+
+          {/* Connector → outputs */}
+          <div className="flex flex-col items-center py-5" aria-hidden>
+            <div className="h-7 w-px bg-border" />
+            <span className="rounded-full border border-border bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Menghasilkan tiga uraian
+            </span>
+            <div className="h-7 w-px bg-border" />
+          </div>
+
+          {/* Stage 3 — outputs */}
+          <div className="grid gap-5 md:grid-cols-3">
+            {OUTPUTS.map((o) => {
+              const Icon = o.icon;
+              return (
+                <div key={o.title} className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                  <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-accent/10">
+                    <Icon className="h-5 w-5 text-accent" />
+                  </div>
+                  <h3 className="mb-2 text-base font-bold">{o.title}</h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">{o.body}</p>
                 </div>
               );
             })}
