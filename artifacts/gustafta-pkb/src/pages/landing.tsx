@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 
 const STATS = [
-  { value: "108", label: "Jabatan Kerja terpetakan", icon: Briefcase },
+  { value: "108+", label: "Jabatan kerja & terus bertambah", icon: Briefcase },
   { value: "519", label: "Unit Kompetensi SKK", icon: Database },
   { value: "6", label: "Klasifikasi konstruksi", icon: Layers },
   { value: "25", label: "SKPK per Executive Summary", icon: Award },
@@ -70,7 +70,7 @@ const FEATURES = [
   {
     icon: Database,
     title: "Basis data SKK lengkap",
-    body: "519 unit kompetensi pada 108 jabatan kerja, 6 klasifikasi, dan 31 subklasifikasi konstruksi.",
+    body: "519 unit kompetensi pada 108+ jabatan kerja yang terus diperbarui, 6 klasifikasi, dan 31 subklasifikasi.",
   },
   {
     icon: Layers,
@@ -188,7 +188,7 @@ export default function Landing() {
                 <CheckCircle2 className="h-3.5 w-3.5 text-accent" /> 519 unit kompetensi SKK
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-accent" /> 108 jabatan kerja
+                <CheckCircle2 className="h-3.5 w-3.5 text-accent" /> 108+ jabatan kerja
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-accent" /> 4 model AI
@@ -253,6 +253,10 @@ export default function Landing() {
             );
           })}
         </div>
+        <p className="mx-auto max-w-2xl px-5 pb-7 text-center text-xs text-muted-foreground">
+          Basis data jabatan kerja &amp; SKK terus diperbarui seiring berkembangnya
+          regulasi dan kebutuhan industri konstruksi.
+        </p>
       </section>
 
       {/* ── Problem (Interest) ────────────────────────────── */}
