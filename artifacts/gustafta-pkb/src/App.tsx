@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/reac
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
-import Home from "@/pages/home";
+import Landing from "@/pages/landing";
 import ChatPage from "@/pages/chat";
 import DashboardUser from "@/pages/dashboard/user";
 import DashboardInstruktur from "@/pages/dashboard/instruktur";
@@ -110,7 +110,7 @@ function HomeRedirect() {
         <DashboardRedirect />
       </Show>
       <Show when="signed-out">
-        <Home />
+        <Landing />
       </Show>
     </>
   );
