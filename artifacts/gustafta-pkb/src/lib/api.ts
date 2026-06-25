@@ -363,3 +363,43 @@ export async function deleteVideo(id: number): Promise<void> {
   });
   if (!res.ok) throw new Error("Failed to delete video");
 }
+
+// ─── Dialog Gustafta (public landing demo) ──────────────────────────────────
+
+export interface DialogProfile {
+  bidang: string;
+  keahlian: string[];
+  tantangan: string;
+  potensiAwal: string;
+}
+
+export interface DialogBlueprintTeaser {
+  ringkasan: string;
+  potensiCount: number;
+  unitSkkCount: number;
+  materiExumCount: number;
+  potensiPreview: string[];
+}
+
+export interface DialogGustaftaResponse {
+  stage: 1 | 2;
+  reply: string;
+  profile?: DialogProfile;
+  blueprintTeaser?: DialogBlueprintTeaser;
+  locked?: boolean;
+}
+
+export async function dialogGustafta(
+  messages: { role: "user" | "assistant"; content: string }[],
+): Promise<DialogGustaftaResponse> {
+  const res = await fetch(`${BASE}/dialog-gustafta`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Dialog Gustafta gagal merespons.");
+  }
+  return res.json();
+}

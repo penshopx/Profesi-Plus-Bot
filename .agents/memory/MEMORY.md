@@ -1,2 +1,4 @@
 - [GitHub-import restore](github-import-restore.md) — revive a pnpm-workspace monorepo imported from GitHub that renders blank (re-register artifacts, provision secrets, db push).
 - [Multi-provider LLM](multi-provider-llm.md) — serve DeepSeek/Qwen/Gemini via the OpenAI SDK (baseURL swap); Qwen 401 = intl-vs-China region mismatch; check response.ok before SSE parse.
+- [api-server has no watch](api-server-no-watch.md) — api-server dev runs build&&start; restart the workflow after backend edits or curl hits stale code.
+- [Freemium gating server-side](freemium-gating.md) — redact gated content into a teaser on the server; blurring full JSON in the UI is bypassable. Rate-limit anonymous LLM endpoints.

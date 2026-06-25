@@ -5,6 +5,7 @@ import {
   ClipboardList, Target, Gauge, Building2,
   Bot, Quote, ListOrdered, Upload, Clock,
 } from "lucide-react";
+import DialogGustaftaSection from "@/components/dialog-gustafta";
 
 const STATS = [
   { value: "108+", label: "Jabatan kerja & terus bertambah", icon: Briefcase },
@@ -299,6 +300,9 @@ export default function Landing() {
           })}
         </div>
       </section>
+
+      {/* ── Dialog Gustafta (tryable Teman Berpikir) ──────── */}
+      <DialogGustaftaSection />
 
       {/* ── How it works: 5-step process ──────────────────── */}
       <section className="relative overflow-hidden border-y border-border bg-secondary/40">
