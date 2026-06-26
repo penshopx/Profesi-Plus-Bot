@@ -4,6 +4,7 @@ import { db, conversations, messages, evidenceItems } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL } from "../../lib/llm";
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
+import { buildKnowledgeContext } from "../../lib/knowledge-base";
 
 const router: IRouter = Router();
 
@@ -181,7 +182,13 @@ router.post("/chat/conversations/:id/messages", async (req, res): Promise<void> 
     .where(eq(evidenceItems.conversationId, convId))
     .orderBy(asc(evidenceItems.createdAt));
 
-  const systemPrompt = buildSystemPrompt(conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence);
+  const lastUserMsg = [...existingMsgs].reverse().find((m: { role: string; content: string }) => m.role === "user")?.content ?? null;
+  const knowledgeContext = await buildKnowledgeContext({
+    jabker: conv.jabker,
+    jenjang: conv.jenjang,
+    query: lastUserMsg,
+  });
+  const systemPrompt = buildSystemPrompt(conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence, knowledgeContext);
   const phaseInstruction = getPhaseInstruction(conv.phase, conv.mode);
 
   const chatMessages = existingMsgs.map((m) => ({
@@ -285,7 +292,12 @@ router.post("/chat/generate-exum", async (req, res): Promise<void> => {
     .map((m) => `${m.role === "user" ? "TKK" : "Pak Budi"}: ${m.content}`)
     .join("\n\n");
 
-  const exumPrompt = buildExumPrompt(conv.mode, conv.jabker, conv.jenjang, transcript, evidence);
+  const exumKnowledge = await buildKnowledgeContext({
+    jabker: conv.jabker,
+    jenjang: conv.jenjang,
+    query: conv.jabker,
+  });
+  const exumPrompt = buildExumPrompt(conv.mode, conv.jabker, conv.jenjang, transcript, evidence, exumKnowledge);
 
   let llm: ReturnType<typeof getClientForModel>;
   try {
@@ -391,7 +403,8 @@ function buildExumPrompt(
   jabker: string | null,
   jenjang: string | null,
   transcript: string,
-  evidence: EvidenceRow[]
+  evidence: EvidenceRow[],
+  knowledgeContext: string = ""
 ): string {
   const modeLabel =
     mode === "A" ? "Pengalaman Kerja" : mode === "B" ? "Hasil Belajar" : "Hybrid (Pengalaman + Hasil Belajar)";
@@ -425,7 +438,7 @@ INFORMASI PENULIS:
 - Mode Exum: ${modeLabel}
 ${skkCovered ? `\nUNIT SKK YANG DICAKUP:\n  - ${skkCovered}` : ""}
 ${socratiSummary ? `\nINTISARI PEMAHAMAN TKK (dari Dialog Sokratik):\n${socratiSummary}` : ""}
-${evidenceContext}
+${evidenceContext}${knowledgeContext}
 
 TRANSKRIP WAWANCARA:
 ${transcript}

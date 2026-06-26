@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { logger } from "../lib/logger";
 import { getClientForModel, isKnownModel, listModels } from "../lib/llm";
+import { buildAnonymousKnowledgeContext } from "../lib/knowledge-base";
 
 const router: IRouter = Router();
 
@@ -156,12 +157,15 @@ router.post("/dialog-gustafta", async (req, res): Promise<void> => {
       });
     }
 
+    const userText = messages.filter((m) => m.role === "user").map((m) => m.content).join(" ");
+    const knowledgeContext = await buildAnonymousKnowledgeContext(userText);
+
     const { client, model: resolvedModel } = getClientForModel(model);
     const completion = await client.chat.completions.create({
       model: resolvedModel,
       temperature: 0.6,
       messages: [
-        { role: "system", content: `${persona}\n\n${gateInstruction(stage)}` },
+        { role: "system", content: `${persona}\n\n${gateInstruction(stage)}${knowledgeContext}` },
         ...convo,
       ],
     });

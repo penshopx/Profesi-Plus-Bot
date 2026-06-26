@@ -60,7 +60,8 @@ export function buildSystemPrompt(
   jabker: string | null,
   jenjang: string | null,
   phase: string,
-  evidence: EvidenceRow[] = []
+  evidence: EvidenceRow[] = [],
+  knowledgeContext: string = ""
 ): string {
   const jabkerInfo = jabker ? `Jabatan Kerja: **${jabker}**` : "Jabatan Kerja: belum ditentukan";
   const jenjangInfo = jenjang ? `Jenjang SKK: **${jenjang}**` : "Jenjang SKK: belum ditentukan";
@@ -81,7 +82,7 @@ KONTEKS PENGGUNA:
 - Mode: ${mode === "A" ? "Pengalaman Kerja (berbasis proyek/ESIMPAN)" : mode === "B" ? "Hasil Belajar (video YouTube, webinar, diklatkerja)" : "Hybrid (gabungan pengalaman + hasil belajar)"}
 - Jenjang adaptasi: ${jenjangNum >= 9 ? "Jenjang 9 — fokus STRATEGIS (kebijakan, inovasi, dampak organisasi)" : jenjangNum === 8 ? "Jenjang 8 — fokus MANAJERIAL (koordinasi, pengambilan keputusan, manajemen risiko)" : "Jenjang 7 — fokus TEKNIS-OPERASIONAL (prosedur, pelaksanaan, K3)"}
 - Fase saat ini: **${phase}**
-${buildEvidenceContext(evidence)}
+${buildEvidenceContext(evidence)}${knowledgeContext}
 
 TRILOGI GUSTAFTA (inti metodologi):
 1. **SERPIHAN** — setiap sumber/pengalaman dipotong menjadi unit-unit kecil bermakna

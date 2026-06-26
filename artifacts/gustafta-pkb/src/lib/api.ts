@@ -364,6 +364,95 @@ export async function deleteVideo(id: number): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete video");
 }
 
+// ─── Knowledge Base ──────────────────────────────────────────────────────────
+
+export const KB_CATEGORIES = ["regulasi", "rubrik_exum", "contoh_exum", "panduan_skk", "umum"] as const;
+export type KbCategory = (typeof KB_CATEGORIES)[number];
+
+export interface KbEntry {
+  id: number;
+  category: string;
+  title: string;
+  content: string;
+  klasifikasi: string | null;
+  jenjang: string | null;
+  skkUnitCode: string | null;
+  tags: string | null;
+  source: string | null;
+  priority: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KbInput {
+  category: string;
+  title: string;
+  content: string;
+  klasifikasi?: string | null;
+  jenjang?: string | null;
+  skkUnitCode?: string | null;
+  tags?: string | null;
+  source?: string | null;
+  priority?: number;
+  isActive?: boolean;
+}
+
+export async function listKnowledgeBase(params?: { q?: string; category?: string }): Promise<KbEntry[]> {
+  const qs = new URLSearchParams();
+  if (params?.q) qs.set("q", params.q);
+  if (params?.category) qs.set("category", params.category);
+  const url = `${BASE}/knowledge-base${qs.toString() ? "?" + qs.toString() : ""}`;
+  const res = await fetch(url, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch knowledge base");
+  return res.json();
+}
+
+export async function createKnowledgeEntry(data: KbInput): Promise<KbEntry> {
+  const res = await fetch(`${BASE}/knowledge-base`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Failed to create entry");
+  }
+  return res.json();
+}
+
+export async function updateKnowledgeEntry(id: number, data: Partial<KbInput>): Promise<KbEntry> {
+  const res = await fetch(`${BASE}/knowledge-base/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Failed to update entry");
+  }
+  return res.json();
+}
+
+export async function deleteKnowledgeEntry(id: number): Promise<void> {
+  const res = await fetch(`${BASE}/knowledge-base/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to delete entry");
+}
+
+export async function seedKnowledgeBase(): Promise<{ inserted: number; skipped: number }> {
+  const res = await fetch(`${BASE}/knowledge-base/seed`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to seed knowledge base");
+  return res.json();
+}
+
 // ─── Dialog Gustafta (public landing demo) ──────────────────────────────────
 
 export interface DialogProfile {
