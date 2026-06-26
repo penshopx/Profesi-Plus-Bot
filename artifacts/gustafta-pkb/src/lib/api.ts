@@ -388,6 +388,78 @@ export async function deleteProjectBrain(id: number): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete entry");
 }
 
+// ─── Studio Kompetensi (Competency Mapping) ─────────────────────────────────────
+
+export type CompetencyUnitStatus = "covered" | "partial" | "gap";
+
+export interface CompetencyUnitResult {
+  code: string;
+  name: string;
+  status: CompetencyUnitStatus;
+  rationale: string;
+  evidenceRef: string | null;
+}
+
+export interface CompetencyResult {
+  summary: string;
+  estimatedSkpk: number;
+  readiness: "kuat" | "cukup" | "lemah";
+  units: CompetencyUnitResult[];
+  gaps: string[];
+  recommendations: string[];
+}
+
+export interface CompetencyAnalysisSummary {
+  id: number;
+  jabkerId: string;
+  jabkerName: string;
+  jenjang: string | null;
+  klasifikasi: string | null;
+  estimatedSkpk: number;
+  readiness: "kuat" | "cukup" | "lemah";
+  summary: string;
+  model: string;
+  createdAt: string;
+}
+
+export interface CompetencyAnalysisFull extends CompetencyAnalysisSummary {
+  result: CompetencyResult;
+}
+
+export async function listCompetencyAnalyses(): Promise<CompetencyAnalysisSummary[]> {
+  const res = await fetch(`${BASE}/competency-studio`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch analyses");
+  return res.json();
+}
+
+export async function getCompetencyAnalysis(id: number): Promise<CompetencyAnalysisFull> {
+  const res = await fetch(`${BASE}/competency-studio/${id}`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch analysis");
+  return res.json();
+}
+
+export async function analyzeCompetency(jabker: string, model?: string): Promise<CompetencyAnalysisFull> {
+  const res = await fetch(`${BASE}/competency-studio/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ jabker, model }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Gagal memetakan kompetensi");
+  }
+  return res.json();
+}
+
+export async function deleteCompetencyAnalysis(id: number): Promise<void> {
+  const res = await fetch(`${BASE}/competency-studio/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to delete analysis");
+}
+
 // ─── Videos ───────────────────────────────────────────────────────────────────
 
 export interface VideoUploader {

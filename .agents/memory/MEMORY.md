@@ -3,3 +3,4 @@
 - [api-server has no watch](api-server-no-watch.md) — api-server dev runs build&&start; restart the workflow after backend edits or curl hits stale code.
 - [Freemium gating server-side](freemium-gating.md) — redact gated content into a teaser on the server; blurring full JSON in the UI is bypassable. Rate-limit anonymous LLM endpoints.
 - [Express router.use auth leak](express-router-mounting.md) — bare router.use(requireAuth) in a root-mounted feature router 401s unrelated endpoints; scope to a path prefix like router.use("/chat", requireAuth).
+- [SKK competency mapping](competency-mapping-reference.md) — ground AI unit mapping in the static SKK definition (LLM verdicts are advisory; omitted units = gap; clamp SKPK 0–25).

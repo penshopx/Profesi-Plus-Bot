@@ -15,7 +15,7 @@ import {
 import {
   LayoutDashboard, MessageSquare, Video, LogOut, Plus,
   CheckCircle2, Briefcase, BookOpen, Layers, Package, ChevronRight,
-  Brain, Pencil, Trash2, X, Award, Wrench, UserCircle, Building2,
+  Brain, Pencil, Trash2, X, Award, Wrench, UserCircle, Building2, Target,
 } from "lucide-react";
 
 const PHASE_LABELS: Record<string, string> = {
@@ -163,6 +163,12 @@ export default function DashboardUser() {
             className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity"
           >
             <Plus className="w-4 h-4" /> Buat Sesi Baru
+          </button>
+          <button
+            onClick={() => navigate("/studio")}
+            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors"
+          >
+            <Target className="w-4 h-4" /> Studio Kompetensi
           </button>
           <button
             onClick={() => navigate("/videos")}

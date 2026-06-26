@@ -15,6 +15,7 @@ import DashboardInstruktur from "@/pages/dashboard/instruktur";
 import DashboardLembaga from "@/pages/dashboard/lembaga";
 import DashboardAdmin from "@/pages/dashboard/admin";
 import VideosPage from "@/pages/videos";
+import StudioPage from "@/pages/studio";
 
 const queryClient = new QueryClient();
 
@@ -151,6 +152,7 @@ function Router() {
       <Route path="/sign-up/*?" component={SignUpPage} />
       <Route path="/chat/:id" component={ChatPage} />
       <Route path="/videos" component={VideosPage} />
+      <Route path="/studio" component={StudioPage} />
       <Route path="/dashboard/user" component={DashboardUser} />
       <Route path="/dashboard/instruktur" component={DashboardInstruktur} />
       <Route path="/dashboard/lembaga" component={DashboardLembaga} />
