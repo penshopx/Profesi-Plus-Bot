@@ -309,6 +309,85 @@ export async function updateUserRole(id: number, role: string): Promise<DbUser> 
   return res.json();
 }
 
+// ─── Otak Proyek (Project Brain) ───────────────────────────────────────────────
+
+export const PROJECT_BRAIN_KINDS = ["project", "role", "achievement", "skill", "profile"] as const;
+export type ProjectBrainKind = (typeof PROJECT_BRAIN_KINDS)[number];
+
+export interface ProjectBrainEntry {
+  id: number;
+  userId: number;
+  kind: string;
+  title: string;
+  organization: string | null;
+  role: string | null;
+  period: string | null;
+  location: string | null;
+  description: string;
+  skkUnitCodes: string | null;
+  jenjang: string | null;
+  highlights: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectBrainInput {
+  kind: string;
+  title: string;
+  organization?: string | null;
+  role?: string | null;
+  period?: string | null;
+  location?: string | null;
+  description?: string;
+  skkUnitCodes?: string | null;
+  jenjang?: string | null;
+  highlights?: string | null;
+  isActive?: boolean;
+}
+
+export async function listProjectBrain(): Promise<ProjectBrainEntry[]> {
+  const res = await fetch(`${BASE}/project-brain`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch project brain");
+  return res.json();
+}
+
+export async function createProjectBrain(data: ProjectBrainInput): Promise<ProjectBrainEntry> {
+  const res = await fetch(`${BASE}/project-brain`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Failed to create entry");
+  }
+  return res.json();
+}
+
+export async function updateProjectBrain(id: number, data: Partial<ProjectBrainInput>): Promise<ProjectBrainEntry> {
+  const res = await fetch(`${BASE}/project-brain/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Failed to update entry");
+  }
+  return res.json();
+}
+
+export async function deleteProjectBrain(id: number): Promise<void> {
+  const res = await fetch(`${BASE}/project-brain/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to delete entry");
+}
+
 // ─── Videos ───────────────────────────────────────────────────────────────────
 
 export interface VideoUploader {

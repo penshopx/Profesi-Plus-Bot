@@ -6,6 +6,7 @@ import usersRouter from "./users";
 import videosRouter from "./videos";
 import dialogGustaftaRouter from "./dialog-gustafta";
 import knowledgeBaseRouter from "./knowledge-base";
+import projectBrainRouter from "./project-brain";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(usersRouter);
 router.use(videosRouter);
 router.use(dialogGustaftaRouter);
 router.use(knowledgeBaseRouter);
+router.use(projectBrainRouter);
 
 export default router;

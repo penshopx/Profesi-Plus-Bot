@@ -5,6 +5,7 @@ import { logger } from "../../lib/logger";
 import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL } from "../../lib/llm";
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
 import { buildKnowledgeContext } from "../../lib/knowledge-base";
+import { buildProjectBrainContext } from "../../lib/project-brain";
 import { requireAuth } from "../../middlewares/auth";
 
 const router: IRouter = Router();
@@ -240,7 +241,8 @@ router.post("/chat/conversations/:id/messages", async (req, res): Promise<void> 
     jenjang: conv.jenjang,
     query: lastUserMsg,
   });
-  const systemPrompt = buildSystemPrompt(conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence, knowledgeContext);
+  const projectBrainContext = await buildProjectBrainContext(req.dbUser!.id);
+  const systemPrompt = buildSystemPrompt(conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence, knowledgeContext + projectBrainContext);
   const phaseInstruction = getPhaseInstruction(conv.phase, conv.mode);
 
   const chatMessages = existingMsgs.map((m) => ({
@@ -350,7 +352,8 @@ router.post("/chat/generate-exum", async (req, res): Promise<void> => {
     jenjang: conv.jenjang,
     query: conv.jabker,
   });
-  const exumPrompt = buildExumPrompt(conv.mode, conv.jabker, conv.jenjang, transcript, evidence, exumKnowledge);
+  const exumProjectBrain = await buildProjectBrainContext(req.dbUser!.id);
+  const exumPrompt = buildExumPrompt(conv.mode, conv.jabker, conv.jenjang, transcript, evidence, exumKnowledge + exumProjectBrain);
 
   let llm: ReturnType<typeof getClientForModel>;
   try {
