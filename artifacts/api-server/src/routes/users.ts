@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, users, usageEvents } from "@workspace/db";
 import { eq, and, count, gte } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
-import { isPro, FREE_EXUM_PER_MONTH, monthStart } from "../lib/plans";
+import { FREE_EXUM_LIFETIME } from "../lib/plans";
 
 const router = Router();
 
@@ -10,30 +10,15 @@ router.get("/users/me", requireAuth, async (req, res) => {
   res.json(req.dbUser);
 });
 
-// Current plan + freemium usage for the authenticated user.
+// Current Exum credit balance + free-trial status for the authenticated user.
 router.get("/users/me/plan", requireAuth, async (req, res) => {
   const u = req.dbUser!;
-  const pro = isPro(u);
-  let exumUsed = 0;
-  if (!pro) {
-    const [row] = await db
-      .select({ value: count() })
-      .from(usageEvents)
-      .where(
-        and(
-          eq(usageEvents.userId, u.id),
-          eq(usageEvents.kind, "exum"),
-          gte(usageEvents.createdAt, monthStart()),
-        ),
-      );
-    exumUsed = Number(row?.value ?? 0);
-  }
+  const freeExumRemaining = u.freeExumUsed ? 0 : FREE_EXUM_LIFETIME;
   res.json({
-    plan: u.plan,
-    isPro: pro,
-    planExpiresAt: u.planExpiresAt,
-    exumLimit: FREE_EXUM_PER_MONTH,
-    exumUsed,
+    exumCredits: u.exumCredits,
+    freeExumUsed: u.freeExumUsed,
+    freeExumRemaining,
+    canGenerate: u.exumCredits > 0 || freeExumRemaining > 0,
   });
 });
 

@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and, asc, count, gte, inArray, sql } from "drizzle-orm";
-import { db, conversations, messages, evidenceItems, usageEvents, type Conversation } from "@workspace/db";
+import { db, conversations, messages, evidenceItems, usageEvents, users, type Conversation } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL } from "../../lib/llm";
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
@@ -8,7 +8,6 @@ import { buildKnowledgeContext } from "../../lib/knowledge-base";
 import { buildProjectBrainContext } from "../../lib/project-brain";
 import { recommendPersona, isKnownPersona, isConfidentJabkerMatch, DEFAULT_PERSONA_ID } from "../../lib/personas";
 import { findJabkerGroup } from "../../lib/skk-data";
-import { isPro, FREE_EXUM_PER_MONTH, monthStart } from "../../lib/plans";
 import { requireAuth } from "../../middlewares/auth";
 
 const router: IRouter = Router();
@@ -84,10 +83,6 @@ router.post("/chat/conversations", async (req, res): Promise<void> => {
     const group = findJabkerGroup(jabker);
     const confident = group && isConfidentJabkerMatch(jabker, group.name);
     resolvedPersona = recommendPersona(confident ? group.klasifikasi : null).id;
-  }
-  // Specialist personas are a Pro feature — free users always get the generalist.
-  if (!isPro(req.dbUser!)) {
-    resolvedPersona = DEFAULT_PERSONA_ID;
   }
   const [conv] = await db
     .insert(conversations)
@@ -348,81 +343,81 @@ router.post("/chat/generate-exum", async (req, res): Promise<void> => {
   const conv = await loadOwnedConversation(req, res, convId);
   if (!conv) return;
 
-  // Freemium quota: free users may generate a limited number of Exum per month.
-  // We atomically reserve a usage slot up-front (locking the user row so two
-  // concurrent requests cannot both pass the check) and release it if generation
-  // fails, so a failed attempt never consumes the user's monthly quota.
-  let reservedUsageId: number | null = null;
-  if (!isPro(req.dbUser!)) {
-    const reservation = await db.transaction(async (tx) => {
-      // Serialize concurrent quota checks for this user.
-      await tx.execute(sql`SELECT id FROM users WHERE id = ${req.dbUser!.id} FOR UPDATE`);
-      const [usageRow] = await tx
-        .select({ value: count() })
-        .from(usageEvents)
-        .where(
-          and(
-            eq(usageEvents.userId, req.dbUser!.id),
-            eq(usageEvents.kind, "exum"),
-            gte(usageEvents.createdAt, monthStart()),
-          ),
-        );
-      const used = Number(usageRow?.value ?? 0);
-      if (used >= FREE_EXUM_PER_MONTH) {
-        return { allowed: false as const, used };
-      }
-      const [inserted] = await tx
-        .insert(usageEvents)
-        .values({ userId: req.dbUser!.id, kind: "exum" })
-        .returning({ id: usageEvents.id });
-      return { allowed: true as const, usageId: inserted.id };
-    });
-
-    if (!reservation.allowed) {
-      res.status(402).json({
-        error: "Batas pembuatan Executive Summary paket Gratis bulan ini telah tercapai. Upgrade ke Pro untuk pembuatan tanpa batas.",
-        code: "plan_limit",
-        limit: FREE_EXUM_PER_MONTH,
-        used: reservation.used,
-      });
-      return;
+  // Pay-per-Exum: each generation consumes one credit. New accounts get a free
+  // trial. We reserve atomically (locking the user row so two concurrent requests
+  // can't both pass) and refund on failure so a failed attempt never costs the user.
+  const reservation = await db.transaction(async (tx) => {
+    const [u] = await tx
+      .select({ credits: users.exumCredits, freeUsed: users.freeExumUsed })
+      .from(users)
+      .where(eq(users.id, req.dbUser!.id))
+      .for("update");
+    if (!u) return { allowed: false as const };
+    if (u.credits > 0) {
+      await tx.update(users).set({ exumCredits: u.credits - 1 }).where(eq(users.id, req.dbUser!.id));
+      return { allowed: true as const, source: "paid" as const };
     }
-    reservedUsageId = reservation.usageId;
-  }
-
-  const msgs = await db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, convId))
-    .orderBy(asc(messages.createdAt));
-
-  const evidence = await db
-    .select()
-    .from(evidenceItems)
-    .where(eq(evidenceItems.conversationId, convId))
-    .orderBy(asc(evidenceItems.createdAt));
-
-  const transcript = msgs
-    .map((m) => `${m.role === "user" ? "TKK" : "Pak Budi"}: ${m.content}`)
-    .join("\n\n");
-
-  const exumKnowledge = await buildKnowledgeContext({
-    jabker: conv.jabker,
-    jenjang: conv.jenjang,
-    query: conv.jabker,
+    if (!u.freeUsed) {
+      await tx.update(users).set({ freeExumUsed: true }).where(eq(users.id, req.dbUser!.id));
+      return { allowed: true as const, source: "free" as const };
+    }
+    return { allowed: false as const };
   });
-  const exumProjectBrain = await buildProjectBrainContext(req.dbUser!.id);
-  const exumPrompt = buildExumPrompt(conv.mode, conv.jabker, conv.jenjang, transcript, evidence, exumKnowledge + exumProjectBrain);
 
-  let llm: ReturnType<typeof getClientForModel>;
-  try {
-    llm = getClientForModel(conv.model ?? DEFAULT_MODEL);
-  } catch (err) {
-    res.status(400).json({ error: (err as Error).message });
+  if (!reservation.allowed) {
+    res.status(402).json({
+      error: "Kredit Exum Anda sudah habis. Beli 1 Exum untuk membuat Executive Summary berikutnya.",
+      code: "plan_limit",
+    });
     return;
   }
+  const creditSource: "paid" | "free" = reservation.source;
+
+  // Refund the reserved credit/trial so ANY failure after reservation (context
+  // build, model resolution, or the LLM call) never costs the user. Idempotent
+  // per request: we only reach a failure path once.
+  const refundReservation = async () => {
+    if (creditSource === "paid") {
+      await db.update(users).set({ exumCredits: sql`${users.exumCredits} + 1` }).where(eq(users.id, req.dbUser!.id)).catch(() => {});
+    } else {
+      await db.update(users).set({ freeExumUsed: false }).where(eq(users.id, req.dbUser!.id)).catch(() => {});
+    }
+  };
 
   try {
+    const msgs = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, convId))
+      .orderBy(asc(messages.createdAt));
+
+    const evidence = await db
+      .select()
+      .from(evidenceItems)
+      .where(eq(evidenceItems.conversationId, convId))
+      .orderBy(asc(evidenceItems.createdAt));
+
+    const transcript = msgs
+      .map((m) => `${m.role === "user" ? "TKK" : "Pak Budi"}: ${m.content}`)
+      .join("\n\n");
+
+    const exumKnowledge = await buildKnowledgeContext({
+      jabker: conv.jabker,
+      jenjang: conv.jenjang,
+      query: conv.jabker,
+    });
+    const exumProjectBrain = await buildProjectBrainContext(req.dbUser!.id);
+    const exumPrompt = buildExumPrompt(conv.mode, conv.jabker, conv.jenjang, transcript, evidence, exumKnowledge + exumProjectBrain);
+
+    let llm: ReturnType<typeof getClientForModel>;
+    try {
+      llm = getClientForModel(conv.model ?? DEFAULT_MODEL);
+    } catch (err) {
+      await refundReservation();
+      res.status(400).json({ error: (err as Error).message });
+      return;
+    }
+
     const response = await llm.client.chat.completions.create({
       model: llm.model,
       max_tokens: 8192,
@@ -434,12 +429,12 @@ router.post("/chat/generate-exum", async (req, res): Promise<void> => {
       .set({ phase: "done", exumContent: content })
       .where(eq(conversations.id, conversationId));
 
+    // Audit log of a successfully delivered Exum (source: paid credit or free trial).
+    await db.insert(usageEvents).values({ userId: req.dbUser!.id, kind: `exum_${creditSource}` });
+
     res.json({ content, conversationId });
   } catch (err) {
-    // Release the reserved quota slot so a failed generation doesn't cost the user.
-    if (reservedUsageId !== null) {
-      await db.delete(usageEvents).where(eq(usageEvents.id, reservedUsageId)).catch(() => {});
-    }
+    await refundReservation();
     req.log.error({ err }, "Generate Exum error");
     res.status(500).json({ error: "Failed to generate Executive Summary" });
   }

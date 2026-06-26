@@ -220,7 +220,7 @@ export async function generateExum(
   });
   if (r.status === 402) {
     const body = await r.json().catch(() => ({}));
-    throw new PlanLimitError(body.error ?? "Batas paket tercapai.", body.limit ?? 0, body.used ?? 0);
+    throw new PlanLimitError(body.error ?? "Kredit Exum Anda sudah habis.");
   }
   if (!r.ok) throw new Error("Gagal membuat Executive Summary");
   return r.json();
@@ -323,11 +323,10 @@ export async function getMe(): Promise<DbUser> {
 // ─── Plan & Monetisasi ─────────────────────────────────────────────────────────
 
 export interface PlanInfo {
-  plan: string;
-  isPro: boolean;
-  planExpiresAt: string | null;
-  exumLimit: number;
-  exumUsed: number;
+  exumCredits: number;
+  freeExumUsed: boolean;
+  freeExumRemaining: number;
+  canGenerate: boolean;
 }
 
 export async function getMyPlan(): Promise<PlanInfo> {
@@ -336,16 +335,12 @@ export async function getMyPlan(): Promise<PlanInfo> {
   return res.json();
 }
 
-/** Thrown by generateExum when the free-tier quota is exhausted (HTTP 402). */
+/** Thrown by generateExum when the user has no Exum credit left (HTTP 402). */
 export class PlanLimitError extends Error {
   readonly code = "plan_limit";
-  readonly limit: number;
-  readonly used: number;
-  constructor(message: string, limit: number, used: number) {
+  constructor(message: string) {
     super(message);
     this.name = "PlanLimitError";
-    this.limit = limit;
-    this.used = used;
   }
 }
 

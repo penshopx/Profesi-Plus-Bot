@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
 import { db, users, payments } from "@workspace/db";
-import { eq, asc } from "drizzle-orm";
-import { proExpiry } from "../../lib/plans";
+import { eq, asc, sql } from "drizzle-orm";
+import { DEFAULT_CREDITS_PER_ORDER } from "../../lib/plans";
 
 const router: IRouter = Router();
 
@@ -42,6 +42,7 @@ function extractOrder(payload: Record<string, unknown>): {
   status: string;
   email: string;
   amount: number;
+  quantity: number;
 } {
   const data = (payload.data as Record<string, unknown>) ?? payload;
   const order = (data.order as Record<string, unknown>) ?? data;
@@ -59,13 +60,18 @@ function extractOrder(payload: Record<string, unknown>): {
   const amountStr = pick(order.amount, order.gross_amount, order.total, order.grand_total, data.amount, payload.amount);
   const amount = Math.round(Number(amountStr) || 0);
 
-  return { orderId, status, email, amount };
+  // How many Exum credits this order grants. Defaults to 1 (bayar putus per Exum);
+  // honored if the product/order carries an explicit quantity.
+  const qtyStr = pick(order.quantity, order.qty, order.credits, data.quantity, data.qty, payload.quantity);
+  const quantity = Math.max(1, Math.round(Number(qtyStr) || DEFAULT_CREDITS_PER_ORDER));
+
+  return { orderId, status, email, amount, quantity };
 }
 
 /**
  * Scalev payment webhook. Public (no Clerk auth) but authenticated by HMAC
  * signature. Idempotent via the unique payments.externalId. On a paid order it
- * matches the buyer to a user by email and grants a Pro period.
+ * matches the buyer to a user by email and grants Exum credits (pay-per-Exum).
  */
 router.post("/webhooks/scalev", async (req, res): Promise<void> => {
   const secret = process.env.SCALEV_WEBHOOK_SECRET;
@@ -86,7 +92,7 @@ router.post("/webhooks/scalev", async (req, res): Promise<void> => {
   }
 
   const payload = (req.body ?? {}) as Record<string, unknown>;
-  const { orderId, status, email, amount } = extractOrder(payload);
+  const { orderId, status, email, amount, quantity } = extractOrder(payload);
 
   if (!orderId) {
     req.log.warn("Scalev webhook missing order id");
@@ -118,7 +124,7 @@ router.post("/webhooks/scalev", async (req, res): Promise<void> => {
 
   // Idempotency: insert the payment first. The unique externalId means a
   // retried/concurrent duplicate delivery loses the race (no row returned) and
-  // must not upgrade again. Only the winning insert proceeds to grant Pro.
+  // must not grant again. Only the winning insert proceeds to add credits.
   const inserted = await db
     .insert(payments)
     .values({
@@ -141,11 +147,11 @@ router.post("/webhooks/scalev", async (req, res): Promise<void> => {
   if (userId !== null) {
     await db
       .update(users)
-      .set({ plan: "pro", planExpiresAt: proExpiry() })
+      .set({ exumCredits: sql`${users.exumCredits} + ${quantity}` })
       .where(eq(users.id, userId));
   }
 
-  res.status(200).json({ received: true, upgraded: userId !== null });
+  res.status(200).json({ received: true, credited: userId !== null, quantity });
 });
 
 export default router;

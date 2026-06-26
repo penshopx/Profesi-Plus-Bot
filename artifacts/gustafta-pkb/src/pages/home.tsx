@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Package, Search, X, Cpu, Sparkles, HardHat, DraftingCompass, Building2, ShieldCheck, Cog, Droplets, ClipboardList, Users, type LucideIcon } from "lucide-react";
-import { listConversations, createConversation, deleteConversation, fetchJabkerList, listModels, listPersonas, recommendPersona, getMyPlan, type Conversation } from "@/lib/api";
+import { listConversations, createConversation, deleteConversation, fetchJabkerList, listModels, listPersonas, recommendPersona, type Conversation } from "@/lib/api";
 
 const PERSONA_ICONS: Record<string, LucideIcon> = {
   HardHat, DraftingCompass, Building2, ShieldCheck, Cog, Droplets, ClipboardList,
@@ -76,13 +76,6 @@ export default function Home() {
     staleTime: 60 * 60 * 1000,
   });
   const personas = personaData?.personas ?? [];
-
-  const { data: planInfo } = useQuery({
-    queryKey: ["myPlan"],
-    queryFn: getMyPlan,
-    staleTime: 5 * 60 * 1000,
-  });
-  const isPro = planInfo?.isPro ?? false;
 
   const { data: recommendation } = useQuery({
     queryKey: ["personaRecommend", jabker],
@@ -516,21 +509,14 @@ export default function Home() {
                       const Icon = PERSONA_ICONS[p.icon] ?? HardHat;
                       const active = personaId === p.id;
                       const isRecommended = p.id === recommendedId;
-                      const locked = !isPro;
                       return (
                         <button
                           key={p.id}
                           type="button"
-                          disabled={locked}
                           data-testid={`persona-option-${p.id}`}
-                          onClick={() => { if (!locked) setPersonaId(p.id); }}
-                          className={`relative text-left rounded-2xl border-2 p-3.5 transition-all ${active ? "border-primary ring-2 ring-primary/20 bg-primary/5" : "border-border hover:border-muted-foreground/40 bg-card"} ${locked ? "opacity-60 cursor-not-allowed" : ""}`}
+                          onClick={() => setPersonaId(p.id)}
+                          className={`relative text-left rounded-2xl border-2 p-3.5 transition-all ${active ? "border-primary ring-2 ring-primary/20 bg-primary/5" : "border-border hover:border-muted-foreground/40 bg-card"}`}
                         >
-                          {locked && (
-                            <span className="absolute top-2 right-2 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                              Pro
-                            </span>
-                          )}
                           <div className="flex items-start gap-3">
                             <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${PERSONA_ACCENTS[p.accent] ?? PERSONA_ACCENTS.blue} flex items-center justify-center shrink-0`}>
                               <Icon className="w-4 h-4 text-white" />
@@ -551,11 +537,6 @@ export default function Home() {
                       );
                     })}
                   </div>
-                  {!isPro && (
-                    <p className="text-[11px] text-muted-foreground mt-2.5">
-                      Persona spesialis tersedia di paket Pro. Paket Gratis menggunakan Pak Budi (generalis).
-                    </p>
-                  )}
                 </div>
               </div>
             )}

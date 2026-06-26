@@ -1,26 +1,11 @@
-import type { User } from "@workspace/db";
+/**
+ * Monetisation model: pay-per-Exum credits (one-time purchase, no subscription).
+ * Each Executive Summary generation consumes one credit. New accounts get a small
+ * free trial so they can experience the output before buying.
+ */
 
-/** Free-tier allowance: number of Executive Summary generations per calendar month. */
-export const FREE_EXUM_PER_MONTH = 1;
+/** Free Executive Summary generations per account (lifetime trial, not per month). */
+export const FREE_EXUM_LIFETIME = 1;
 
-/** Days of Pro access granted per paid order (monthly subscription model). */
-export const PRO_PERIOD_DAYS = 30;
-
-/** True when the user currently holds active Pro access (not expired). */
-export function isPro(user: Pick<User, "plan" | "planExpiresAt">): boolean {
-  if (user.plan !== "pro") return false;
-  if (user.planExpiresAt && new Date(user.planExpiresAt).getTime() < Date.now()) {
-    return false;
-  }
-  return true;
-}
-
-/** Start of the current calendar month (UTC) — the window for free-tier quotas. */
-export function monthStart(now: Date = new Date()): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-}
-
-/** Expiry timestamp for a freshly granted Pro period. */
-export function proExpiry(from: Date = new Date()): Date {
-  return new Date(from.getTime() + PRO_PERIOD_DAYS * 24 * 60 * 60 * 1000);
-}
+/** Exum credits granted per paid order when the payload doesn't specify a quantity. */
+export const DEFAULT_CREDITS_PER_ORDER = 1;

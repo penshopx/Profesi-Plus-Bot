@@ -1507,18 +1507,18 @@ export default function ChatPage() {
           <div className="bg-card rounded-2xl border border-border max-w-sm w-full p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-3">
               <Zap className="w-5 h-5 text-accent" />
-              <h3 className="font-semibold text-foreground">{paywall.canUpgrade ? "Upgrade ke Pro" : "Terjadi Kesalahan"}</h3>
+              <h3 className="font-semibold text-foreground">{paywall.canUpgrade ? "Beli Kredit Exum" : "Terjadi Kesalahan"}</h3>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed mb-5">{paywall.msg}</p>
             <div className="flex gap-2">
               {paywall.canUpgrade && SCALEV_CHECKOUT_URL && (
                 <a href={SCALEV_CHECKOUT_URL} target="_blank" rel="noopener noreferrer"
                   className="flex-1 text-center bg-accent text-accent-foreground rounded-xl px-4 py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity">
-                  Upgrade ke Pro
+                  Beli 1 Exum
                 </a>
               )}
               {paywall.canUpgrade && !SCALEV_CHECKOUT_URL && (
-                <span className="flex-1 text-center text-xs text-muted-foreground self-center">Hubungi admin untuk upgrade ke Pro.</span>
+                <span className="flex-1 text-center text-xs text-muted-foreground self-center">Hubungi admin untuk membeli kredit Exum.</span>
               )}
               <button onClick={() => setPaywall(null)}
                 className="flex-1 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors">
