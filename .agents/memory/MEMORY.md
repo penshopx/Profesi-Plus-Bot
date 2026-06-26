@@ -4,3 +4,4 @@
 - [Freemium gating server-side](freemium-gating.md) — redact gated content into a teaser on the server; blurring full JSON in the UI is bypassable. Rate-limit anonymous LLM endpoints.
 - [Express router.use auth leak](express-router-mounting.md) — bare router.use(requireAuth) in a root-mounted feature router 401s unrelated endpoints; scope to a path prefix like router.use("/chat", requireAuth).
 - [SKK competency mapping](competency-mapping-reference.md) — ground AI unit mapping in the static SKK definition (LLM verdicts are advisory; omitted units = gap; clamp SKPK 0–25).
+- [Agentic Persona](agentic-persona.md) — specialist interviewers layered on shared Gustafta methodology; persona drives interview only (Exum stays neutral); confidence-gate jabker→persona auto-recommend.

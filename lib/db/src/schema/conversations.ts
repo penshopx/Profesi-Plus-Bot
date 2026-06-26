@@ -11,6 +11,7 @@ export const conversations = pgTable("conversations", {
   model: text("model").notNull().default("gpt-4o"),
   jabker: text("jabker"),
   jenjang: text("jenjang"),
+  personaId: text("persona_id").notNull().default("pak-budi"),
   phase: text("phase").notNull().default("profiling"),
   exumContent: text("exum_content"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

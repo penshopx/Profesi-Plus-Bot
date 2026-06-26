@@ -8,6 +8,7 @@ import dialogGustaftaRouter from "./dialog-gustafta";
 import knowledgeBaseRouter from "./knowledge-base";
 import projectBrainRouter from "./project-brain";
 import competencyStudioRouter from "./competency-studio";
+import personasRouter from "./personas";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(dialogGustaftaRouter);
 router.use(knowledgeBaseRouter);
 router.use(projectBrainRouter);
 router.use(competencyStudioRouter);
+router.use(personasRouter);
 
 export default router;

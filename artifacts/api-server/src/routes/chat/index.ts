@@ -6,6 +6,8 @@ import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL } from "../.
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
 import { buildKnowledgeContext } from "../../lib/knowledge-base";
 import { buildProjectBrainContext } from "../../lib/project-brain";
+import { recommendPersona, isKnownPersona, isConfidentJabkerMatch, DEFAULT_PERSONA_ID } from "../../lib/personas";
+import { findJabkerGroup } from "../../lib/skk-data";
 import { requireAuth } from "../../middlewares/auth";
 
 const router: IRouter = Router();
@@ -66,15 +68,25 @@ router.get("/chat/conversations", async (req, res): Promise<void> => {
 });
 
 router.post("/chat/conversations", async (req, res): Promise<void> => {
-  const { title, mode, jabker, jenjang, model } = req.body;
+  const { title, mode, jabker, jenjang, model, personaId } = req.body;
   if (!title || !mode) {
     res.status(400).json({ error: "title and mode are required" });
     return;
   }
   const selectedModel = typeof model === "string" && isKnownModel(model) ? model : DEFAULT_MODEL;
+  // Resolve the specialist persona: honor an explicit valid choice, otherwise
+  // auto-recommend from the target Jabker's SKK klasifikasi.
+  let resolvedPersona = DEFAULT_PERSONA_ID;
+  if (typeof personaId === "string" && isKnownPersona(personaId)) {
+    resolvedPersona = personaId;
+  } else if (typeof jabker === "string" && jabker.trim()) {
+    const group = findJabkerGroup(jabker);
+    const confident = group && isConfidentJabkerMatch(jabker, group.name);
+    resolvedPersona = recommendPersona(confident ? group.klasifikasi : null).id;
+  }
   const [conv] = await db
     .insert(conversations)
-    .values({ title, mode, model: selectedModel, jabker, jenjang, phase: "profiling", userId: req.dbUser!.id })
+    .values({ title, mode, model: selectedModel, jabker, jenjang, personaId: resolvedPersona, phase: "profiling", userId: req.dbUser!.id })
     .returning();
   res.status(201).json(conv);
 });
@@ -242,7 +254,7 @@ router.post("/chat/conversations/:id/messages", async (req, res): Promise<void> 
     query: lastUserMsg,
   });
   const projectBrainContext = await buildProjectBrainContext(req.dbUser!.id);
-  const systemPrompt = buildSystemPrompt(conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence, knowledgeContext + projectBrainContext);
+  const systemPrompt = buildSystemPrompt(conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence, knowledgeContext + projectBrainContext, conv.personaId);
   const phaseInstruction = getPhaseInstruction(conv.phase, conv.mode);
 
   const chatMessages = existingMsgs.map((m) => ({

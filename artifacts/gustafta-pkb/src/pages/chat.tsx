@@ -11,7 +11,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import {
   getConversation, streamMessage, generateExum, advancePhase, createEvidence, deleteEvidence, patchEvidence,
-  fetchSkkUnits, updateConversation,
+  fetchSkkUnits, updateConversation, listPersonas,
   type Message, type EvidenceItem, type SkkUnit, type SocratiDialog,
 } from "@/lib/api";
 
@@ -1172,6 +1172,13 @@ export default function ChatPage() {
     refetchOnWindowFocus: false,
   });
 
+  const { data: personaData } = useQuery({
+    queryKey: ["personas"],
+    queryFn: listPersonas,
+    staleTime: 60 * 60 * 1000,
+  });
+  const activePersona = personaData?.personas.find((p) => p.id === conv?.personaId);
+
   useEffect(() => {
     if (conv?.phase) setCurrentPhase(conv.phase);
   }, [conv?.phase]);
@@ -1423,6 +1430,11 @@ export default function ChatPage() {
             {conv?.jabker && <span>{conv.jabker} · </span>}
             {conv?.jenjang && <span>{conv.jenjang} · </span>}
             Mode {conv?.mode === "A" ? "Pengalaman Kerja" : conv?.mode === "B" ? "Hasil Belajar" : "Hybrid"}
+            {activePersona && (
+              <span className="inline-flex items-center gap-1 ml-1.5 px-1.5 py-0.5 rounded-md bg-primary/10 text-[10px] font-medium text-primary align-middle" title={activePersona.title}>
+                <HardHat className="w-2.5 h-2.5" />{activePersona.name}
+              </span>
+            )}
             {conv?.model && (
               <span className="inline-flex items-center gap-1 ml-1.5 px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-foreground/70 align-middle">
                 <Cpu className="w-2.5 h-2.5" />{conv.model}

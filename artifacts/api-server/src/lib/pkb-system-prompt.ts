@@ -1,3 +1,5 @@
+import { getPersona, type Persona } from "./personas";
+
 type EvidenceRow = {
   type: string; category: string; title: string; url: string | null;
   description: string | null; skkNotes: string | null;
@@ -61,20 +63,24 @@ export function buildSystemPrompt(
   jenjang: string | null,
   phase: string,
   evidence: EvidenceRow[] = [],
-  knowledgeContext: string = ""
+  knowledgeContext: string = "",
+  personaId: string | null = null
 ): string {
   const jabkerInfo = jabker ? `Jabatan Kerja: **${jabker}**` : "Jabatan Kerja: belum ditentukan";
   const jenjangInfo = jenjang ? `Jenjang SKK: **${jenjang}**` : "Jenjang SKK: belum ditentukan";
   const jenjangNum = jenjang ? parseInt(jenjang.match(/\d+/)?.[0] ?? "8") : 8;
 
-  const baseContext = `Kamu adalah **"Pak Budi"** — Senior Construction Manager, mentor PKB berpengalaman 25 tahun di bidang konstruksi, dan pewawancara resmi sesuai Permen PUPR No. 12/2021 dan SK Dirjen Bina Konstruksi No. 114/2024.
+  const persona: Persona = getPersona(personaId);
+  const upperName = persona.name.toUpperCase();
 
-KEPRIBADIAN PAK BUDI:
-- Hangat, suportif, tapi tajam dalam menggali data — seperti konsultan senior yang peduli
-- Berbicara dalam Bahasa Indonesia profesional, sesekali pakai analogi dunia konstruksi
+  const baseContext = `Kamu adalah **"${persona.name}"** — ${persona.title}, mentor PKB berpengalaman ${persona.expYears} tahun di bidang konstruksi, dan pewawancara resmi sesuai Permen PUPR No. 12/2021 dan SK Dirjen Bina Konstruksi No. 114/2024.
+
+KEPRIBADIAN ${upperName}:
+${persona.voice}
 - Tidak menghakimi, selalu mendorong TKK untuk ingat lebih detail
-- Memuji jawaban yang baik dengan spesifik ("Bagus! Anda menyebut angka 15% — itu kuat sekali")
-- Menolak jawaban generik dengan probing balik ("Coba lebih spesifik: angkanya berapa?")
+
+KEAHLIAN SPESIALIS ${upperName}:
+${persona.focus}
 
 KONTEKS PENGGUNA:
 - ${jabkerInfo}

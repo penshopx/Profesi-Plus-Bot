@@ -7,10 +7,32 @@ export interface Conversation {
   model: string;
   jabker: string | null;
   jenjang: string | null;
+  personaId: string;
   phase: string;
   exumContent: string | null;
   evidenceCount: number;
   createdAt: string;
+}
+
+export interface Persona {
+  id: string;
+  name: string;
+  title: string;
+  tagline: string;
+  expYears: number;
+  klasifikasi: string[];
+  icon: string;
+  accent: string;
+}
+
+export async function listPersonas(): Promise<{ personas: Persona[]; defaultPersonaId: string }> {
+  const r = await fetch(`${BASE}/personas`);
+  return r.json();
+}
+
+export async function recommendPersona(jabker: string): Promise<{ personaId: string; klasifikasi: string | null; matched: boolean }> {
+  const r = await fetch(`${BASE}/personas/recommend?jabker=${encodeURIComponent(jabker)}`);
+  return r.json();
 }
 
 export interface ModelOption {
@@ -89,6 +111,7 @@ export async function createConversation(data: {
   model?: string;
   jabker?: string;
   jenjang?: string;
+  personaId?: string;
 }): Promise<Conversation> {
   const r = await fetch(`${BASE}/chat/conversations`, {
     method: "POST",

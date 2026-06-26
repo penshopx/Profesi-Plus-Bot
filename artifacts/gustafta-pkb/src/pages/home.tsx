@@ -1,8 +1,22 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Package, Search, X, Cpu } from "lucide-react";
-import { listConversations, createConversation, deleteConversation, fetchJabkerList, listModels, type Conversation } from "@/lib/api";
+import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Package, Search, X, Cpu, Sparkles, HardHat, DraftingCompass, Building2, ShieldCheck, Cog, Droplets, ClipboardList, Users, type LucideIcon } from "lucide-react";
+import { listConversations, createConversation, deleteConversation, fetchJabkerList, listModels, listPersonas, recommendPersona, type Conversation } from "@/lib/api";
+
+const PERSONA_ICONS: Record<string, LucideIcon> = {
+  HardHat, DraftingCompass, Building2, ShieldCheck, Cog, Droplets, ClipboardList,
+};
+
+const PERSONA_ACCENTS: Record<string, string> = {
+  blue: "from-blue-500 to-cyan-500",
+  rose: "from-rose-500 to-pink-500",
+  amber: "from-amber-500 to-orange-500",
+  emerald: "from-emerald-500 to-teal-500",
+  violet: "from-violet-500 to-purple-500",
+  cyan: "from-cyan-500 to-sky-500",
+  indigo: "from-indigo-500 to-blue-500",
+};
 
 const MODES = [
   {
@@ -52,8 +66,24 @@ export default function Home() {
   const [jabker, setJabker] = useState("");
   const [jenjang, setJenjang] = useState("");
   const [model, setModel] = useState("gpt-4o");
+  const [personaId, setPersonaId] = useState("");
   const [showJabkerDropdown, setShowJabkerDropdown] = useState(false);
   const jabkerRef = useRef<HTMLDivElement>(null);
+
+  const { data: personaData } = useQuery({
+    queryKey: ["personas"],
+    queryFn: listPersonas,
+    staleTime: 60 * 60 * 1000,
+  });
+  const personas = personaData?.personas ?? [];
+
+  const { data: recommendation } = useQuery({
+    queryKey: ["personaRecommend", jabker],
+    queryFn: () => recommendPersona(jabker),
+    enabled: jabker.trim().length > 2,
+    staleTime: 10 * 60 * 1000,
+  });
+  const recommendedId = recommendation?.personaId ?? personaData?.defaultPersonaId ?? "pak-budi";
 
   const { data: jabkerList = [] } = useQuery({
     queryKey: ["jabkerList"],
@@ -98,6 +128,7 @@ export default function Home() {
         model,
         jabker,
         jenjang,
+        ...(personaId ? { personaId } : {}),
       }),
     onSuccess: (conv) => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
@@ -441,6 +472,71 @@ export default function Home() {
                     }
                     return null;
                   })()}
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-foreground flex items-center gap-1.5 mb-1.5">
+                    <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                    Pewawancara Spesialis
+                  </label>
+                  <p className="text-xs text-muted-foreground mb-2.5">
+                    Pilih pendamping AI sesuai bidang Anda. Setiap spesialis menggali pengalaman dengan keahlian dan gaya berbeda.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      data-testid="persona-option-auto"
+                      onClick={() => setPersonaId("")}
+                      className={`text-left rounded-2xl border-2 p-3.5 transition-all ${personaId === "" ? "border-primary ring-2 ring-primary/20 bg-primary/5" : "border-border hover:border-muted-foreground/40 bg-card"}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shrink-0">
+                          <Sparkles className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="font-semibold text-foreground text-sm">Otomatis (Disarankan)</span>
+                          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                            {(() => {
+                              const rec = personas.find((p) => p.id === recommendedId);
+                              return rec ? `Sistem memilih ${rec.name} untuk jabker Anda.` : "Sistem memilih spesialis terbaik dari jabker Anda.";
+                            })()}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+
+                    {personas.map((p) => {
+                      const Icon = PERSONA_ICONS[p.icon] ?? HardHat;
+                      const active = personaId === p.id;
+                      const isRecommended = p.id === recommendedId;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          data-testid={`persona-option-${p.id}`}
+                          onClick={() => setPersonaId(p.id)}
+                          className={`text-left rounded-2xl border-2 p-3.5 transition-all ${active ? "border-primary ring-2 ring-primary/20 bg-primary/5" : "border-border hover:border-muted-foreground/40 bg-card"}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${PERSONA_ACCENTS[p.accent] ?? PERSONA_ACCENTS.blue} flex items-center justify-center shrink-0`}>
+                              <Icon className="w-4 h-4 text-white" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold text-foreground text-sm">{p.name}</span>
+                                {isRecommended && (
+                                  <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">
+                                    Sesuai
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{p.tagline}</p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
