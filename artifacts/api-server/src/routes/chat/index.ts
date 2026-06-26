@@ -1,30 +1,67 @@
-import { Router, type IRouter } from "express";
-import { eq, asc, count } from "drizzle-orm";
-import { db, conversations, messages, evidenceItems } from "@workspace/db";
+import { Router, type IRouter, type Request, type Response } from "express";
+import { eq, and, asc, count, inArray } from "drizzle-orm";
+import { db, conversations, messages, evidenceItems, type Conversation } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL } from "../../lib/llm";
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
 import { buildKnowledgeContext } from "../../lib/knowledge-base";
+import { requireAuth } from "../../middlewares/auth";
 
 const router: IRouter = Router();
 
-// ─── Models ───────────────────────────────────────────────────────────────────
+// ─── Models (public: no data, no cost) ──────────────────────────────────────────
 
 router.get("/chat/models", async (_req, res): Promise<void> => {
   res.json({ models: listModels(), defaultModel: DEFAULT_MODEL });
 });
 
+// All /chat routes below require authentication. Scoped to the "/chat" prefix so
+// this middleware does not run for other routers mounted after chat at the app root.
+router.use("/chat", requireAuth);
+
+/**
+ * Load a conversation only if it belongs to the authenticated user.
+ * Returns the conversation, or null after sending a 404 response (404 — not 403 —
+ * to avoid leaking the existence of other users' conversations).
+ */
+async function loadOwnedConversation(
+  req: Request,
+  res: Response,
+  id: number,
+): Promise<Conversation | null> {
+  if (Number.isNaN(id)) {
+    res.status(404).json({ error: "Conversation not found" });
+    return null;
+  }
+  const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
+  if (!conv || conv.userId !== req.dbUser!.id) {
+    res.status(404).json({ error: "Conversation not found" });
+    return null;
+  }
+  return conv;
+}
+
 // ─── Conversations ────────────────────────────────────────────────────────────
 
 router.get("/chat/conversations", async (req, res): Promise<void> => {
-  const rows = await db.select().from(conversations).orderBy(asc(conversations.createdAt));
-  const counts = await db
-    .select({ conversationId: evidenceItems.conversationId, count: count() })
-    .from(evidenceItems)
-    .groupBy(evidenceItems.conversationId);
+  const rows = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.userId, req.dbUser!.id))
+    .orderBy(asc(conversations.createdAt));
+  const ids = rows.map((r: Conversation) => r.id);
   const countMap: Record<number, number> = {};
-  counts.forEach((c) => { countMap[c.conversationId] = Number(c.count); });
-  res.json(rows.map((r) => ({ ...r, evidenceCount: countMap[r.id] ?? 0 })));
+  if (ids.length) {
+    const counts = await db
+      .select({ conversationId: evidenceItems.conversationId, count: count() })
+      .from(evidenceItems)
+      .where(inArray(evidenceItems.conversationId, ids))
+      .groupBy(evidenceItems.conversationId);
+    counts.forEach((c: { conversationId: number; count: number }) => {
+      countMap[c.conversationId] = Number(c.count);
+    });
+  }
+  res.json(rows.map((r: Conversation) => ({ ...r, evidenceCount: countMap[r.id] ?? 0 })));
 });
 
 router.post("/chat/conversations", async (req, res): Promise<void> => {
@@ -36,15 +73,15 @@ router.post("/chat/conversations", async (req, res): Promise<void> => {
   const selectedModel = typeof model === "string" && isKnownModel(model) ? model : DEFAULT_MODEL;
   const [conv] = await db
     .insert(conversations)
-    .values({ title, mode, model: selectedModel, jabker, jenjang, phase: "profiling" })
+    .values({ title, mode, model: selectedModel, jabker, jenjang, phase: "profiling", userId: req.dbUser!.id })
     .returning();
   res.status(201).json(conv);
 });
 
 router.get("/chat/conversations/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
-  const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
-  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+  const conv = await loadOwnedConversation(req, res, id);
+  if (!conv) return;
   const msgs = await db.select().from(messages).where(eq(messages.conversationId, id)).orderBy(asc(messages.createdAt));
   const evidence = await db.select().from(evidenceItems).where(eq(evidenceItems.conversationId, id)).orderBy(asc(evidenceItems.createdAt));
   res.json({ ...conv, messages: msgs, evidence });
@@ -57,19 +94,21 @@ router.patch("/chat/conversations/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: "title is required" });
     return;
   }
+  const owned = await loadOwnedConversation(req, res, id);
+  if (!owned) return;
   const [conv] = await db
     .update(conversations)
     .set({ title: title.trim() })
     .where(eq(conversations.id, id))
     .returning();
-  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
   res.json(conv);
 });
 
 router.delete("/chat/conversations/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
-  const [conv] = await db.delete(conversations).where(eq(conversations.id, id)).returning();
-  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+  const owned = await loadOwnedConversation(req, res, id);
+  if (!owned) return;
+  await db.delete(conversations).where(eq(conversations.id, id));
   res.sendStatus(204);
 });
 
@@ -77,6 +116,8 @@ router.delete("/chat/conversations/:id", async (req, res): Promise<void> => {
 
 router.get("/chat/conversations/:id/evidence", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
+  const owned = await loadOwnedConversation(req, res, id);
+  if (!owned) return;
   const items = await db
     .select()
     .from(evidenceItems)
@@ -95,8 +136,8 @@ router.post("/chat/conversations/:id/evidence", async (req, res): Promise<void> 
     res.status(400).json({ error: "type and title are required" });
     return;
   }
-  const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
-  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+  const conv = await loadOwnedConversation(req, res, id);
+  if (!conv) return;
 
   const socratiStr = socratiDialog ? JSON.stringify(socratiDialog) : null;
 
@@ -121,20 +162,29 @@ router.post("/chat/conversations/:id/evidence", async (req, res): Promise<void> 
 });
 
 router.delete("/chat/conversations/:id/evidence/:evidenceId", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
   const evidenceId = parseInt(req.params.evidenceId, 10);
-  const [item] = await db.delete(evidenceItems).where(eq(evidenceItems.id, evidenceId)).returning();
+  const owned = await loadOwnedConversation(req, res, id);
+  if (!owned) return;
+  const [item] = await db
+    .delete(evidenceItems)
+    .where(and(eq(evidenceItems.id, evidenceId), eq(evidenceItems.conversationId, id)))
+    .returning();
   if (!item) { res.status(404).json({ error: "Evidence not found" }); return; }
   res.sendStatus(204);
 });
 
 router.patch("/chat/conversations/:id/evidence/:evidenceId", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
   const evidenceId = parseInt(req.params.evidenceId, 10);
+  const owned = await loadOwnedConversation(req, res, id);
+  if (!owned) return;
   const { socratiDialog, socratiCompleted } = req.body;
   const socratiStr = socratiDialog ? JSON.stringify(socratiDialog) : null;
   const [item] = await db
     .update(evidenceItems)
     .set({ socratiDialog: socratiStr, socratiCompleted: socratiCompleted === true })
-    .where(eq(evidenceItems.id, evidenceId))
+    .where(and(eq(evidenceItems.id, evidenceId), eq(evidenceItems.conversationId, id)))
     .returning();
   if (!item) { res.status(404).json({ error: "Evidence not found" }); return; }
   res.json(item);
@@ -144,6 +194,8 @@ router.patch("/chat/conversations/:id/evidence/:evidenceId", async (req, res): P
 
 router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
+  const owned = await loadOwnedConversation(req, res, id);
+  if (!owned) return;
   const msgs = await db.select().from(messages).where(eq(messages.conversationId, id)).orderBy(asc(messages.createdAt));
   res.json(msgs);
 });
@@ -157,8 +209,8 @@ router.post("/chat/conversations/:id/messages", async (req, res): Promise<void> 
     return;
   }
 
-  const [conv] = await db.select().from(conversations).where(eq(conversations.id, convId));
-  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+  const conv = await loadOwnedConversation(req, res, convId);
+  if (!conv) return;
 
   let llm: ReturnType<typeof getClientForModel>;
   try {
@@ -250,8 +302,8 @@ router.post("/chat/conversations/:id/messages", async (req, res): Promise<void> 
 
 router.post("/chat/conversations/:id/advance-phase", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
-  const [conv] = await db.select().from(conversations).where(eq(conversations.id, id));
-  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+  const conv = await loadOwnedConversation(req, res, id);
+  if (!conv) return;
 
   const phases = ["profiling", "context", "core_interview", "evidence", "synthesis", "done"];
   const currentIdx = phases.indexOf(conv.phase);
@@ -273,19 +325,20 @@ router.post("/chat/generate-exum", async (req, res): Promise<void> => {
     return;
   }
 
-  const [conv] = await db.select().from(conversations).where(eq(conversations.id, conversationId));
-  if (!conv) { res.status(404).json({ error: "Conversation not found" }); return; }
+  const convId = parseInt(String(conversationId), 10);
+  const conv = await loadOwnedConversation(req, res, convId);
+  if (!conv) return;
 
   const msgs = await db
     .select()
     .from(messages)
-    .where(eq(messages.conversationId, conversationId))
+    .where(eq(messages.conversationId, convId))
     .orderBy(asc(messages.createdAt));
 
   const evidence = await db
     .select()
     .from(evidenceItems)
-    .where(eq(evidenceItems.conversationId, conversationId))
+    .where(eq(evidenceItems.conversationId, convId))
     .orderBy(asc(evidenceItems.createdAt));
 
   const transcript = msgs

@@ -79,7 +79,7 @@ export interface SkkUnitsResponse {
 }
 
 export async function listConversations(): Promise<Conversation[]> {
-  const r = await fetch(`${BASE}/chat/conversations`);
+  const r = await fetch(`${BASE}/chat/conversations`, { credentials: "include" });
   return r.json();
 }
 
@@ -93,13 +93,14 @@ export async function createConversation(data: {
   const r = await fetch(`${BASE}/chat/conversations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(data),
   });
   return r.json();
 }
 
 export async function getConversation(id: number): Promise<ConversationWithMessages> {
-  const r = await fetch(`${BASE}/chat/conversations/${id}`);
+  const r = await fetch(`${BASE}/chat/conversations/${id}`, { credentials: "include" });
   return r.json();
 }
 
@@ -107,13 +108,14 @@ export async function updateConversation(id: number, data: { title: string }): P
   const r = await fetch(`${BASE}/chat/conversations/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(data),
   });
   return r.json();
 }
 
 export async function deleteConversation(id: number): Promise<void> {
-  await fetch(`${BASE}/chat/conversations/${id}`, { method: "DELETE" });
+  await fetch(`${BASE}/chat/conversations/${id}`, { method: "DELETE", credentials: "include" });
 }
 
 // ─── SKK ──────────────────────────────────────────────────────────────────────
@@ -132,7 +134,7 @@ export async function fetchJabkerList(): Promise<string[]> {
 // ─── Evidence ─────────────────────────────────────────────────────────────────
 
 export async function listEvidence(conversationId: number): Promise<EvidenceItem[]> {
-  const r = await fetch(`${BASE}/chat/conversations/${conversationId}/evidence`);
+  const r = await fetch(`${BASE}/chat/conversations/${conversationId}/evidence`, { credentials: "include" });
   return r.json();
 }
 
@@ -155,6 +157,7 @@ export async function createEvidence(
   const r = await fetch(`${BASE}/chat/conversations/${conversationId}/evidence`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(data),
   });
   return r.json();
@@ -163,6 +166,7 @@ export async function createEvidence(
 export async function deleteEvidence(conversationId: number, evidenceId: number): Promise<void> {
   await fetch(`${BASE}/chat/conversations/${conversationId}/evidence/${evidenceId}`, {
     method: "DELETE",
+    credentials: "include",
   });
 }
 
@@ -174,6 +178,7 @@ export async function patchEvidence(
   const r = await fetch(`${BASE}/chat/conversations/${conversationId}/evidence/${evidenceId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(data),
   });
   return r.json();
@@ -187,6 +192,7 @@ export async function generateExum(
   const r = await fetch(`${BASE}/chat/generate-exum`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ conversationId }),
   });
   return r.json();
@@ -196,6 +202,7 @@ export async function advancePhase(conversationId: number): Promise<{ phase: str
   const r = await fetch(`${BASE}/chat/conversations/${conversationId}/advance-phase`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
   });
   if (!r.ok) throw new Error("Cannot advance phase");
   return r.json();
@@ -219,6 +226,7 @@ export function streamMessage(
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ content }),
           signal: controller.signal,
         }
