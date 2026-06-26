@@ -11,7 +11,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import {
   getConversation, streamMessage, generateExum, advancePhase, createEvidence, deleteEvidence, patchEvidence,
-  fetchSkkUnits, updateConversation, listPersonas,
+  fetchSkkUnits, updateConversation, listPersonas, PlanLimitError, SCALEV_CHECKOUT_URL,
   type Message, type EvidenceItem, type SkkUnit, type SocratiDialog,
 } from "@/lib/api";
 
@@ -1152,6 +1152,7 @@ export default function ChatPage() {
   const [showExumModal, setShowExumModal] = useState(false);
   const [phaseToast, setPhaseToast] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [paywall, setPaywall] = useState<{ msg: string; canUpgrade: boolean } | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
@@ -1278,6 +1279,12 @@ export default function ChatPage() {
       setExum(result.content);
       setCurrentPhase("done");
       qc.invalidateQueries({ queryKey: ["conversation", id] });
+    } catch (err) {
+      if (err instanceof PlanLimitError) {
+        setPaywall({ msg: err.message, canUpgrade: true });
+      } else {
+        setPaywall({ msg: "Gagal membuat Executive Summary. Silakan coba lagi.", canUpgrade: false });
+      }
     } finally {
       setGenerating(false);
     }
@@ -1494,6 +1501,33 @@ export default function ChatPage() {
           </button>
         )}
       </header>
+
+      {paywall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPaywall(null)}>
+          <div className="bg-card rounded-2xl border border-border max-w-sm w-full p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <Zap className="w-5 h-5 text-accent" />
+              <h3 className="font-semibold text-foreground">{paywall.canUpgrade ? "Upgrade ke Pro" : "Terjadi Kesalahan"}</h3>
+            </div>
+            <p className="text-sm text-muted-foreground leading-relaxed mb-5">{paywall.msg}</p>
+            <div className="flex gap-2">
+              {paywall.canUpgrade && SCALEV_CHECKOUT_URL && (
+                <a href={SCALEV_CHECKOUT_URL} target="_blank" rel="noopener noreferrer"
+                  className="flex-1 text-center bg-accent text-accent-foreground rounded-xl px-4 py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity">
+                  Upgrade ke Pro
+                </a>
+              )}
+              {paywall.canUpgrade && !SCALEV_CHECKOUT_URL && (
+                <span className="flex-1 text-center text-xs text-muted-foreground self-center">Hubungi admin untuk upgrade ke Pro.</span>
+              )}
+              <button onClick={() => setPaywall(null)}
+                className="flex-1 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors">
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Evidence Panel */}
       <EvidencePanel

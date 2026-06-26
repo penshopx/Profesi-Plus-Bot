@@ -5,3 +5,4 @@
 - [Express router.use auth leak](express-router-mounting.md) — bare router.use(requireAuth) in a root-mounted feature router 401s unrelated endpoints; scope to a path prefix like router.use("/chat", requireAuth).
 - [SKK competency mapping](competency-mapping-reference.md) — ground AI unit mapping in the static SKK definition (LLM verdicts are advisory; omitted units = gap; clamp SKPK 0–25).
 - [Agentic Persona](agentic-persona.md) — specialist interviewers layered on shared Gustafta methodology; persona drives interview only (Exum stays neutral); confidence-gate jabker→persona auto-recommend.
+- [Monetization (Scalev freemium)](monetization-scalev.md) — Pro=30d plan; manual Scalev webhook (no connector, payload unconfirmed); reserve Exum quota atomically (FOR UPDATE) & webhook idempotency must be insert-first.

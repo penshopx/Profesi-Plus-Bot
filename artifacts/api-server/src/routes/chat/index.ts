@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq, and, asc, count, inArray } from "drizzle-orm";
-import { db, conversations, messages, evidenceItems, type Conversation } from "@workspace/db";
+import { eq, and, asc, count, gte, inArray, sql } from "drizzle-orm";
+import { db, conversations, messages, evidenceItems, usageEvents, type Conversation } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL } from "../../lib/llm";
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
@@ -8,6 +8,7 @@ import { buildKnowledgeContext } from "../../lib/knowledge-base";
 import { buildProjectBrainContext } from "../../lib/project-brain";
 import { recommendPersona, isKnownPersona, isConfidentJabkerMatch, DEFAULT_PERSONA_ID } from "../../lib/personas";
 import { findJabkerGroup } from "../../lib/skk-data";
+import { isPro, FREE_EXUM_PER_MONTH, monthStart } from "../../lib/plans";
 import { requireAuth } from "../../middlewares/auth";
 
 const router: IRouter = Router();
@@ -83,6 +84,10 @@ router.post("/chat/conversations", async (req, res): Promise<void> => {
     const group = findJabkerGroup(jabker);
     const confident = group && isConfidentJabkerMatch(jabker, group.name);
     resolvedPersona = recommendPersona(confident ? group.klasifikasi : null).id;
+  }
+  // Specialist personas are a Pro feature — free users always get the generalist.
+  if (!isPro(req.dbUser!)) {
+    resolvedPersona = DEFAULT_PERSONA_ID;
   }
   const [conv] = await db
     .insert(conversations)
@@ -343,6 +348,48 @@ router.post("/chat/generate-exum", async (req, res): Promise<void> => {
   const conv = await loadOwnedConversation(req, res, convId);
   if (!conv) return;
 
+  // Freemium quota: free users may generate a limited number of Exum per month.
+  // We atomically reserve a usage slot up-front (locking the user row so two
+  // concurrent requests cannot both pass the check) and release it if generation
+  // fails, so a failed attempt never consumes the user's monthly quota.
+  let reservedUsageId: number | null = null;
+  if (!isPro(req.dbUser!)) {
+    const reservation = await db.transaction(async (tx) => {
+      // Serialize concurrent quota checks for this user.
+      await tx.execute(sql`SELECT id FROM users WHERE id = ${req.dbUser!.id} FOR UPDATE`);
+      const [usageRow] = await tx
+        .select({ value: count() })
+        .from(usageEvents)
+        .where(
+          and(
+            eq(usageEvents.userId, req.dbUser!.id),
+            eq(usageEvents.kind, "exum"),
+            gte(usageEvents.createdAt, monthStart()),
+          ),
+        );
+      const used = Number(usageRow?.value ?? 0);
+      if (used >= FREE_EXUM_PER_MONTH) {
+        return { allowed: false as const, used };
+      }
+      const [inserted] = await tx
+        .insert(usageEvents)
+        .values({ userId: req.dbUser!.id, kind: "exum" })
+        .returning({ id: usageEvents.id });
+      return { allowed: true as const, usageId: inserted.id };
+    });
+
+    if (!reservation.allowed) {
+      res.status(402).json({
+        error: "Batas pembuatan Executive Summary paket Gratis bulan ini telah tercapai. Upgrade ke Pro untuk pembuatan tanpa batas.",
+        code: "plan_limit",
+        limit: FREE_EXUM_PER_MONTH,
+        used: reservation.used,
+      });
+      return;
+    }
+    reservedUsageId = reservation.usageId;
+  }
+
   const msgs = await db
     .select()
     .from(messages)
@@ -389,6 +436,10 @@ router.post("/chat/generate-exum", async (req, res): Promise<void> => {
 
     res.json({ content, conversationId });
   } catch (err) {
+    // Release the reserved quota slot so a failed generation doesn't cost the user.
+    if (reservedUsageId !== null) {
+      await db.delete(usageEvents).where(eq(usageEvents.id, reservedUsageId)).catch(() => {});
+    }
     req.log.error({ err }, "Generate Exum error");
     res.status(500).json({ error: "Failed to generate Executive Summary" });
   }

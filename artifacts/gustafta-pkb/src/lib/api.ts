@@ -218,6 +218,11 @@ export async function generateExum(
     credentials: "include",
     body: JSON.stringify({ conversationId }),
   });
+  if (r.status === 402) {
+    const body = await r.json().catch(() => ({}));
+    throw new PlanLimitError(body.error ?? "Batas paket tercapai.", body.limit ?? 0, body.used ?? 0);
+  }
+  if (!r.ok) throw new Error("Gagal membuat Executive Summary");
   return r.json();
 }
 
@@ -314,6 +319,39 @@ export async function getMe(): Promise<DbUser> {
   if (!res.ok) throw new Error("Failed to fetch user");
   return res.json();
 }
+
+// ─── Plan & Monetisasi ─────────────────────────────────────────────────────────
+
+export interface PlanInfo {
+  plan: string;
+  isPro: boolean;
+  planExpiresAt: string | null;
+  exumLimit: number;
+  exumUsed: number;
+}
+
+export async function getMyPlan(): Promise<PlanInfo> {
+  const res = await fetch(`${BASE}/users/me/plan`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch plan");
+  return res.json();
+}
+
+/** Thrown by generateExum when the free-tier quota is exhausted (HTTP 402). */
+export class PlanLimitError extends Error {
+  readonly code = "plan_limit";
+  readonly limit: number;
+  readonly used: number;
+  constructor(message: string, limit: number, used: number) {
+    super(message);
+    this.name = "PlanLimitError";
+    this.limit = limit;
+    this.used = used;
+  }
+}
+
+/** Scalev checkout URL for upgrading to Pro (set via VITE_SCALEV_CHECKOUT_URL). */
+export const SCALEV_CHECKOUT_URL: string =
+  (import.meta.env.VITE_SCALEV_CHECKOUT_URL as string | undefined) ?? "";
 
 export async function listAllUsers(): Promise<DbUser[]> {
   const res = await fetch(`${BASE}/users`, { credentials: "include" });

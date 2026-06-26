@@ -1,12 +1,40 @@
 import { Router } from "express";
-import { db, users } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, users, usageEvents } from "@workspace/db";
+import { eq, and, count, gte } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { isPro, FREE_EXUM_PER_MONTH, monthStart } from "../lib/plans";
 
 const router = Router();
 
 router.get("/users/me", requireAuth, async (req, res) => {
   res.json(req.dbUser);
+});
+
+// Current plan + freemium usage for the authenticated user.
+router.get("/users/me/plan", requireAuth, async (req, res) => {
+  const u = req.dbUser!;
+  const pro = isPro(u);
+  let exumUsed = 0;
+  if (!pro) {
+    const [row] = await db
+      .select({ value: count() })
+      .from(usageEvents)
+      .where(
+        and(
+          eq(usageEvents.userId, u.id),
+          eq(usageEvents.kind, "exum"),
+          gte(usageEvents.createdAt, monthStart()),
+        ),
+      );
+    exumUsed = Number(row?.value ?? 0);
+  }
+  res.json({
+    plan: u.plan,
+    isPro: pro,
+    planExpiresAt: u.planExpiresAt,
+    exumLimit: FREE_EXUM_PER_MONTH,
+    exumUsed,
+  });
 });
 
 router.patch("/users/me/role", requireAuth, async (req, res) => {
