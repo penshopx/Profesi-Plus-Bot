@@ -11,7 +11,7 @@ const STATS = [
   { value: "108+", label: "Jabatan kerja & terus bertambah", icon: Briefcase },
   { value: "519", label: "Unit Kompetensi SKK", icon: Database },
   { value: "6", label: "Klasifikasi konstruksi", icon: Layers },
-  { value: "25", label: "SKPK per Executive Summary", icon: Award },
+  { value: "≤25", label: "SKPK per Executive Summary", icon: Award },
 ];
 
 const PROBLEMS = [
@@ -27,8 +27,8 @@ const PROBLEMS = [
   },
   {
     icon: Gauge,
-    title: "Risiko 25 SKPK melayang",
-    body: "Exum bernilai 25 SKPK sesuai Permen PUPR No. 12/2021. Dokumen yang lemah berarti angka kredit dan perpanjangan sertifikat ikut tertunda.",
+    title: "Risiko SKPK melayang",
+    body: "Exum bernilai hingga 25 SKPK (nilai maksimal) sesuai Permen PUPR No. 12/2021 — perolehan akhir tergantung hasil penilaian. Dokumen yang lemah berarti angka kredit dan perpanjangan sertifikat ikut tertunda.",
   },
 ];
 
@@ -176,7 +176,7 @@ export default function Landing() {
             </div>
             <h1 className="font-serif text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-[3.4rem]">
               Ubah pengalaman Anda menjadi{" "}
-              <span className="text-accent">Executive Summary PKB</span> bernilai 25 SKPK.
+              <span className="text-accent">Executive Summary PKB</span> bernilai hingga 25 SKPK.
             </h1>
             <p className="mt-6 max-w-xl text-base leading-relaxed text-sidebar-foreground/70 sm:text-lg">
               Lewat dialog dari video pembelajaran dan pengalaman proyek Anda, AI
@@ -221,7 +221,7 @@ export default function Landing() {
                   <span className="text-xs font-semibold">Executive Summary PKB</span>
                 </div>
                 <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">
-                  25 SKPK
+                  ≤25 SKPK
                 </span>
               </div>
               <div className="space-y-3 p-5">
@@ -495,7 +495,7 @@ export default function Landing() {
           <div className="relative grid items-center gap-10 lg:grid-cols-[1fr_1fr]">
             <div>
               <h2 className="font-serif text-3xl font-bold tracking-tight sm:text-4xl">
-                Setiap Exum bernilai <span className="text-accent">25 SKPK</span>
+                Setiap Exum bernilai hingga <span className="text-accent">25 SKPK</span>
               </h2>
               <p className="mt-4 max-w-md text-sidebar-foreground/70">
                 Executive Summary adalah salah satu jalur pemenuhan angka kredit

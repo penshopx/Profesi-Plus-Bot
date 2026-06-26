@@ -301,7 +301,7 @@ export default function Home() {
           <div className="flex items-center gap-2 p-3 rounded-xl bg-sidebar-accent/50">
             <Award className="w-4 h-4 text-yellow-400 shrink-0" />
             <p className="text-[11px] text-sidebar-foreground/70 leading-tight">
-              Exum bernilai <span className="font-bold text-yellow-400">25 SKPK</span> sesuai Permen PUPR No. 12/2021
+              Exum bernilai hingga <span className="font-bold text-yellow-400">25 SKPK</span> sesuai Permen PUPR No. 12/2021
             </p>
           </div>
         </div>
@@ -469,7 +469,7 @@ export default function Home() {
             </div>
             <h2 className="text-2xl font-bold text-foreground mb-2">Selamat Datang di Gustafta PKB</h2>
             <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-              Pewawancara mandiri untuk membantu Anda membuat <span className="font-semibold text-foreground">Executive Summary PKB</span> berkualitas tinggi (10-15 halaman, 25 SKPK) sesuai Permen PUPR No. 12 Tahun 2021.
+              Pewawancara mandiri untuk membantu Anda membuat <span className="font-semibold text-foreground">Executive Summary PKB</span> berkualitas tinggi (10-15 halaman, hingga 25 SKPK) sesuai Permen PUPR No. 12 Tahun 2021.
             </p>
             <button
               data-testid="button-get-started"

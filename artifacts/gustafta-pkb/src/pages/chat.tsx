@@ -1750,7 +1750,7 @@ export default function ChatPage() {
           </button>
         </div>
         <p className="text-center text-[11px] text-muted-foreground mt-2">
-          Dijawab oleh AI · Periksa kembali sebelum digunakan · Nilai Exum: 25 SKPK
+          Dijawab oleh AI · Periksa kembali sebelum digunakan · Nilai Exum: maks. 25 SKPK
         </p>
       </div>
     </div>
