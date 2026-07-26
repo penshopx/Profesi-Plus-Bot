@@ -1,67 +1,55 @@
 # Gustafta PKB Assistant
 
-AI chatbot berbasis "Pak Budi" yang memandu Tenaga Kerja Konstruksi (TKK) membuat dokumen Executive Summary (Exum) PKB berkualitas tinggi (25 SKPK, setara 10–15 halaman A4) sesuai Permen PUPR No. 12/2021 dan SK Dirjen Bina Konstruksi No. 114/2024.
-
-## Run & Operate
-
-- `pnpm --filter @workspace/api-server run dev` — jalankan API server (port 8080)
-- `pnpm --filter @workspace/gustafta-pkb run dev` — jalankan frontend (port dari env PORT)
-- `pnpm run typecheck` — typecheck penuh semua packages
-- `pnpm run build` — typecheck + build semua packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks dari OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push perubahan DB schema (dev only)
-- Required env: `DATABASE_URL`, `OPENAI_API_KEY`, `SESSION_SECRET`
+An AI-powered assistant for Indonesian construction workers (Tenaga Kerja Konstruksi) to compile their Continuing Professional Development (PKB) portfolios and map experience to SKK competency units.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- Frontend: React + Vite + Tailwind CSS + shadcn/ui patterns
-- API: Express 5 + SSE streaming untuk chat
-- DB: PostgreSQL + Drizzle ORM
-- AI: GPT-4o via OpenAI (`gpt-4o`, streaming untuk chat, non-streaming untuk Exum)
-- Validation: Zod (`zod/v4`), `drizzle-zod`
+- **Frontend**: React + Vite + Tailwind v4 + Wouter (`artifacts/gustafta-pkb`)
+- **Backend**: Express + TypeScript (`artifacts/api-server`)
+- **Database**: PostgreSQL via Drizzle ORM (`lib/db`)
+- **Auth**: Replit-managed Clerk (`@clerk/express` on server, `@clerk/react` on client)
+- **LLM**: Multi-provider via OpenAI SDK — OpenAI, DeepSeek, Qwen, Gemini
+- **Package manager**: pnpm workspace
 
-## Where things live
+## Running the app
 
-- `artifacts/gustafta-pkb/src/pages/chat.tsx` — halaman chat utama (~1500 baris, semua logika chat/evidence/exum)
-- `artifacts/gustafta-pkb/src/pages/home.tsx` — sidebar + form buat sesi baru
-- `artifacts/gustafta-pkb/src/lib/api.ts` — semua API calls (REST + SSE)
-- `artifacts/api-server/src/routes/chat/index.ts` — semua routes chat, streaming, evidence, generate Exum
-- `artifacts/api-server/src/lib/pkb-system-prompt.ts` — Pak Budi persona + fase instructions + evidence context builder
-- `artifacts/api-server/src/routes/skk.ts` — SKK unit lookup per jabker
-- `artifacts/api-server/src/lib/skk-data.ts` — data SKK lengkap SK DJBK 114/2024
-- `lib/db/src/schema/conversations.ts` — DB schema (conversations, messages, evidenceItems)
+Three workflows start automatically:
 
-## Architecture decisions
+| Workflow | Command |
+|---|---|
+| `artifacts/gustafta-pkb: web` | `pnpm --filter @workspace/gustafta-pkb run dev` |
+| `artifacts/api-server: API Server` | `pnpm --filter @workspace/api-server run dev` |
+| `artifacts/mockup-sandbox: Component Preview Server` | `pnpm --filter @workspace/mockup-sandbox run dev` |
 
-- **SSE streaming** untuk streaming respon Pak Budi agar terasa real-time; SSE dipilih karena lebih sederhana dari WebSocket untuk one-way stream
-- **`[[FASE_NAIK]]` marker** disisipkan GPT di akhir respons untuk sinyal auto-advance fase; di-strip sebelum disimpan/ditampilkan
-- **Dual `buildEvidenceContext`**: versi ringkas di `pkb-system-prompt.ts` (untuk streaming chat — hemat token), versi lengkap di `chat/index.ts` (untuk generate Exum — perlu detail penuh dialog sokratik)
-- **Auto-greeting**: sesi baru auto-send "Halo Pak Budi, saya siap memulai." agar Pak Budi langsung memperkenalkan diri tanpa user perlu tahu harus ketik apa
-- **Hybrid Exum structure**: mode "Hybrid" punya template 9-bagian yang menggabungkan pengalaman kerja + hasil belajar, berbeda dari mode A/B
+## Required secrets
 
-## Product
+| Secret | Purpose | Required? |
+|---|---|---|
+| `CLERK_SECRET_KEY` | Clerk server auth | ✅ Auto-provisioned |
+| `CLERK_PUBLISHABLE_KEY` | Clerk server auth | ✅ Auto-provisioned |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Clerk client auth | ✅ Auto-provisioned |
+| `OPENAI_API_KEY` | OpenAI GPT-4o models | At least one LLM key required |
+| `DEEPSEEK_API_KEY` | DeepSeek Chat/Reasoner | Optional |
+| `DASHSCOPE_API_KEY` | Qwen models (intl) | Optional |
+| `GEMINI_API_KEY` | Gemini 2.5 Flash/Pro | Optional |
+| `SESSION_SECRET` | Express session | ✅ Already set |
+| `SCALEV_WEBHOOK_SECRET` | Scalev payment webhooks | Optional |
 
-- **Trilogi Gustafta**: metodologi wawancara tiga-tahap (Serpihan → Dialog Sokratik → Sintesis)
-- **6 fase wawancara**: profiling → context → core_interview → evidence → synthesis → done
-- **Serpihan bukti PKB**: TKK menginput YouTube/webinar/diklatkerja atau pengalaman kerja; setiap serpihan melewati wizard 4-pertanyaan Dialog Sokratik
-- **Gap Analisis SKK**: mencocokkan unit SKK yang sudah ada buktinya vs. yang masih kosong per jabker
-- **Generate Exum**: GPT-4o menulis Exum 2500–4000 kata berdasarkan transkrip + serpihan + dialog sokratik
-- **Export**: Print PDF (popup), Word (.html), Markdown (.md), Salin ke clipboard
-- **Inline rename sesi**: klik judul header chat → edit langsung → Enter/blur untuk simpan
+## Key features
+
+- **Gustafta AI interviewer**: Dialog-based extraction of work experience from videos and project descriptions
+- **SKK competency mapping**: Maps evidence to SKK (Standar Kompetensi Konstruksi) units per Permen PUPR 12/2021
+- **Executive Summary PKB**: Generates 10–15 page portfolio summaries worth up to 25 SKPK
+- **Knowledge base**: Stores and retrieves domain documents
+- **Project brain**: Analyzes project experience for competency evidence
+- **Competency studio**: Manages and exports competency portfolios
+- **Freemium/Pro**: Scalev-based subscription (30-day Pro plan)
+
+## Database schema
+
+Managed with Drizzle. Push schema changes with:
+```bash
+pnpm --filter @workspace/db run push
+```
 
 ## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-- **Jangan restart kedua workflow sekaligus** — restart api-server saja setelah backend changes; vite HMR handle frontend otomatis
-- **Typecheck sebelum commit**: `pnpm --filter @workspace/gustafta-pkb run typecheck` && `pnpm --filter @workspace/api-server run typecheck`
-- **`evidence.length > 0` sebagai default expanded** untuk EvidencePanel — state initial value dihitung sekali saat mount, sudah benar karena evidence diload parent dulu
-- **`autoGreetedRef`** mencegah double-fire auto-greeting saat HMR; tetap perlu cek `conv.messages.length === 0`
-
-## Pointers
-
-- Lihat skill `pnpm-workspace` untuk struktur workspace, TypeScript setup, dan package details
-- Data SKK lengkap ada di `artifacts/api-server/src/lib/skk-data.ts`
