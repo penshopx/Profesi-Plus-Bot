@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,12 +16,34 @@ import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNetworkState } from '@/hooks/useNetworkState';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import {
   listStudioAnalyses,
   runStudioAnalysis,
   listJabkers,
   type StudioAnalysis,
 } from '@/lib/api';
+
+// ─── Offline cache ────────────────────────────────────────────────────────────
+
+const CACHE_KEY = 'GUSTAFTA_STUDIO_ANALYSES_CACHE';
+
+async function loadCachedAnalyses(): Promise<StudioAnalysis[]> {
+  try {
+    const raw = await AsyncStorage.getItem(CACHE_KEY);
+    return raw ? (JSON.parse(raw) as StudioAnalysis[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveCachedAnalyses(data: StudioAnalysis[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(data));
+  } catch {}
+}
 
 // ─── Readiness badge ─────────────────────────────────────────────────────────
 // Server uses Indonesian: "kuat" (strong), "cukup" (adequate), "lemah" (weak)
@@ -289,12 +311,24 @@ export default function StudioScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const isWeb = Platform.OS === 'web';
+  const { isOnline } = useNetworkState();
 
   const [pickerVisible, setPickerVisible] = useState(false);
   const [selectedJabker, setSelectedJabker] = useState('');
+  // Cached analyses loaded from AsyncStorage on mount; used as fallback when offline.
+  const [cachedAnalyses, setCachedAnalyses] = useState<StudioAnalysis[]>([]);
+  const [cacheLoaded, setCacheLoaded] = useState(false);
+
+  // Load cache once on mount so offline users see stale data immediately.
+  useEffect(() => {
+    loadCachedAnalyses().then((data) => {
+      setCachedAnalyses(data);
+      setCacheLoaded(true);
+    });
+  }, []);
 
   const {
-    data: analyses = [],
+    data: liveAnalyses,
     isLoading,
     isError,
     refetch,
@@ -302,7 +336,22 @@ export default function StudioScreen() {
   } = useQuery({
     queryKey: ['studio-analyses'],
     queryFn: listStudioAnalyses,
+    // Don't attempt a network fetch while the cache is loading or when offline.
+    enabled: cacheLoaded,
   });
+
+  // Persist successful fetches to AsyncStorage.
+  useEffect(() => {
+    if (liveAnalyses) {
+      setCachedAnalyses(liveAnalyses);
+      saveCachedAnalyses(liveAnalyses);
+    }
+  }, [liveAnalyses]);
+
+  // Show live data when available; fall back to cache when offline or on first load.
+  const analyses = liveAnalyses ?? cachedAnalyses;
+  // Flag to show a "you're viewing cached data" notice.
+  const showingCached = !liveAnalyses && cachedAnalyses.length > 0;
 
   const { mutate: runAnalysis, isPending: isAnalyzing, error: analyzeError } =
     useMutation({
@@ -322,6 +371,9 @@ export default function StudioScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* Offline banner */}
+      {!isOnline && <OfflineBanner />}
+
       {/* Header */}
       <View
         style={[
@@ -337,6 +389,16 @@ export default function StudioScreen() {
           Competency Studio
         </Text>
       </View>
+
+      {/* Stale-cache notice */}
+      {showingCached && (
+        <View style={[styles.cacheBanner, { backgroundColor: '#FFF7ED', borderBottomColor: '#FED7AA' }]}>
+          <Feather name="clock" size={12} color="#C2410C" />
+          <Text style={[styles.cacheBannerText, { color: '#C2410C' }]}>
+            Menampilkan data tersimpan — sambungkan internet untuk memperbarui
+          </Text>
+        </View>
+      )}
 
       <FlatList
         data={sorted}
@@ -534,5 +596,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'PlusJakartaSans_400Regular',
     textAlign: 'center',
+  },
+  cacheBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  cacheBannerText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    flex: 1,
+    lineHeight: 16,
   },
 });
