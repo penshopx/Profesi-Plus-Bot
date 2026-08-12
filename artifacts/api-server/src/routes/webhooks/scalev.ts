@@ -134,6 +134,7 @@ router.post("/webhooks/scalev", async (req, res): Promise<void> => {
       customerEmail: email,
       status,
       amount,
+      creditsGranted: quantity,
       raw: JSON.stringify(payload).slice(0, 8000),
     })
     .onConflictDoNothing({ target: payments.externalId })

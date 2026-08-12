@@ -13,6 +13,7 @@ export const payments = pgTable("payments", {
   customerEmail: text("customer_email").notNull().default(""),
   status: text("status").notNull().default(""),
   amount: integer("amount").notNull().default(0),
+  creditsGranted: integer("credits_granted").notNull().default(0),
   raw: text("raw").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

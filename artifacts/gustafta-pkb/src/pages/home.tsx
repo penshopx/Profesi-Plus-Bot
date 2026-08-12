@@ -215,6 +215,10 @@ export default function Home() {
             className="w-full flex items-center justify-center gap-1.5 bg-sidebar-accent/60 hover:bg-sidebar-accent text-sidebar-foreground rounded-xl px-3 py-2 text-xs font-medium transition-colors border border-sidebar-border/50">
             <TrendingUp className="w-3.5 h-3.5 text-amber-500" /> Marketplace PKB
           </a>
+          <a href="/kredits"
+            className="w-full flex items-center justify-center gap-1.5 bg-sidebar-accent/60 hover:bg-sidebar-accent text-sidebar-foreground rounded-xl px-3 py-2 text-xs font-medium transition-colors border border-sidebar-border/50">
+            <FileText className="w-3.5 h-3.5 text-emerald-500" /> Kredit Exum
+          </a>
         </div>
 
         {/* Credit balance */}

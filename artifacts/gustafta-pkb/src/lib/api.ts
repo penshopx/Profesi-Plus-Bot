@@ -350,6 +350,23 @@ export class PlanLimitError extends Error {
 export const SCALEV_CHECKOUT_URL: string =
   (import.meta.env.VITE_SCALEV_CHECKOUT_URL as string | undefined) ?? "";
 
+export interface PaymentRecord {
+  id: number;
+  provider: string;
+  externalId: string;
+  customerEmail: string;
+  status: string;
+  amount: number;
+  creditsGranted: number;
+  createdAt: string;
+}
+
+export async function getMyPayments(): Promise<PaymentRecord[]> {
+  const res = await fetch(`${BASE}/users/me/payments`, { credentials: "include" });
+  if (!res.ok) throw new Error("Failed to fetch payment history");
+  return res.json();
+}
+
 export async function listAllUsers(): Promise<DbUser[]> {
   const res = await fetch(`${BASE}/users`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch users");

@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, users, usageEvents, messages, conversations } from "@workspace/db";
-import { eq, and, count, gte } from "drizzle-orm";
+import { db, users, usageEvents, messages, conversations, payments } from "@workspace/db";
+import { eq, and, count, gte, desc } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { FREE_EXUM_LIFETIME } from "../lib/plans";
 
@@ -55,6 +55,27 @@ router.get("/users/me/usage", requireAuth, async (req, res) => {
   const remaining = Math.max(0, limit - used);
 
   res.json({ used, limit, remaining, windowMs: 60 * 60 * 1000 });
+});
+
+// Credit balance + purchase history for the authenticated user.
+router.get("/users/me/payments", requireAuth, async (req, res) => {
+  const uid = req.dbUser!.id;
+  const history = await db
+    .select({
+      id: payments.id,
+      provider: payments.provider,
+      externalId: payments.externalId,
+      customerEmail: payments.customerEmail,
+      status: payments.status,
+      amount: payments.amount,
+      creditsGranted: payments.creditsGranted,
+      createdAt: payments.createdAt,
+    })
+    .from(payments)
+    .where(eq(payments.userId, uid))
+    .orderBy(desc(payments.createdAt))
+    .limit(50);
+  res.json(history);
 });
 
 router.patch("/users/me/role", requireAuth, async (req, res) => {

@@ -20,6 +20,7 @@ import DashboardLembaga from "@/pages/dashboard/lembaga";
 import DashboardAdmin from "@/pages/dashboard/admin";
 import VideosPage from "@/pages/videos";
 import StudioPage from "@/pages/studio";
+import KreditsPage from "@/pages/kredits";
 
 const queryClient = new QueryClient();
 
@@ -164,6 +165,7 @@ function Router() {
       <Route path="/profil" component={ProfilPage} />
       <Route path="/quiz" component={QuizPage} />
       <Route path="/marketplace" component={MarketplacePage} />
+      <Route path="/kredits" component={KreditsPage} />
       <Route component={NotFound} />
     </Switch>
   );
