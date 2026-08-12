@@ -76,6 +76,18 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="marketplace"
+        options={{
+          title: 'Marketplace',
+          tabBarIcon: ({ color, size }) =>
+            isIOS ? (
+              <SymbolView name="play.square.stack.fill" tintColor={color} size={size} />
+            ) : (
+              <Feather name="shopping-bag" size={size} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profil',

@@ -532,6 +532,41 @@ export async function ajukanKegiatanPkb(id: number): Promise<{ success: boolean 
   return res.json();
 }
 
+// ─── Marketplace ──────────────────────────────────────────────────────────────
+
+export interface MarketplaceWatchRecord {
+  id: number;
+  courseId: string;
+  courseTitle?: string | null;
+  watchedAt: string;
+}
+
+export interface MarketplaceWatchedResponse {
+  watched: MarketplaceWatchRecord[];
+  watchedIds: string[];
+}
+
+export async function getWatchedCourses(): Promise<MarketplaceWatchedResponse> {
+  const res = await apiFetch('/marketplace/watched');
+  return res.json();
+}
+
+export async function markCourseWatched(
+  courseId: string,
+  courseTitle?: string,
+): Promise<void> {
+  await apiFetch(`/marketplace/${encodeURIComponent(courseId)}/watch`, {
+    method: 'POST',
+    body: JSON.stringify({ courseTitle }),
+  });
+}
+
+export async function unmarkCourseWatched(courseId: string): Promise<void> {
+  await apiFetch(`/marketplace/watched/${encodeURIComponent(courseId)}`, {
+    method: 'DELETE',
+  });
+}
+
 // ─── Credits & payments ───────────────────────────────────────────────────────
 
 export interface PaymentRecord {
