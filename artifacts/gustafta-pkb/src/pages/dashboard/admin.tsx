@@ -1005,6 +1005,44 @@ function QuizModal({
   const handleSave = async () => {
     if (!form.title.trim()) { setSaveError("Judul quiz wajib diisi."); return; }
     if (questions.length === 0) { setSaveError("Quiz harus memiliki minimal 1 soal."); return; }
+
+    // Validate each question
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      if (!q.text.trim()) {
+        setSaveError(`Soal #${i + 1}: teks soal tidak boleh kosong.`);
+        setExpandedQ(q.id);
+        return;
+      }
+      const blankOption = q.options.find((o) => !o.text.trim());
+      if (blankOption) {
+        setSaveError(`Soal #${i + 1}: opsi ${blankOption.id.toUpperCase()} tidak boleh kosong.`);
+        setExpandedQ(q.id);
+        return;
+      }
+    }
+
+    // Check for duplicate question IDs
+    const ids = questions.map((q) => q.id);
+    const hasDuplicateId = ids.some((id, idx) => ids.indexOf(id) !== idx);
+    if (hasDuplicateId) {
+      setSaveError("Terdapat ID soal yang duplikat. Silakan hapus dan tambahkan ulang soal yang bermasalah.");
+      return;
+    }
+
+    // Check for duplicate question text (trimmed, case-insensitive)
+    const normalizedTexts: string[] = [];
+    for (let i = 0; i < questions.length; i++) {
+      const normalized = questions[i].text.trim().replace(/\s+/g, " ").toLowerCase();
+      const dupIdx = normalizedTexts.indexOf(normalized);
+      if (dupIdx !== -1) {
+        setSaveError(`Soal #${i + 1} memiliki teks yang sama dengan soal #${dupIdx + 1} (duplikat).`);
+        setExpandedQ(questions[i].id);
+        return;
+      }
+      normalizedTexts.push(normalized);
+    }
+
     setSaving(true);
     setSaveError(null);
     try {

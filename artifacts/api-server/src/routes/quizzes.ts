@@ -139,14 +139,97 @@ router.get("/quizzes/admin/all", requireAuth, requireRole("admin"), async (req, 
   res.json(all);
 });
 
+/**
+ * Validate the questions array before saving.
+ *
+ * @param questions  - raw value from request body
+ * @param requireNonEmpty - when true (POST), rejects missing / non-array / empty arrays;
+ *                          when false (PATCH), a missing/undefined value is allowed
+ * Returns an error string or null.
+ */
+export function validateQuestions(questions: unknown, requireNonEmpty = false): string | null {
+  // undefined means the field was omitted (valid for PATCH); any other non-array is malformed
+  if (questions === undefined) {
+    if (requireNonEmpty) return "questions harus berupa array dan tidak boleh kosong.";
+    return null; // PATCH: field intentionally omitted
+  }
+  if (!Array.isArray(questions)) {
+    return "questions harus berupa array.";
+  }
+  if (requireNonEmpty && questions.length === 0) {
+    return "Quiz harus memiliki minimal 1 soal.";
+  }
+
+  const ids: string[] = [];
+  // Normalized texts for duplicate detection: trimmed + collapsed whitespace + lowercased
+  const normalizedTexts: string[] = [];
+
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    const num = i + 1;
+
+    // Guard: must be an object
+    if (typeof q !== "object" || q === null) {
+      return `Soal #${num}: format tidak valid.`;
+    }
+    const qObj = q as Record<string, unknown>;
+
+    // Question text
+    if (typeof qObj["text"] !== "string" || !qObj["text"].trim()) {
+      return `Soal #${num}: teks soal tidak boleh kosong.`;
+    }
+    const normalizedText = qObj["text"].trim().replace(/\s+/g, " ").toLowerCase();
+    const dupTextIdx = normalizedTexts.indexOf(normalizedText);
+    if (dupTextIdx !== -1) {
+      return `Soal #${num}: teks soal sama dengan soal #${dupTextIdx + 1} (duplikat).`;
+    }
+    normalizedTexts.push(normalizedText);
+
+    // Options
+    if (!Array.isArray(qObj["options"]) || (qObj["options"] as unknown[]).length === 0) {
+      return `Soal #${num}: pilihan jawaban tidak boleh kosong.`;
+    }
+    for (const opt of qObj["options"] as unknown[]) {
+      if (typeof opt !== "object" || opt === null) {
+        return `Soal #${num}: format opsi tidak valid.`;
+      }
+      const optObj = opt as Record<string, unknown>;
+      if (typeof optObj["text"] !== "string" || !optObj["text"].trim()) {
+        const optId = typeof optObj["id"] === "string" ? optObj["id"].toUpperCase() : "?";
+        return `Soal #${num}: opsi ${optId} tidak boleh kosong.`;
+      }
+    }
+
+    // correctId
+    if (typeof qObj["correctId"] !== "string" || !qObj["correctId"]) {
+      return `Soal #${num}: jawaban benar belum dipilih.`;
+    }
+
+    // Duplicate IDs
+    if (typeof qObj["id"] === "string") {
+      if (ids.includes(qObj["id"])) {
+        return `Soal #${num}: ID soal "${qObj["id"]}" duplikat.`;
+      }
+      ids.push(qObj["id"]);
+    }
+  }
+  return null;
+}
+
 router.post("/quizzes", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const body = req.body as typeof quizzes.$inferInsert;
+  const qError = validateQuestions(body.questions, /* requireNonEmpty */ true);
+  if (qError) { res.status(400).json({ error: qError }); return; }
   const [quiz] = await db.insert(quizzes).values(body).returning();
   res.status(201).json(quiz);
 });
 
 router.patch("/quizzes/:id", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const body = req.body as Partial<typeof quizzes.$inferInsert>;
+  if (body.questions !== undefined) {
+    const qError = validateQuestions(body.questions, /* requireNonEmpty */ false);
+    if (qError) { res.status(400).json({ error: qError }); return; }
+  }
   const [updated] = await db
     .update(quizzes)
     .set({ ...body, updatedAt: new Date() })
