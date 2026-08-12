@@ -400,7 +400,15 @@ export async function createProjectBrainEntry(data: {
 
 export async function updateProjectBrainEntry(
   id: number,
-  data: Partial<Parameters<typeof createProjectBrainEntry>[0]>,
+  data: Partial<{
+    title: string;
+    description: string;
+    kind: string;
+    organization: string | null;
+    role: string | null;
+    period: string | null;
+    location: string | null;
+  }>,
 ): Promise<ProjectBrainEntry> {
   const res = await apiFetch(`/project-brain/${id}`, {
     method: 'PATCH',

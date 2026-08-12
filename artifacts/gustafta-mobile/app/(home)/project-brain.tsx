@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, Pressable, StyleSheet, ScrollView, TextInput,
   Modal, Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
+  FlatList, RefreshControl,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,6 +10,7 @@ import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import {
   listProjectBrain,
   createProjectBrainEntry,
@@ -93,7 +95,7 @@ function EntryCard({
 }
 
 const card = StyleSheet.create({
-  wrap: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 8 },
+  wrap: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 8, marginBottom: 12 },
   top: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   emoji: { fontSize: 22, lineHeight: 28 },
   title: { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', lineHeight: 20 },
@@ -273,11 +275,18 @@ export default function ProjectBrainScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const qc = useQueryClient();
+  const isWeb = Platform.OS === 'web';
 
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<ProjectBrainEntry | null>(null);
 
-  const { data: entries = [], isLoading } = useQuery({
+  const {
+    data: entries = [],
+    isLoading,
+    isError,
+    refetch,
+    isRefetching,
+  } = useQuery({
     queryKey: ['project-brain'],
     queryFn: listProjectBrain,
   });
@@ -306,13 +315,17 @@ export default function ProjectBrainScreen() {
       qc.invalidateQueries({ queryKey: ['project-brain'] });
       setShowForm(false);
       setEditTarget(null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
     onError: () => Alert.alert('Gagal', 'Tidak dapat menyimpan entri. Coba lagi.'),
   });
 
   const delMut = useMutation({
     mutationFn: (id: number) => deleteProjectBrainEntry(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['project-brain'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project-brain'] });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    },
     onError: () => Alert.alert('Gagal', 'Tidak dapat menghapus entri.'),
   });
 
@@ -327,10 +340,13 @@ export default function ProjectBrainScreen() {
     );
   }
 
+  const topPad = isWeb ? 67 : insets.top;
+  const bottomPad = isWeb ? 34 + 84 : 84 + insets.bottom;
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Header */}
-      <View style={[sc.header, { paddingTop: insets.top + 8, borderBottomColor: colors.border }]}>
+      <View style={[sc.header, { paddingTop: topPad + 8, borderBottomColor: colors.border, backgroundColor: colors.background }]}>
         <Pressable onPress={() => router.back()} style={{ padding: 4 }}>
           <Feather name="arrow-left" size={20} color={colors.mutedForeground} />
         </Pressable>
@@ -349,42 +365,70 @@ export default function ProjectBrainScreen() {
       </View>
 
       {/* List */}
-      {isLoading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
-      ) : entries.length === 0 ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 }}>
-          <Text style={{ fontSize: 40 }}>🧠</Text>
-          <Text style={[sc.title, { color: colors.foreground, textAlign: 'center' }]}>
-            Belum ada entri
-          </Text>
-          <Text style={[sc.sub, { color: colors.mutedForeground, textAlign: 'center' }]}>
-            Tambahkan pengalaman, proyek, atau keahlian Anda agar AI bisa memberikan saran yang lebih relevan.
-          </Text>
-          <Pressable
-            onPress={() => { setEditTarget(null); setShowForm(true); }}
-            style={({ pressed }) => [sc.addBtn, { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1, paddingHorizontal: 20 }]}
-          >
-            <Feather name="plus" size={16} color="#fff" />
-            <Text style={{ color: '#fff', fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 14 }}>Tambah Entri</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: insets.bottom + 24 }}
-        >
-          {entries.map((entry) => (
-            <EntryCard
-              key={entry.id}
-              entry={entry}
-              colors={colors}
-              onEdit={() => { setEditTarget(entry); setShowForm(true); }}
-              onDelete={() => confirmDelete(entry)}
-            />
-          ))}
-        </ScrollView>
-      )}
+      <FlatList
+        data={entries}
+        keyExtractor={(item) => String(item.id)}
+        contentContainerStyle={{ padding: 16, paddingBottom: bottomPad }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            tintColor={colors.primary}
+          />
+        }
+        renderItem={({ item: entry }) => (
+          <EntryCard
+            entry={entry}
+            colors={colors}
+            onEdit={() => { setEditTarget(entry); setShowForm(true); }}
+            onDelete={() => confirmDelete(entry)}
+          />
+        )}
+        ListHeaderComponent={
+          entries.length > 0 ? (
+            <View style={[sc.countBanner, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Feather name="database" size={14} color={colors.primary} />
+              <Text style={[sc.countText, { color: colors.mutedForeground }]}>
+                {entries.length} entri tersimpan
+              </Text>
+            </View>
+          ) : null
+        }
+        ListEmptyComponent={
+          isLoading ? (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 48 }}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : isError ? (
+            <View style={sc.emptyState}>
+              <Feather name="alert-circle" size={36} color={colors.destructive} />
+              <Text style={[sc.emptyTitle, { color: colors.destructive }]}>
+                Gagal memuat entri
+              </Text>
+              <Pressable onPress={() => refetch()} style={[sc.retryBtn, { borderColor: colors.border }]}>
+                <Text style={[sc.retryText, { color: colors.foreground }]}>Coba lagi</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={sc.emptyState}>
+              <Text style={{ fontSize: 40 }}>🧠</Text>
+              <Text style={[sc.emptyTitle, { color: colors.foreground, textAlign: 'center' }]}>
+                Belum ada entri
+              </Text>
+              <Text style={[sc.sub, { color: colors.mutedForeground, textAlign: 'center' }]}>
+                Tambahkan pengalaman, proyek, atau keahlian Anda agar AI bisa memberikan saran yang lebih relevan.
+              </Text>
+              <Pressable
+                onPress={() => { setEditTarget(null); setShowForm(true); }}
+                style={({ pressed }) => [sc.addBtn, { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1, paddingHorizontal: 20 }]}
+              >
+                <Feather name="plus" size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 14 }}>Tambah Entri</Text>
+              </Pressable>
+            </View>
+          )
+        }
+      />
 
       {/* Form modal */}
       <FormModal
@@ -407,4 +451,34 @@ const sc = StyleSheet.create({
   title: { fontSize: 18, fontFamily: 'PlusJakartaSans_700Bold' },
   sub: { fontSize: 12, fontFamily: 'PlusJakartaSans_400Regular', marginTop: 1 },
   addBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 4 },
+  countBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  countText: { fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular' },
+  emptyState: {
+    alignItems: 'center',
+    paddingTop: 48,
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    marginTop: 8,
+  },
+  retryBtn: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  retryText: { fontSize: 14, fontFamily: 'PlusJakartaSans_500Medium' },
 });

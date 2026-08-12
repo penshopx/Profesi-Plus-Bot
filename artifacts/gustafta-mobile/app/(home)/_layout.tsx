@@ -24,6 +24,13 @@ export default function HomeLayout() {
           animation: 'slide_from_right',
         }}
       />
+      <Stack.Screen
+        name="project-brain"
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      />
     </Stack>
   );
 }

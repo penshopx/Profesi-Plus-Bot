@@ -187,10 +187,10 @@ export default function ProfileScreen() {
               icon="award"
               label="Kredit Exum"
               value={
-                planData?.exumCredits !== undefined
-                  ? planData.exumCredits === 0 && planData.canGenerate
+                (planData as any)?.exumCredits !== undefined
+                  ? (planData as any).exumCredits === 0 && (planData as any).canGenerate
                     ? 'Sisa uji coba gratis'
-                    : `${planData.exumCredits} kredit`
+                    : `${(planData as any).exumCredits} kredit`
                   : '—'
               }
               colors={colors}
@@ -275,17 +275,22 @@ function InfoRow({
   label,
   value,
   colors,
+  chevron,
 }: {
   icon: string;
   label: string;
   value: string;
   colors: ReturnType<typeof import('@/hooks/useColors').useColors>;
+  chevron?: boolean;
 }) {
   return (
     <View style={[ir.row, { borderBottomColor: colors.border }]}>
       <Feather name={icon as any} size={16} color={colors.mutedForeground} />
       <Text style={[ir.label, { color: colors.mutedForeground }]}>{label}</Text>
       <Text style={[ir.value, { color: colors.foreground }]}>{value}</Text>
+      {chevron ? (
+        <Feather name="chevron-right" size={16} color={colors.mutedForeground} style={{ marginLeft: 4 }} />
+      ) : null}
     </View>
   );
 }
