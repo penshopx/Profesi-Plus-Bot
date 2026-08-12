@@ -7,7 +7,7 @@
  */
 
 import {
-  pgTable, serial, integer, text, date, timestamp, jsonb,
+  pgTable, serial, integer, text, date, timestamp, jsonb, boolean,
 } from "drizzle-orm/pg-core";
 import { users } from "./users";
 
@@ -16,9 +16,9 @@ import { users } from "./users";
 export const KEGIATAN_STATUS = [
   "draft",        // sedang diisi
   "lengkap",      // semua field wajib terisi
-  "diajukan",     // sudah dikirim ke asesor / ASKOM
-  "diverifikasi", // ASKOM sudah setuju — SKK alignment sesuai
-  "ditolak",      // ASKOM menolak — perlu perbaikan
+  "diajukan",     // sudah dikirim ke Asosiasi untuk verifikasi kelengkapan dokumen
+  "diverifikasi", // Asosiasi sudah menyatakan dokumen lengkap dan penyelenggara valid
+  "ditolak",      // Asosiasi menemukan kekurangan — perlu perbaikan
 ] as const;
 export type KegiatanStatus = (typeof KEGIATAN_STATUS)[number];
 
@@ -81,12 +81,12 @@ export const pkbActivities = pgTable("pkb_activities", {
   jenisPkb:        text("jenis_pkb"),                // "seminar" | "webinar" | "diklatkerja" | "workshop" | "kursus" | "mandiri"
   jpPkb:           integer("jp_pkb"),                // jam pelajaran / kredit PKB
 
-  // ── ASKOM Verification ─────────────────────────────────────────────────────
-  // ASKOM reviews whether the kegiatan's materi/modul aligns with the SKK
-  // (jabatan kerja + jenjang) — they do NOT comment on content quality.
-  askomNote:       text("askom_note"),               // ASKOM's SKK alignment comment
+  // ── Verification (formerly ASKOM — now Asosiasi) ──────────────────────────
+  // Asosiasi verifies document completeness (surat undangan, daftar hadir, foto)
+  // and organizer legitimacy (BNSP/LPJK-registered). SKK mapping is automated.
+  askomNote:       text("askom_note"),               // Verifier's note (kept as askomNote for BC)
   askomVerifiedAt: timestamp("askom_verified_at", { withTimezone: true }),
-  askomVerifiedBy: integer("askom_verified_by"),     // FK users.id of the verifying ASKOM
+  askomVerifiedBy: integer("askom_verified_by"),     // FK users.id of the Asosiasi verifier
 
   createdAt:       timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt:       timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -127,6 +127,33 @@ export const pkbActivityJourney = pgTable("pkb_activity_journey", {
   metadata:    jsonb("metadata"),                    // { filename?, skkCode?, field?, ... }
   createdAt:   timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// ─── Asosiasi checklist — verifikasi kelengkapan dokumen ─────────────────────
+// Asosiasi (bukan ASKOM) mengecek kelengkapan formal dokumen kegiatan PKB:
+//   1. Surat undangan ada dan valid
+//   2. Daftar hadir ada dan lengkap
+//   3. Foto dokumentasi ada
+//   4. Penyelenggara terdaftar (BNSP/LPJK-registered)
+// Output: checklist saja (bukan approve/reject konten) + catatan opsional.
+// Jika semua centang → status diverifikasi; ada yg kosong + catatan → ditolak.
+
+export const pkbActivityChecklist = pgTable("pkb_activity_checklist", {
+  id:                 serial("id").primaryKey(),
+  activityId:         integer("activity_id").notNull().references(() => pkbActivities.id, { onDelete: "cascade" }),
+  checkedBy:          integer("checked_by").references(() => users.id),
+
+  suratUndangan:      boolean("surat_undangan").notNull().default(false),
+  daftarHadir:        boolean("daftar_hadir").notNull().default(false),
+  foto:               boolean("foto").notNull().default(false),
+  penyelenggaraValid: boolean("penyelenggara_valid").notNull().default(false),
+  catatan:            text("catatan"),
+
+  checkedAt:          timestamp("checked_at", { withTimezone: true }),
+  createdAt:          timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt:          timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type PkbActivityChecklist = typeof pkbActivityChecklist.$inferSelect;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

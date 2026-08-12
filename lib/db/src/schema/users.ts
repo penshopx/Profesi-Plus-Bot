@@ -2,7 +2,7 @@ import { pgTable, serial, text, timestamp, integer, boolean } from "drizzle-orm/
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const ROLES = ["user", "instruktur", "lembaga_diklat", "askom", "admin"] as const;
+export const ROLES = ["user", "instruktur", "lembaga_diklat", "askom", "asosiasi", "admin"] as const;
 export type Role = (typeof ROLES)[number];
 
 export const PLANS = ["free", "pro"] as const;

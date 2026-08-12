@@ -529,6 +529,20 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
   const s = STATUS_META[full.status] ?? STATUS_META.draft;
   const SIcon = s.icon;
 
+  async function submit() {
+    setSubmitting(true);
+    try {
+      await apiFetch(`/kegiatan/${full.id}/ajukan`, { method: "POST" });
+      toast({ title: full.status === "ditolak" ? "Dokumentasi diajukan ulang ke Asosiasi" : "Dokumentasi berhasil diajukan ke Asosiasi" });
+      queryClient.invalidateQueries({ queryKey: ["kegiatan"] });
+      refetch();
+    } catch (err: unknown) {
+      toast({ title: "Gagal mengajukan", description: String(err), variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const [suggestingSkk, setSuggestingSkk] = useState(false);
   interface SkkSuggestion { skkCode: string; skkName: string; jabkerName?: string }
   const [skkSuggestions, setSkkSuggestions] = useState<SkkSuggestion[]>([]);
@@ -754,10 +768,12 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
             <Trash2 className="w-3.5 h-3.5" /> Hapus
           </button>
           <div className="flex gap-2">
-            {full.status === "lengkap" && (
-              <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5 font-medium flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Siap diverifikasi Asosiasi
-              </span>
+            {(full.status === "lengkap" || full.status === "ditolak") && (
+              <Button size="sm" onClick={submit} disabled={submitting}
+                className={full.status === "ditolak" ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"}>
+                {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
+                {full.status === "ditolak" ? "Ajukan Ulang" : "Ajukan ke Asosiasi"}
+              </Button>
             )}
           </div>
         </div>

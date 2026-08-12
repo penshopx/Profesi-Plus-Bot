@@ -18,7 +18,7 @@ import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import {
   listMyKegiatanPkb, createKegiatanPkb, updateKegiatanPkb, deleteKegiatanPkb,
-  updateKegiatanSkk,
+  updateKegiatanSkk, ajukanKegiatanPkb,
   type PkbActivity, type CreateKegiatanBody, type PkbSkkUnit,
 } from '@/lib/api';
 
@@ -487,6 +487,27 @@ function ActivityDetail({
   });
 
   const canEdit = activity.status !== 'diverifikasi';
+  const canSubmit = activity.status === 'lengkap' || activity.status === 'ditolak';
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit() {
+    setSubmitting(true);
+    try {
+      await ajukanKegiatanPkb(activity.id);
+      qc.invalidateQueries({ queryKey: ['kegiatan'] });
+      Alert.alert(
+        'Berhasil',
+        activity.status === 'ditolak'
+          ? 'Dokumentasi diajukan ulang ke Asosiasi.'
+          : 'Dokumentasi berhasil diajukan ke Asosiasi.',
+      );
+      onClose();
+    } catch (err) {
+      Alert.alert('Gagal', (err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -559,12 +580,25 @@ function ActivityDetail({
 
           {/* Actions */}
           <View style={{ gap: 10, marginTop: 16 }}>
-            {activity.status === 'lengkap' && (
-              <View style={[s.alertBox, { backgroundColor: '#ECFDF5', borderColor: '#6EE7B7' }]}>
-                <Text style={{ fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium', color: '#065F46', textAlign: 'center' }}>
-                  ✅ Dokumentasi lengkap — siap diverifikasi Asosiasi
-                </Text>
-              </View>
+            {canSubmit && (
+              <Pressable
+                onPress={handleSubmit}
+                disabled={submitting}
+                style={({ pressed }) => [
+                  s.btn,
+                  {
+                    backgroundColor: activity.status === 'ditolak' ? '#D97706' : '#059669',
+                    opacity: pressed || submitting ? 0.7 : 1,
+                    justifyContent: 'center',
+                  },
+                ]}
+              >
+                {submitting
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={s.btnText}>
+                      {activity.status === 'ditolak' ? '🔄 Ajukan Ulang ke Asosiasi' : '✅ Ajukan ke Asosiasi'}
+                    </Text>}
+              </Pressable>
             )}
             {canEdit && (
               <Pressable

@@ -16,7 +16,8 @@ const ROLE_LABELS: Record<string, string> = {
   user: "Peserta",
   instruktur: "Instruktur",
   lembaga_diklat: "Lembaga Diklat",
-  askom: "ASKOM",
+  askom: "Tim Verifikasi",
+  asosiasi: "Asosiasi",
   admin: "Admin",
 };
 
@@ -25,6 +26,7 @@ const ROLE_COLORS: Record<string, string> = {
   instruktur: "bg-emerald-50 text-emerald-600",
   lembaga_diklat: "bg-violet-50 text-violet-600",
   askom: "bg-orange-50 text-orange-600",
+  asosiasi: "bg-cyan-50 text-cyan-600",
   admin: "bg-amber-50 text-amber-600",
 };
 
@@ -87,7 +89,8 @@ export default function DashboardAdmin() {
     { label: "Total Video", value: (videos as any[]).length, icon: Video, color: "text-red-500 bg-red-50" },
     { label: "Instruktur", value: (users as any[]).filter((u) => u.role === "instruktur").length, icon: CheckCircle2, color: "text-emerald-500 bg-emerald-50" },
     { label: "Lembaga Diklat", value: (users as any[]).filter((u) => u.role === "lembaga_diklat").length, icon: MessageSquare, color: "text-violet-500 bg-violet-50" },
-    { label: "ASKOM", value: (users as any[]).filter((u) => u.role === "askom").length, icon: Award, color: "text-orange-500 bg-orange-50" },
+    { label: "Tim Verifikasi", value: (users as any[]).filter((u) => u.role === "askom").length, icon: Award, color: "text-orange-500 bg-orange-50" },
+    { label: "Asosiasi", value: (users as any[]).filter((u) => u.role === "asosiasi").length, icon: Award, color: "text-cyan-500 bg-cyan-50" },
   ];
 
   return (
