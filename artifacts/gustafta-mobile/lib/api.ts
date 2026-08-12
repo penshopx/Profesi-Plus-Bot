@@ -810,3 +810,81 @@ export async function claimPayment(
   }
   return res.json();
 }
+
+// ─── Quiz Admin ────────────────────────────────────────────────────────────────
+
+export type QuizAdminSummary = {
+  id: number;
+  title: string;
+  description?: string | null;
+  jabker?: string | null;
+  skkUnitCode?: string | null;
+  skkUnitName?: string | null;
+  quizType: 'learning' | 'proficiency';
+  passingScore: number;
+  isActive: boolean;
+  questions?: unknown[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type QuizQuestionAdmin = {
+  id: string;
+  text: string;
+  options: { id: string; text: string }[];
+  correctId: string;
+  explanation?: string;
+};
+
+export type GeneratedQuestionsResult = {
+  questions: QuizQuestionAdmin[];
+  suggestedTitle: string;
+};
+
+export async function listAdminQuizzes(): Promise<QuizAdminSummary[]> {
+  const res = await apiFetch('/quizzes/admin/all');
+  return res.json();
+}
+
+export async function adminToggleQuiz(
+  id: number,
+  isActive: boolean,
+): Promise<QuizAdminSummary> {
+  const res = await apiFetch(`/quizzes/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isActive }),
+  });
+  return res.json();
+}
+
+export async function adminGenerateQuestions(params: {
+  jabker: string;
+  skkUnitCode?: string;
+  skkUnitName?: string;
+  quizType?: 'learning' | 'proficiency';
+  count?: number;
+}): Promise<GeneratedQuestionsResult> {
+  const res = await apiFetch('/quizzes/generate', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+  return res.json();
+}
+
+export async function adminCreateQuiz(data: {
+  title: string;
+  description?: string;
+  jabker?: string;
+  skkUnitCode?: string;
+  skkUnitName?: string;
+  quizType: 'learning' | 'proficiency';
+  passingScore: number;
+  questions: QuizQuestionAdmin[];
+  isActive?: boolean;
+}): Promise<QuizAdminSummary> {
+  const res = await apiFetch('/quizzes', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}

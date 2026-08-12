@@ -31,6 +31,13 @@ export default function HomeLayout() {
           animation: 'slide_from_right',
         }}
       />
+      <Stack.Screen
+        name="kelola-quiz"
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      />
     </Stack>
   );
 }

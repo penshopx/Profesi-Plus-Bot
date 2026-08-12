@@ -14,7 +14,7 @@ import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { getMyPlan, listProjectBrain, getMyAplProfile, getMyAplClaims } from '@/lib/api';
+import { getMyPlan, listProjectBrain, getMyAplProfile, getMyAplClaims, getMe } from '@/lib/api';
 import { buildAplHtml } from '@/lib/apl-html';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -124,6 +124,14 @@ export default function ProfileScreen() {
     queryFn: getMyAplClaims,
     retry: 1,
   });
+
+  const { data: meData } = useQuery({
+    queryKey: ['me'],
+    queryFn: getMe,
+    retry: 1,
+  });
+
+  const isAdmin = meData?.role === 'admin';
 
   const handleSignOut = async () => {
     await signOut();
@@ -311,6 +319,30 @@ export default function ProfileScreen() {
         </Text>
         <Feather name="chevron-right" size={15} color={colors.primary} />
       </Pressable>
+
+      {/* Admin: Kelola Quiz */}
+      {isAdmin ? (
+        <>
+          <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
+            Admin
+          </Text>
+          <Pressable
+            onPress={() => router.push('/(home)/kelola-quiz' as any)}
+            style={({ pressed }) => [
+              styles.infoCard,
+              { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <InfoRow
+              icon="list"
+              label="Kelola Quiz"
+              value="Buka →"
+              colors={colors}
+              chevron
+            />
+          </Pressable>
+        </>
+      ) : null}
 
       {/* Info */}
       <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
