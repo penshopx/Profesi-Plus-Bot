@@ -201,6 +201,65 @@ export async function getMyAttempts(): Promise<QuizAttempt[]> {
   return (await f("/quizzes/my-attempts")).json();
 }
 
+// ─── Admin Quiz Management ────────────────────────────────────────────────────
+
+export interface QuizQuestionAdmin {
+  id: string;
+  text: string;
+  options: { id: string; text: string }[];
+  correctId: string;
+  explanation?: string;
+}
+
+export interface QuizFullAdmin extends QuizSummary {
+  questions: QuizQuestionAdmin[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface QuizCreateInput {
+  title: string;
+  description?: string;
+  jabker?: string;
+  skkUnitCode?: string;
+  skkUnitName?: string;
+  quizType: "learning" | "proficiency";
+  passingScore: number;
+  questions?: QuizQuestionAdmin[];
+  isActive?: boolean;
+}
+
+export interface GenerateQuestionsResult {
+  questions: QuizQuestionAdmin[];
+  suggestedTitle: string;
+}
+
+export async function listAdminQuizzes(): Promise<QuizFullAdmin[]> {
+  return (await f("/quizzes/admin/all")).json();
+}
+
+export async function adminCreateQuiz(data: QuizCreateInput): Promise<QuizFullAdmin> {
+  return (await f("/quizzes", { method: "POST", body: JSON.stringify(data) })).json();
+}
+
+export async function adminUpdateQuiz(id: number, data: Partial<QuizCreateInput>): Promise<QuizFullAdmin> {
+  return (await f(`/quizzes/${id}`, { method: "PATCH", body: JSON.stringify(data) })).json();
+}
+
+export async function adminDeleteQuiz(id: number): Promise<void> {
+  await f(`/quizzes/${id}`, { method: "DELETE" });
+}
+
+export async function adminGenerateQuestions(params: {
+  jabker: string;
+  skkUnitCode?: string;
+  skkUnitName?: string;
+  quizType?: "learning" | "proficiency";
+  count?: number;
+}): Promise<GenerateQuestionsResult> {
+  return (await f("/quizzes/generate", { method: "POST", body: JSON.stringify(params) })).json();
+}
+
 // ─── Exum Outline ─────────────────────────────────────────────────────────────
 
 export async function getExumOutline(conversationId: number): Promise<ExumOutline> {

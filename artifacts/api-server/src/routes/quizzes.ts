@@ -133,6 +133,12 @@ router.post("/quizzes/:id/attempt", requireAuth, async (req, res): Promise<void>
 
 // ─── Admin endpoints ──────────────────────────────────────────────────────────
 
+/** List ALL quizzes (including inactive) for admin management */
+router.get("/quizzes/admin/all", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
+  const all = await db.select().from(quizzes).orderBy(desc(quizzes.updatedAt));
+  res.json(all);
+});
+
 router.post("/quizzes", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const body = req.body as typeof quizzes.$inferInsert;
   const [quiz] = await db.insert(quizzes).values(body).returning();
