@@ -211,6 +211,10 @@ export default function Home() {
               <Award className="w-3.5 h-3.5" /> Quiz
             </a>
           </div>
+          <a href="/kegiatan"
+            className="w-full flex items-center justify-center gap-1.5 bg-sidebar-accent/60 hover:bg-sidebar-accent text-sidebar-foreground rounded-xl px-3 py-2 text-xs font-medium transition-colors border border-sidebar-border/50">
+            <ClipboardList className="w-3.5 h-3.5 text-blue-500" /> Kegiatan PKB
+          </a>
           <a href="/marketplace"
             className="w-full flex items-center justify-center gap-1.5 bg-sidebar-accent/60 hover:bg-sidebar-accent text-sidebar-foreground rounded-xl px-3 py-2 text-xs font-medium transition-colors border border-sidebar-border/50">
             <TrendingUp className="w-3.5 h-3.5 text-amber-500" /> Marketplace PKB

@@ -14,6 +14,8 @@ import transcribeRouter from "./transcribe";
 import profilesRouter from "./profiles";
 import quizzesRouter from "./quizzes";
 import outlinesRouter from "./outlines";
+import kegiatanRouter from "./kegiatan";
+import storageRouter from "./storage";
 
 const router: IRouter = Router();
 
@@ -32,5 +34,7 @@ router.use(transcribeRouter);
 router.use(profilesRouter);
 router.use(quizzesRouter);
 router.use(outlinesRouter);
+router.use(kegiatanRouter);
+router.use(storageRouter);
 
 export default router;

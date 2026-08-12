@@ -1,4 +1,4 @@
-import { db, conversations, evidenceItems, competencyAnalysis, quizAttempts, quizzes, profiles, competencyClaims } from "@workspace/db";
+import { db, conversations, evidenceItems, competencyAnalysis, quizAttempts, quizzes, profiles, competencyClaims, pkbActivities, pkbActivitySkk } from "@workspace/db";
 import type { CompetencyAnalysisResult } from "@workspace/db";
 import { and, eq, isNotNull, ne, desc, asc, sql } from "drizzle-orm";
 
@@ -324,4 +324,63 @@ export async function buildHistoricalPKBContext(
   return combined.length > MAX_TOTAL_CHARS
     ? combined.slice(0, MAX_TOTAL_CHARS) + "\n…[riwayat terpotong]"
     : combined;
+}
+
+// ─── Kegiatan PKB context ────────────────────────────────────────────────────
+
+/**
+ * Injects the user's documented PKB activities into Pak Budi's system prompt.
+ * Pak Budi can then reference real kegiatan (materi, SKK mapping, tanggal) when
+ * helping the user write their Exum — rather than asking the user to repeat
+ * information they've already documented.
+ */
+export async function buildKegiatanContext(userId: number): Promise<string> {
+  const MAX_KEGIATAN = 8;
+  const MAX_URAIAN_CHARS = 200;
+
+  const activities = await db
+    .select()
+    .from(pkbActivities)
+    .where(eq(pkbActivities.userId, userId))
+    .orderBy(desc(pkbActivities.tanggalMulai))
+    .limit(MAX_KEGIATAN);
+
+  if (!activities.length) return "";
+
+  // Batch-load SKK for all activities
+  const { inArray } = await import("drizzle-orm");
+  const ids = activities.map(a => a.id);
+  const allSkk = await db
+    .select()
+    .from(pkbActivitySkk)
+    .where(inArray(pkbActivitySkk.activityId, ids));
+
+  const skkByActivity = new Map<number, typeof allSkk>();
+  for (const s of allSkk) {
+    if (!skkByActivity.has(s.activityId)) skkByActivity.set(s.activityId, []);
+    skkByActivity.get(s.activityId)!.push(s);
+  }
+
+  const lines: string[] = [
+    "\n\n=== KEGIATAN PKB YANG SUDAH DIDOKUMENTASIKAN ===",
+    "User sudah mencatat kegiatan PKB berikut. ACU data ini saat wawancara Exum — JANGAN tanya ulang info yang sudah ada di sini:",
+  ];
+
+  for (const act of activities) {
+    const skk = skkByActivity.get(act.id) ?? [];
+    const tanggal = act.tanggalMulai;
+    const skkStr = skk.length
+      ? `\n   🏷️ SKK: ${skk.map(s => s.skkCode.split(".").slice(0, 4).join(".") + "… — " + s.skkName).join("; ")}`
+      : "";
+    const uraian = act.uraianSingkat
+      ? `\n   📝 ${act.uraianSingkat.length > MAX_URAIAN_CHARS ? act.uraianSingkat.slice(0, MAX_URAIAN_CHARS) + "…" : act.uraianSingkat}`
+      : "";
+    const jenis = act.jenisPkb ? ` [${act.jenisPkb}${act.jpPkb ? ` · ${act.jpPkb} JP` : ""}]` : "";
+    const tempat = act.tempatKegiatan ? ` @ ${act.tempatKegiatan}` : "";
+    lines.push(
+      `\n• "${act.namaKegiatan}"${jenis} — ${tanggal}${tempat}${act.namaMateri ? `\n   📖 Materi: ${act.namaMateri}` : ""}${act.penyelenggara ? ` (${act.penyelenggara})` : ""}${skkStr}${uraian}`
+    );
+  }
+
+  return lines.join("\n");
 }

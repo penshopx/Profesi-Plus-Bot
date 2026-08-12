@@ -9,3 +9,4 @@ export * from "./project-brain";
 export * from "./competency-analysis";
 export * from "./profiles";
 export * from "./quizzes";
+export * from "./kegiatan";
