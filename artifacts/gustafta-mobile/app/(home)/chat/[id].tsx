@@ -27,6 +27,7 @@ import {
   advancePhase,
   transcribeAudio,
   getMyUsage,
+  checkCompetencyAnalysisForJabker,
   type Message,
 } from '@/lib/api';
 import { Audio } from 'expo-av';
@@ -425,6 +426,7 @@ export default function ChatScreen() {
   /** True once the initial AsyncStorage draft load has completed. Gates persistence
    *  so that the persistence effect cannot overwrite a saved draft before it loads. */
   const [draftLoaded, setDraftLoaded] = useState(false);
+  const [studioBannerDismissed, setStudioBannerDismissedRaw] = useState(false);
 
   // ─── Rate-limit usage indicator ──────────────────────────────────────────
   const { data: usageInfo } = useQuery({
@@ -433,6 +435,37 @@ export default function ChatScreen() {
     staleTime: 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
+
+  // ─── Studio Kompetensi nudge ──────────────────────────────────────────────
+  const jabker = convData?.jabker ?? null;
+  const { data: hasAnalysisForJabker, status: analysisCheckStatus } = useQuery({
+    queryKey: ['competency-analysis-check', jabker],
+    queryFn: () => checkCompetencyAnalysisForJabker(jabker!),
+    enabled: !!jabker,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const showStudioBanner =
+    !!jabker &&
+    analysisCheckStatus === 'success' &&
+    hasAnalysisForJabker === false &&
+    !studioBannerDismissed;
+
+  const dismissStudioBanner = useCallback(async () => {
+    if (jabker) {
+      try { await AsyncStorage.setItem(`STUDIO_NUDGE_DISMISSED_${jabker}`, '1'); } catch {}
+    }
+    setStudioBannerDismissedRaw(true);
+  }, [jabker]);
+
+  // Sync dismissal state from AsyncStorage whenever the jabker changes
+  useEffect(() => {
+    if (!jabker) { setStudioBannerDismissedRaw(false); return; }
+    AsyncStorage.getItem(`STUDIO_NUDGE_DISMISSED_${jabker}`)
+      .then((val) => setStudioBannerDismissedRaw(val === '1'))
+      .catch(() => setStudioBannerDismissedRaw(false));
+  }, [jabker]);
+
   const recordingRef = useRef<Audio.Recording | null>(null);
   const { getToken } = useAuth();
 
@@ -937,6 +970,29 @@ export default function ChatScreen() {
             </Pressable>
           )}
 
+          {/* Studio Kompetensi nudge banner */}
+          {showStudioBanner && (
+            <View style={[styles.studioBanner, { backgroundColor: '#FFFBEB', borderTopColor: '#FDE68A' }]}>
+              <Feather name="bar-chart-2" size={14} color="#B45309" style={{ flexShrink: 0 }} />
+              <Text style={[styles.studioBannerText, { color: '#78350F' }]}>
+                <Text style={{ fontFamily: 'PlusJakartaSans_700Bold' }}>Tingkatkan kualitas saran AI</Text>
+                {' — jalankan Studio Kompetensi untuk jabker '}
+                <Text style={{ fontFamily: 'PlusJakartaSans_600SemiBold' }}>{jabker}</Text>
+              </Text>
+              <Pressable
+                onPress={() => router.push('/(home)/(tabs)/studio')}
+                style={[styles.studioBannerBtn, { borderColor: '#FCD34D', backgroundColor: '#fff' }]}
+              >
+                <Text style={{ color: '#B45309', fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold' }}>
+                  Buka Studio
+                </Text>
+              </Pressable>
+              <Pressable onPress={dismissStudioBanner} style={{ padding: 4, flexShrink: 0 }}>
+                <Feather name="x" size={14} color="#B45309" />
+              </Pressable>
+            </View>
+          )}
+
           {/* Rate-limit usage indicator */}
           {usageInfo && (
             <View
@@ -1126,6 +1182,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   synthesisBannerText: { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', flex: 1 },
+  studioBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderTopWidth: 1,
+  },
+  studioBannerText: { fontSize: 12, fontFamily: 'PlusJakartaSans_400Regular', flex: 1, lineHeight: 16 },
+  studioBannerBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexShrink: 0,
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',

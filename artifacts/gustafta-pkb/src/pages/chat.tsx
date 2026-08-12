@@ -1161,7 +1161,18 @@ export default function ChatPage() {
 
   const [copiedMsgId, setCopiedMsgId] = useState<number | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const [studioBannerDismissed, setStudioBannerDismissed] = useState(false);
+  const [studioBannerDismissed, setStudioBannerDismissedRaw] = useState(() => {
+    // Initialise from localStorage so the banner never re-appears for a jabker
+    // the user has already dismissed — even across page reloads.
+    return false; // real value loaded in the jabker effect below
+  });
+
+  const dismissStudioBanner = useCallback(() => {
+    if (conv?.jabker) {
+      try { localStorage.setItem(`STUDIO_NUDGE_DISMISSED_${conv.jabker}`, "1"); } catch {}
+    }
+    setStudioBannerDismissedRaw(true);
+  }, [conv?.jabker]);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<(() => void) | null>(null);
@@ -1215,9 +1226,14 @@ export default function ChatPage() {
     hasAnalysisForJabker === false &&
     !studioBannerDismissed;
 
-  // Reset banner dismissal whenever the conversation switches to a different jabker
+  // Sync banner dismissal state from localStorage whenever the jabker changes.
+  // A dismissed jabker stays dismissed across reloads; switching to a new jabker
+  // checks localStorage for that jabker (defaulting to not-dismissed).
   useEffect(() => {
-    setStudioBannerDismissed(false);
+    if (!conv?.jabker) { setStudioBannerDismissedRaw(false); return; }
+    try {
+      setStudioBannerDismissedRaw(localStorage.getItem(`STUDIO_NUDGE_DISMISSED_${conv.jabker}`) === "1");
+    } catch { setStudioBannerDismissedRaw(false); }
   }, [conv?.jabker]);
 
   useEffect(() => {
@@ -1686,7 +1702,7 @@ export default function ChatPage() {
               Buka Studio Kompetensi
             </a>
             <button
-              onClick={() => setStudioBannerDismissed(true)}
+              onClick={dismissStudioBanner}
               title="Tutup notifikasi ini"
               className="text-amber-500 hover:text-amber-700 transition-colors shrink-0 p-0.5"
             >

@@ -274,6 +274,18 @@ export async function runStudioAnalysis(
   return res.json();
 }
 
+/**
+ * Returns true when the authenticated user already has at least one competency
+ * analysis for the given jabker string. Used to decide whether to show the
+ * Studio Kompetensi nudge banner in the chat screen.
+ */
+export async function checkCompetencyAnalysisForJabker(jabker: string): Promise<boolean> {
+  const res = await apiFetch(`/competency-studio/check?jabker=${encodeURIComponent(jabker)}`);
+  if (!res.ok) throw new Error('Failed to check competency analysis');
+  const data = await res.json();
+  return !!data.hasAnalysis;
+}
+
 // ─── Users / Profile ──────────────────────────────────────────────────────────
 
 /**
