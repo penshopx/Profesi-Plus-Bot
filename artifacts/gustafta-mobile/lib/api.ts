@@ -326,7 +326,41 @@ export async function getMyPlan(): Promise<UserPlan> {
 
 // ─── Project Brain ────────────────────────────────────────────────────────────
 
-export async function listProjectBrain(): Promise<{ id: number }[]> {
+export type ProjectBrainEntry = {
+  id: number;
+  userId: number;
+  kind: string;
+  title: string;
+  organization: string | null;
+  role: string | null;
+  period: string | null;
+  location: string | null;
+  description: string;
+  skkUnitCodes: string | null;
+  jenjang: string | null;
+  highlights: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function listProjectBrain(): Promise<ProjectBrainEntry[]> {
   const res = await apiFetch('/project-brain');
+  return res.json();
+}
+
+export async function createProjectBrainEntry(data: {
+  title: string;
+  description: string;
+  kind?: string;
+  organization?: string;
+  role?: string;
+  period?: string;
+  location?: string;
+}): Promise<ProjectBrainEntry> {
+  const res = await apiFetch('/project-brain', {
+    method: 'POST',
+    body: JSON.stringify({ kind: 'project', ...data }),
+  });
   return res.json();
 }

@@ -24,6 +24,7 @@ import {
   listJabkers,
   type Conversation,
 } from '@/lib/api';
+import VoiceNoteModal from '@/components/VoiceNoteModal';
 
 // ─── Phase badge ─────────────────────────────────────────────────────────────
 
@@ -443,6 +444,12 @@ export default function SessionsScreen() {
   const isWeb = Platform.OS === 'web';
 
   const [modalVisible, setModalVisible] = useState(false);
+  const [voiceModalVisible, setVoiceModalVisible] = useState(false);
+
+  const handleVoiceNote = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setVoiceModalVisible(true);
+  }, []);
 
   const {
     data: conversations = [],
@@ -573,7 +580,22 @@ export default function SessionsScreen() {
         />
       )}
 
-      {/* FAB */}
+      {/* Mic FAB: always visible so users can record even before creating a session */}
+      <Pressable
+        style={[
+          styles.fab,
+          {
+            backgroundColor: '#EF4444',
+            bottom: bottomPad - 20,
+            right: conversations.length > 0 ? 88 : 20,
+          },
+        ]}
+        onPress={handleVoiceNote}
+      >
+        <Feather name="mic" size={22} color="#fff" />
+      </Pressable>
+
+      {/* Plus FAB: only when there are existing sessions */}
       {conversations.length > 0 && (
         <Pressable
           style={[
@@ -597,6 +619,11 @@ export default function SessionsScreen() {
           setModalVisible(false);
           router.push(`/(home)/chat/${id}`);
         }}
+      />
+
+      <VoiceNoteModal
+        visible={voiceModalVisible}
+        onClose={() => setVoiceModalVisible(false)}
       />
     </View>
   );
