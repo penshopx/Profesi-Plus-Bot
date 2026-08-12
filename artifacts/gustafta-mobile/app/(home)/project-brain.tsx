@@ -159,13 +159,28 @@ function FormModal({
     onSave(form);
   }
 
+  function isDirty() {
+    const keys = Object.keys(form) as (keyof FormState)[];
+    return keys.some((k) => form[k] !== initial[k]);
+  }
+
   function handleClose() {
-    // Draft is kept — user can resume later
-    onClose();
+    if (isDirty()) {
+      Alert.alert(
+        'Perubahan belum disimpan',
+        'Keluar?',
+        [
+          { text: 'Batal', style: 'cancel' },
+          { text: 'Keluar', style: 'destructive', onPress: onClose },
+        ],
+      );
+    } else {
+      onClose();
+    }
   }
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: colors.background }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
