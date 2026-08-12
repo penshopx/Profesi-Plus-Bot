@@ -186,6 +186,21 @@ export default function VoiceNoteModal({
   // ── Stop + transcribe ───────────────────────────────────────────────────────
 
   const stopAndTranscribe = useCallback(async () => {
+    // Enforce minimum recording duration of 2 seconds
+    const recordedMs = Date.now() - startTimeRef.current;
+    if (recordedMs < 2000) {
+      stopTimer();
+      try {
+        await recordingRef.current?.stopAndUnloadAsync();
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+        recordingRef.current = null;
+      } catch {}
+      setDurationMs(0);
+      setStage('idle');
+      setErrorMsg('Rekaman terlalu singkat — coba rekam minimal 2 detik.');
+      return;
+    }
+
     stopTimer();
     setStage('transcribing');
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -207,20 +222,15 @@ export default function VoiceNoteModal({
 
       const text = await transcribeAudio(uri, token);
 
-      // Task #21 — guard against empty transcripts (Whisper returned nothing).
-      // Go back to idle with a clear message so the user can retry rather than
-      // accidentally saving an entry with no description.
+      // Guard: empty transcript means silence or unrecognisable audio
       if (!text.trim()) {
-        setErrorMsg(
-          'Tidak ada suara yang berhasil ditranskripsi. Pastikan mikrofon tidak terhalang, lalu coba rekam ulang.',
-        );
+        setDurationMs(0);
         setStage('idle');
+        setErrorMsg('Tidak ada suara yang terdeteksi — coba rekam lagi.');
         return;
       }
 
-      const autoTitle =
-        text.trim().slice(0, 50) ||
-        `Catatan Suara ${new Date().toLocaleDateString('id-ID')}`;
+      const autoTitle = text.trim().slice(0, 50);
 
       setTranscript(text);
       setTitle(autoTitle);
@@ -475,14 +485,17 @@ export default function VoiceNoteModal({
                     </Pressable>
 
                     <Pressable
-                      style={({ pressed }) => [
-                        s.primaryBtn,
-                        {
-                          backgroundColor: colors.primary,
-                          opacity: pressed ? 0.85 : 1,
-                          flex: 1,
-                        },
-                      ]}
+                      style={({ pressed }) => {
+                        const canSave = !!(transcript.trim() || title.trim());
+                        return [
+                          s.primaryBtn,
+                          {
+                            backgroundColor: colors.primary,
+                            opacity: !canSave ? 0.4 : pressed ? 0.85 : 1,
+                            flex: 1,
+                          },
+                        ];
+                      }}
                       onPress={saveEntry}
                       disabled={!transcript.trim() && !title.trim()}
                     >
