@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { Platform } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -15,7 +15,7 @@ import {
   PlusJakartaSans_700Bold,
   useFonts,
 } from '@expo-google-fonts/plus-jakarta-sans';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
@@ -164,12 +164,37 @@ async function registerForPushNotifications(getToken: () => Promise<string | nul
 
 function RootLayoutNav() {
   const { getToken, isSignedIn } = useAuth();
+  const router = useRouter();
+  const notificationListener = useRef<Notifications.EventSubscription | null>(null);
+  const responseListener = useRef<Notifications.EventSubscription | null>(null);
 
   useEffect(() => {
     if (isSignedIn) {
       registerForPushNotifications(getToken);
     }
   }, [isSignedIn, getToken]);
+
+  // Handle notification taps: deep-link to the chat screen and open the Exum modal.
+  useEffect(() => {
+    // Foreground notification display is already configured via setNotificationHandler above.
+    notificationListener.current = Notifications.addNotificationReceivedListener(() => {
+      // No-op in foreground — the banner is shown automatically.
+    });
+
+    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      const conversationId = data?.conversationId;
+      if (conversationId) {
+        // Navigate to the chat and signal that the Exum modal should open.
+        router.push(`/(home)/chat/${conversationId}?openExum=true` as never);
+      }
+    });
+
+    return () => {
+      notificationListener.current?.remove();
+      responseListener.current?.remove();
+    };
+  }, [router]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

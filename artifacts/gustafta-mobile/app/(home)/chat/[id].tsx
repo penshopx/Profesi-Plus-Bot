@@ -393,7 +393,7 @@ export default function ChatScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, openExum } = useLocalSearchParams<{ id: string; openExum?: string }>();
   const conversationId = Number(id);
   const queryClient = useQueryClient();
   const isWeb = Platform.OS === 'web';
@@ -718,6 +718,13 @@ export default function ChatScreen() {
       return () => clearTimeout(timer);
     }
   }, [initialLoaded, messages.length, doSend]);
+
+  // Deep-link from push notification: open the Exum modal automatically.
+  // Runs once after the conversation has loaded so the modal has context to display.
+  useEffect(() => {
+    if (!initialLoaded || openExum !== 'true') return;
+    setExumVisible(true);
+  }, [initialLoaded, openExum]);
 
   // Phase logic
   const isDone = phase === 'done';
