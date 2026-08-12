@@ -6,7 +6,7 @@
  * Watch-status is synced to the backend per session.
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,9 @@ import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNetworkState } from '@/hooks/useNetworkState';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import {
   getWatchedCourses,
   markCourseWatched,
@@ -35,6 +38,25 @@ import {
   getMarketplaceCatalog,
   type MarketplaceCatalogCourse,
 } from '@/lib/api';
+
+// ─── Offline catalog cache ────────────────────────────────────────────────────
+
+const CATALOG_CACHE_KEY = 'GUSTAFTA_MARKETPLACE_CATALOG_CACHE';
+
+async function loadCachedCatalog(): Promise<MarketplaceCatalogCourse[]> {
+  try {
+    const raw = await AsyncStorage.getItem(CATALOG_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as MarketplaceCatalogCourse[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveCatalogCache(data: MarketplaceCatalogCourse[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(data));
+  } catch {}
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -601,15 +623,27 @@ export default function MarketplaceScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const router = useRouter();
+  const { isOnline } = useNetworkState();
 
   const [search, setSearch] = useState('');
   const [filterJabker, setFilterJabker] = useState('');
   const [filterPrice, setFilterPrice] = useState<'' | 'gratis' | 'berbayar'>('');
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
 
+  // ── Offline catalog cache ──────────────────────────────────────────────────
+  const [cachedCatalog, setCachedCatalog] = useState<MarketplaceCatalogCourse[]>([]);
+  const [cacheLoaded, setCacheLoaded] = useState(false);
+
+  useEffect(() => {
+    loadCachedCatalog().then((data) => {
+      setCachedCatalog(data);
+      setCacheLoaded(true);
+    });
+  }, []);
+
   // Fetch catalog from backend; stale time 10 min (catalog changes rarely)
   const {
-    data: rawCatalog = [],
+    data: liveCatalog,
     isLoading: catalogLoading,
     isError: catalogError,
     refetch: refetchCatalog,
@@ -617,7 +651,20 @@ export default function MarketplaceScreen() {
     queryKey: ['marketplace-catalog'],
     queryFn: getMarketplaceCatalog,
     staleTime: 10 * 60 * 1000,
+    enabled: cacheLoaded,
   });
+
+  // Persist successful fetches to AsyncStorage
+  useEffect(() => {
+    if (liveCatalog && liveCatalog.length > 0) {
+      setCachedCatalog(liveCatalog);
+      saveCatalogCache(liveCatalog);
+    }
+  }, [liveCatalog]);
+
+  // Use live data when available; fall back to cache when offline
+  const rawCatalog = liveCatalog ?? cachedCatalog;
+  const showingCachedCatalog = !liveCatalog && cachedCatalog.length > 0;
 
   // Map API shape to mobile Course shape (compute gradient colors from thumbnail class)
   const courses = useMemo(() => rawCatalog.map(mapApiCourse), [rawCatalog]);
@@ -716,6 +763,19 @@ export default function MarketplaceScreen() {
 
   return (
     <View style={[ms.root, { backgroundColor: colors.background }]}>
+      {/* Offline banner */}
+      {!isOnline && <OfflineBanner />}
+
+      {/* Stale-cache notice */}
+      {showingCachedCatalog && (
+        <View style={[ms.cacheBanner, { backgroundColor: '#FFF7ED', borderBottomColor: '#FED7AA' }]}>
+          <Feather name="clock" size={12} color="#C2410C" />
+          <Text style={[ms.cacheBannerText, { color: '#C2410C' }]}>
+            Menampilkan katalog tersimpan — sambungkan internet untuk memperbarui
+          </Text>
+        </View>
+      )}
+
       {/* Header */}
       <View style={[ms.header, { paddingTop: insets.top + 12, borderBottomColor: colors.border }]}>
         <View style={ms.headerTop}>
@@ -950,4 +1010,18 @@ const ms = StyleSheet.create({
   emptyEmoji: { fontSize: 40, marginBottom: 12 },
   emptyTitle: { fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', marginBottom: 6 },
   emptyText: { fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular', textAlign: 'center' },
+  cacheBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  cacheBannerText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    flex: 1,
+    lineHeight: 16,
+  },
 });

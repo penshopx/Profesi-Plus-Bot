@@ -41,6 +41,28 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+/** Emit a WARN on startup when email config is missing so misconfigurations are never silent. */
+function validateEmailConfig(): void {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from   = process.env.RESEND_FROM;
+
+  if (!apiKey) {
+    logger.warn(
+      "RESEND_API_KEY is not set — transactional emails (credit receipts, claim confirmations) will be skipped. " +
+      "Set the secret via Replit Secrets to enable email delivery."
+    );
+  } else if (!from) {
+    logger.warn(
+      "RESEND_FROM is not set — transactional emails are configured but will be skipped. " +
+      "Set RESEND_FROM to a verified Resend sender address, e.g. 'Gustafta <no-reply@yourdomain.com>'."
+    );
+  } else {
+    logger.info({ from }, "Email config OK — transactional emails enabled via Resend");
+  }
+}
+
+validateEmailConfig();
+
 backfillCreditsGranted().then(() => {
   app.listen(port, (err) => {
     if (err) {

@@ -960,3 +960,103 @@ export async function listWatchedModules(): Promise<MarketplaceWatchedItem[]> {
   const data = await res.json();
   return data.watched ?? [];
 }
+
+// ─── Admin Marketplace CRUD ───────────────────────────────────────────────────
+
+export interface AdminCourse {
+  id: string;
+  title: string;
+  provider: string;
+  providerLogo: string | null;
+  thumbnail: string;
+  type: string;
+  price: string;
+  priceIdr: number | null;
+  url: string;
+  rating: number;
+  ratingCount: number;
+  durationMinutes: number;
+  videoCount: number;
+  quizCount: number;
+  hasCertificate: boolean;
+  jabker: string[];
+  description: string;
+  isBestSeller: boolean;
+  isFeatured: boolean;
+  isNew: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminCourseInput {
+  id: string;
+  title: string;
+  provider: string;
+  providerLogo?: string;
+  thumbnail?: string;
+  type?: string;
+  price?: string;
+  priceIdr?: number | null;
+  url: string;
+  rating?: number;
+  ratingCount?: number;
+  durationMinutes?: number;
+  videoCount?: number;
+  quizCount?: number;
+  hasCertificate?: boolean;
+  jabker?: string[];
+  description?: string;
+  isBestSeller?: boolean;
+  isFeatured?: boolean;
+  isNew?: boolean;
+  sortOrder?: number;
+}
+
+export async function adminListMarketplaceCourses(): Promise<AdminCourse[]> {
+  const res = await fetch(`${BASE}/marketplace/admin/courses`, { credentials: "include" });
+  if (!res.ok) throw new Error("Gagal memuat daftar kursus");
+  const data = await res.json();
+  return data.courses ?? [];
+}
+
+export async function adminCreateMarketplaceCourse(input: AdminCourseInput): Promise<AdminCourse> {
+  const res = await fetch(`${BASE}/marketplace/admin/courses`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Gagal membuat kursus");
+  }
+  const data = await res.json();
+  return data.course;
+}
+
+export async function adminUpdateMarketplaceCourse(
+  id: string,
+  patch: Partial<AdminCourseInput>,
+): Promise<AdminCourse> {
+  const res = await fetch(`${BASE}/marketplace/admin/courses/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Gagal memperbarui kursus");
+  }
+  const data = await res.json();
+  return data.course;
+}
+
+export async function adminDeleteMarketplaceCourse(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/marketplace/admin/courses/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Gagal menghapus kursus");
+}

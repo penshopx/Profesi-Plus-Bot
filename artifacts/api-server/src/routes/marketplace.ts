@@ -8,7 +8,7 @@
  * DELETE /api/marketplace/watched/:courseId — hapus tanda (unwatch)
  */
 
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { catalogRateLimiter } from "../middlewares/rateLimiter";
 import { db } from "@workspace/db";
@@ -19,6 +19,15 @@ import {
   marketplaceAskomReviews,
 } from "@workspace/db/schema";
 import { eq, and, asc } from "drizzle-orm";
+
+/** Middleware: only allow users with role='admin'. */
+function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  if ((req as any).dbUser?.role !== "admin") {
+    res.status(403).json({ error: "Akses ditolak — hanya admin." });
+    return;
+  }
+  next();
+}
 
 const router = Router();
 
@@ -148,6 +157,99 @@ router.delete("/marketplace/watched/:courseId", requireAuth, async (req, res) =>
       eq(marketplaceWatched.courseId, courseId),
     ));
   return res.json({ ok: true });
+});
+
+// ─── ADMIN CRUD ───────────────────────────────────────────────────────────────
+// These endpoints require role='admin'. They allow admins to manage the catalog
+// without touching code or re-deploying.
+
+/** GET /api/marketplace/admin/courses — list all courses (with full fields) */
+router.get("/marketplace/admin/courses", requireAuth, requireAdmin, async (_req, res) => {
+  const courses = await db.select().from(marketplaceCourses).orderBy(asc(marketplaceCourses.sortOrder));
+  res.json({ courses });
+});
+
+/** POST /api/marketplace/admin/courses — create a new course */
+router.post("/marketplace/admin/courses", requireAuth, requireAdmin, async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  if (!body.id || !body.title || !body.provider || !body.url) {
+    res.status(400).json({ error: "id, title, provider, dan url wajib diisi." });
+    return;
+  }
+  const [created] = await db.insert(marketplaceCourses).values({
+    id:               String(body.id),
+    title:            String(body.title),
+    provider:         String(body.provider),
+    providerLogo:     body.providerLogo ? String(body.providerLogo) : null,
+    thumbnail:        body.thumbnail ? String(body.thumbnail) : "from-blue-500 to-indigo-500",
+    type:             body.type ? String(body.type) : "video",
+    price:            body.price ? String(body.price) : "gratis",
+    priceIdr:         body.priceIdr ? Number(body.priceIdr) : null,
+    priceOriginalIdr: body.priceOriginalIdr ? Number(body.priceOriginalIdr) : null,
+    rating:           body.rating ? Number(body.rating) : 4.5,
+    ratingCount:      body.ratingCount ? Number(body.ratingCount) : 0,
+    durationMinutes:  body.durationMinutes ? Number(body.durationMinutes) : 0,
+    videoCount:       body.videoCount ? Number(body.videoCount) : 0,
+    quizCount:        body.quizCount ? Number(body.quizCount) : 0,
+    hasCertificate:   Boolean(body.hasCertificate),
+    jabker:           Array.isArray(body.jabker) ? body.jabker.map(String) : [],
+    skkTags:          Array.isArray(body.skkTags) ? body.skkTags : [],
+    description:      body.description ? String(body.description) : "",
+    highlights:       Array.isArray(body.highlights) ? body.highlights.map(String) : [],
+    curriculum:       Array.isArray(body.curriculum) ? body.curriculum : [],
+    url:              String(body.url),
+    isBestSeller:     Boolean(body.isBestSeller),
+    isFeatured:       Boolean(body.isFeatured),
+    isNew:            Boolean(body.isNew),
+    sortOrder:        body.sortOrder ? Number(body.sortOrder) : 0,
+  }).returning();
+  res.status(201).json({ course: created });
+});
+
+/** PATCH /api/marketplace/admin/courses/:id — update a course */
+router.patch("/marketplace/admin/courses/:id", requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const body = req.body as Record<string, unknown>;
+
+  const existing = await db.select().from(marketplaceCourses).where(eq(marketplaceCourses.id, id)).limit(1);
+  if (!existing.length) { res.status(404).json({ error: "Kursus tidak ditemukan." }); return; }
+
+  const patch: Partial<typeof marketplaceCourses.$inferInsert> = {};
+  if (body.title            !== undefined) patch.title            = String(body.title);
+  if (body.provider         !== undefined) patch.provider         = String(body.provider);
+  if (body.providerLogo     !== undefined) patch.providerLogo     = body.providerLogo ? String(body.providerLogo) : null;
+  if (body.thumbnail        !== undefined) patch.thumbnail        = String(body.thumbnail);
+  if (body.type             !== undefined) patch.type             = String(body.type);
+  if (body.price            !== undefined) patch.price            = String(body.price);
+  if (body.priceIdr         !== undefined) patch.priceIdr         = body.priceIdr ? Number(body.priceIdr) : null;
+  if (body.priceOriginalIdr !== undefined) patch.priceOriginalIdr = body.priceOriginalIdr ? Number(body.priceOriginalIdr) : null;
+  if (body.rating           !== undefined) patch.rating           = Number(body.rating);
+  if (body.ratingCount      !== undefined) patch.ratingCount      = Number(body.ratingCount);
+  if (body.durationMinutes  !== undefined) patch.durationMinutes  = Number(body.durationMinutes);
+  if (body.videoCount       !== undefined) patch.videoCount       = Number(body.videoCount);
+  if (body.quizCount        !== undefined) patch.quizCount        = Number(body.quizCount);
+  if (body.hasCertificate   !== undefined) patch.hasCertificate   = Boolean(body.hasCertificate);
+  if (Array.isArray(body.jabker))          patch.jabker           = body.jabker.map(String);
+  if (Array.isArray(body.skkTags))         patch.skkTags          = body.skkTags;
+  if (body.description      !== undefined) patch.description      = String(body.description);
+  if (Array.isArray(body.highlights))      patch.highlights       = body.highlights.map(String);
+  if (Array.isArray(body.curriculum))      patch.curriculum       = body.curriculum;
+  if (body.url              !== undefined) patch.url              = String(body.url);
+  if (body.isBestSeller     !== undefined) patch.isBestSeller     = Boolean(body.isBestSeller);
+  if (body.isFeatured       !== undefined) patch.isFeatured       = Boolean(body.isFeatured);
+  if (body.isNew            !== undefined) patch.isNew            = Boolean(body.isNew);
+  if (body.sortOrder        !== undefined) patch.sortOrder        = Number(body.sortOrder);
+  patch.updatedAt = new Date();
+
+  const [updated] = await db.update(marketplaceCourses).set(patch).where(eq(marketplaceCourses.id, id)).returning();
+  res.json({ course: updated });
+});
+
+/** DELETE /api/marketplace/admin/courses/:id — delete a course (cascades to reviews) */
+router.delete("/marketplace/admin/courses/:id", requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  await db.delete(marketplaceCourses).where(eq(marketplaceCourses.id, id));
+  res.json({ ok: true });
 });
 
 export default router;

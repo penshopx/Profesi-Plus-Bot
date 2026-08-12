@@ -281,7 +281,7 @@ export default function ProfileScreen() {
         />
       </Pressable>
 
-      {/* Kredit shortcut */}
+      {/* Kredit shortcuts */}
       <Pressable
         onPress={() => router.push('/(home)/kredits')}
         style={({ pressed }) => [
@@ -295,6 +295,21 @@ export default function ProfileScreen() {
           value="Lihat →"
           colors={colors}
         />
+      </Pressable>
+
+      {/* Klaim Kredit — prominent shortcut so users don't have to dig */}
+      <Pressable
+        onPress={() => router.push('/(home)/kredits')}
+        style={({ pressed }) => [
+          styles.claimShortcut,
+          { borderColor: colors.primary, opacity: pressed ? 0.75 : 1 },
+        ]}
+      >
+        <Feather name="download-cloud" size={16} color={colors.primary} />
+        <Text style={[styles.claimShortcutText, { color: colors.primary }]}>
+          Klaim Kredit Exum dari Pesanan
+        </Text>
+        <Feather name="chevron-right" size={15} color={colors.primary} />
       </Pressable>
 
       {/* Info */}
@@ -430,6 +445,21 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     fontSize: 15,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+  },
+  claimShortcut: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1.5,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderStyle: 'dashed',
+  },
+  claimShortcutText: {
+    flex: 1,
+    fontSize: 14,
     fontFamily: 'PlusJakartaSans_600SemiBold',
   },
 });

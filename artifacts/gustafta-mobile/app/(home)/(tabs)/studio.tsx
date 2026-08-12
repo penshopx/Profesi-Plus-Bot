@@ -455,27 +455,36 @@ export default function StudioScreen() {
               </Text>
             ) : null}
 
+            {!isOnline && (
+              <View style={[styles.offlineHint, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' }]}>
+                <Feather name="wifi-off" size={13} color="#C2410C" />
+                <Text style={[styles.offlineHintText, { color: '#C2410C' }]}>
+                  Sambungkan internet untuk menjalankan analisis
+                </Text>
+              </View>
+            )}
+
             <Pressable
               style={[
                 styles.runBtn,
                 {
                   backgroundColor:
-                    !selectedJabker || isAnalyzing ? colors.muted : colors.primary,
+                    !selectedJabker || isAnalyzing || !isOnline ? colors.muted : colors.primary,
                 },
               ]}
               onPress={() => runAnalysis()}
-              disabled={!selectedJabker || isAnalyzing}
+              disabled={!selectedJabker || isAnalyzing || !isOnline}
             >
               {isAnalyzing ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <>
-                  <Feather name="zap" size={16} color={selectedJabker ? '#fff' : colors.mutedForeground} />
+                  <Feather name="zap" size={16} color={selectedJabker && isOnline ? '#fff' : colors.mutedForeground} />
                   <Text
                     style={[
                       styles.runBtnText,
                       {
-                        color: !selectedJabker
+                        color: !selectedJabker || !isOnline
                           ? colors.mutedForeground
                           : '#fff',
                       },
@@ -596,6 +605,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'PlusJakartaSans_400Regular',
     textAlign: 'center',
+  },
+  offlineHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  offlineHintText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    flex: 1,
   },
   cacheBanner: {
     flexDirection: 'row',

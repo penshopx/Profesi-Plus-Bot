@@ -5,12 +5,15 @@ import { useState } from "react";
 import {
   LayoutDashboard, LogOut, Users, Video, MessageSquare,
   CheckCircle2, ChevronDown, Search, BookOpen, Plus, Pencil, Trash2, X, Sparkles, Award,
-  ClipboardList, ChevronUp, ToggleLeft, ToggleRight, AlertCircle, BarChart2, Loader2,
+  ClipboardList, ChevronUp, ToggleLeft, ToggleRight, AlertCircle, BarChart2, Loader2, ShoppingBag,
 } from "lucide-react";
 import {
   listAllUsers, updateUserRole, listVideos, type VideoItem, type DbUser,
   listKnowledgeBase, createKnowledgeEntry, updateKnowledgeEntry, deleteKnowledgeEntry,
   seedKnowledgeBase, KB_CATEGORIES, type KbEntry, type KbInput,
+  adminListMarketplaceCourses, adminCreateMarketplaceCourse,
+  adminUpdateMarketplaceCourse, adminDeleteMarketplaceCourse,
+  type AdminCourse, type AdminCourseInput,
 } from "@/lib/api";
 import {
   listAdminQuizzes, adminCreateQuiz, adminUpdateQuiz, adminDeleteQuiz, adminGenerateQuestions,
@@ -49,12 +52,14 @@ export default function DashboardAdmin() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"users" | "videos" | "kb" | "quiz">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "videos" | "kb" | "quiz" | "marketplace">("users");
   const [kbModalOpen, setKbModalOpen] = useState(false);
   const [kbEditing, setKbEditing] = useState<KbEntry | null>(null);
   const [quizModalOpen, setQuizModalOpen] = useState(false);
   const [quizEditing, setQuizEditing] = useState<QuizFullAdmin | null>(null);
   const [quizStatsId, setQuizStatsId] = useState<number | null>(null);
+  const [courseModalOpen, setCourseModalOpen] = useState(false);
+  const [courseEditing, setCourseEditing] = useState<AdminCourse | null>(null);
 
   const { data: users = [], isLoading: usersLoading } = useQuery({
     queryKey: ["admin-users"],
@@ -84,6 +89,26 @@ export default function DashboardAdmin() {
 
   const invalidateKb = () => queryClient.invalidateQueries({ queryKey: ["knowledge-base"] });
   const invalidateQuiz = () => queryClient.invalidateQueries({ queryKey: ["admin-quizzes"] });
+
+  const { data: marketplaceCourses = [], isLoading: marketplaceLoading } = useQuery<AdminCourse[]>({
+    queryKey: ["admin-marketplace-courses"],
+    queryFn: adminListMarketplaceCourses,
+    enabled: activeTab === "marketplace",
+  });
+  const invalidateMarketplace = () => queryClient.invalidateQueries({ queryKey: ["admin-marketplace-courses"] });
+
+  const courseCreateMut = useMutation({
+    mutationFn: (data: AdminCourseInput) => adminCreateMarketplaceCourse(data),
+    onSuccess: () => { invalidateMarketplace(); setCourseModalOpen(false); setCourseEditing(null); },
+  });
+  const courseUpdateMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<AdminCourseInput> }) => adminUpdateMarketplaceCourse(id, data),
+    onSuccess: () => { invalidateMarketplace(); setCourseModalOpen(false); setCourseEditing(null); },
+  });
+  const courseDeleteMut = useMutation({
+    mutationFn: (id: string) => adminDeleteMarketplaceCourse(id),
+    onSuccess: invalidateMarketplace,
+  });
 
   const kbCreateMut = useMutation({
     mutationFn: (data: KbInput) => createKnowledgeEntry(data),
@@ -168,12 +193,16 @@ export default function DashboardAdmin() {
 
         {/* Tabs */}
         <div className="flex gap-2 border-b border-border overflow-x-auto">
-          {(["users", "videos", "kb", "quiz"] as const).map((tab) => (
+          {(["users", "videos", "kb", "quiz", "marketplace"] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
               }`}>
-              {tab === "users" ? "Pengguna" : tab === "videos" ? "Video" : tab === "kb" ? "Knowledge Base" : "Kelola Quiz"}
+              {tab === "users" ? "Pengguna"
+                : tab === "videos" ? "Video"
+                : tab === "kb" ? "Knowledge Base"
+                : tab === "quiz" ? "Kelola Quiz"
+                : "Marketplace"}
             </button>
           ))}
         </div>
@@ -401,6 +430,63 @@ export default function DashboardAdmin() {
             )}
           </div>
         )}
+
+        {activeTab === "marketplace" && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                {marketplaceCourses.length} kursus tersimpan di database
+              </p>
+              <button
+                onClick={() => { setCourseEditing(null); setCourseModalOpen(true); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:opacity-90"
+              >
+                <Plus className="w-3.5 h-3.5" /> Tambah Kursus
+              </button>
+            </div>
+
+            {marketplaceLoading ? (
+              <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-14 rounded-xl bg-muted animate-pulse" />)}</div>
+            ) : marketplaceCourses.length === 0 ? (
+              <div className="border border-dashed border-border rounded-2xl p-8 text-center">
+                <ShoppingBag className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">Belum ada kursus. Klik "Tambah Kursus" untuk mulai.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {marketplaceCourses.map((c) => (
+                  <div key={c.id} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+                    <span className="text-xl w-8 text-center">{c.providerLogo ?? "📚"}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{c.title}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {c.provider} · {c.type} · {c.price === "gratis" ? "Gratis" : `Rp ${c.priceIdr?.toLocaleString("id-ID") ?? "–"}`} · urutan {c.sortOrder}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${c.isFeatured ? "bg-amber-50 text-amber-600" : c.isBestSeller ? "bg-emerald-50 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                        {c.isFeatured ? "Featured" : c.isBestSeller ? "Best Seller" : c.isNew ? "Baru" : "Standar"}
+                      </span>
+                      <button
+                        onClick={() => { setCourseEditing(c); setCourseModalOpen(true); }}
+                        className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => { if (confirm(`Hapus "${c.title}"? Reviews juga akan terhapus.`)) courseDeleteMut.mutate(c.id); }}
+                        disabled={courseDeleteMut.isPending}
+                        className="p-1.5 rounded-lg hover:bg-red-50 text-red-500"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {kbModalOpen && (
@@ -427,6 +513,184 @@ export default function DashboardAdmin() {
       {quizStatsId !== null && (
         <QuizStatsModal quizId={quizStatsId} onClose={() => setQuizStatsId(null)} />
       )}
+
+      {courseModalOpen && (
+        <CourseModal
+          course={courseEditing}
+          onClose={() => { setCourseModalOpen(false); setCourseEditing(null); }}
+          onSubmit={(data) => {
+            if (courseEditing) courseUpdateMut.mutate({ id: courseEditing.id, data });
+            else courseCreateMut.mutate(data as AdminCourseInput);
+          }}
+          isPending={courseCreateMut.isPending || courseUpdateMut.isPending}
+          error={(courseCreateMut.error as Error | null)?.message ?? (courseUpdateMut.error as Error | null)?.message ?? null}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Course Modal ─────────────────────────────────────────────────────────────
+
+function CourseModal({
+  course,
+  onClose,
+  onSubmit,
+  isPending,
+  error,
+}: {
+  course: AdminCourse | null;
+  onClose: () => void;
+  onSubmit: (data: Partial<AdminCourseInput>) => void;
+  isPending: boolean;
+  error: string | null;
+}) {
+  const isEdit = course !== null;
+  const [form, setForm] = useState<Partial<AdminCourseInput>>({
+    id: course?.id ?? "",
+    title: course?.title ?? "",
+    provider: course?.provider ?? "",
+    providerLogo: course?.providerLogo ?? "",
+    thumbnail: course?.thumbnail ?? "from-blue-500 to-indigo-500",
+    type: course?.type ?? "video",
+    price: course?.price ?? "gratis",
+    priceIdr: course?.priceIdr ?? undefined,
+    url: course?.url ?? "",
+    rating: course?.rating ?? 4.5,
+    ratingCount: course?.ratingCount ?? 0,
+    durationMinutes: course?.durationMinutes ?? 0,
+    videoCount: course?.videoCount ?? 0,
+    quizCount: course?.quizCount ?? 0,
+    hasCertificate: course?.hasCertificate ?? false,
+    description: course?.description ?? "",
+    isBestSeller: course?.isBestSeller ?? false,
+    isFeatured: course?.isFeatured ?? false,
+    isNew: course?.isNew ?? false,
+    sortOrder: course?.sortOrder ?? 0,
+    jabker: course?.jabker ?? [],
+  });
+
+  const set = (k: keyof AdminCourseInput, v: unknown) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-lg my-8 shadow-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <ShoppingBag className="w-4 h-4 text-emerald-500" />
+            <h2 className="text-sm font-semibold">{isEdit ? "Edit Kursus" : "Tambah Kursus Baru"}</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {[
+            { label: "ID Kursus *", key: "id" as const, placeholder: "mis. k3-dasar-pupr", disabled: isEdit },
+            { label: "Judul *", key: "title" as const, placeholder: "Nama kursus" },
+            { label: "Provider *", key: "provider" as const, placeholder: "Nama lembaga" },
+            { label: "Logo Provider (emoji)", key: "providerLogo" as const, placeholder: "🏛️" },
+            { label: "URL Kursus *", key: "url" as const, placeholder: "https://..." },
+            { label: "Thumbnail (Tailwind gradient)", key: "thumbnail" as const, placeholder: "from-blue-500 to-indigo-500" },
+          ].map(({ label, key, placeholder, disabled }) => (
+            <div key={key}>
+              <label className="text-[11px] font-medium text-muted-foreground">{label}</label>
+              <input
+                value={String(form[key] ?? "")}
+                onChange={(e) => set(key, e.target.value)}
+                placeholder={placeholder}
+                disabled={disabled}
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+              />
+            </div>
+          ))}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Tipe</label>
+              <select value={form.type} onChange={(e) => set("type", e.target.value)}
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+                {["video", "webinar", "diklatkerja", "modul"].map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Harga</label>
+              <select value={form.price} onChange={(e) => set("price", e.target.value)}
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+                <option value="gratis">Gratis</option>
+                <option value="berbayar">Berbayar</option>
+              </select>
+            </div>
+          </div>
+
+          {form.price === "berbayar" && (
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Harga (Rp)</label>
+              <input type="number" value={form.priceIdr ?? ""} onChange={(e) => set("priceIdr", Number(e.target.value))}
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Rating</label>
+              <input type="number" min={1} max={5} step={0.1} value={form.rating ?? 4.5} onChange={(e) => set("rating", parseFloat(e.target.value))}
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Jml Rating</label>
+              <input type="number" min={0} value={form.ratingCount ?? 0} onChange={(e) => set("ratingCount", Number(e.target.value))}
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Urutan</label>
+              <input type="number" value={form.sortOrder ?? 0} onChange={(e) => set("sortOrder", Number(e.target.value))}
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground">Deskripsi</label>
+            <textarea rows={3} value={form.description ?? ""} onChange={(e) => set("description", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y" />
+          </div>
+
+          <div className="flex flex-wrap gap-4 text-sm">
+            {(["isBestSeller", "isFeatured", "isNew", "hasCertificate"] as const).map((k) => (
+              <label key={k} className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={!!form[k]} onChange={(e) => set(k, e.target.checked)}
+                  className="rounded border-border" />
+                <span className="text-muted-foreground">
+                  {k === "isBestSeller" ? "Best Seller" : k === "isFeatured" ? "Featured" : k === "isNew" ? "Baru" : "Ada Sertifikat"}
+                </span>
+              </label>
+            ))}
+          </div>
+
+          {error && (
+            <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-2">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-3 px-6 pb-5">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted">
+            Batal
+          </button>
+          <button
+            onClick={() => onSubmit(form)}
+            disabled={isPending || !form.id || !form.title || !form.provider || !form.url}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {isEdit ? "Simpan Perubahan" : "Tambah Kursus"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
