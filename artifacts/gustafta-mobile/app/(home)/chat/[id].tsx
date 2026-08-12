@@ -1030,7 +1030,7 @@ export default function ChatScreen() {
                 ]}
               >
                 {usageInfo.remaining}/{usageInfo.limit} pesan/jam
-                {usageInfo.remaining <= 5 && usageInfo.resetAt ? (() => {
+                {usageInfo.resetAt ? (() => {
                   const d = new Date(usageInfo.resetAt);
                   const hh = d.getHours().toString().padStart(2, '0');
                   const mm = d.getMinutes().toString().padStart(2, '0');

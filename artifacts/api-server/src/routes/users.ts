@@ -32,37 +32,24 @@ router.get("/users/me/plan", requireAuth, async (req, res) => {
  * delta is negligible for a progress indicator.
  */
 router.get("/users/me/usage", requireAuth, async (req, res) => {
-  const uid = req.dbUser!.id;
-  const isPro = req.dbUser!.plan === "pro" &&
+  const userIsProPlan = req.dbUser!.plan === "pro" &&
     (!req.dbUser!.planExpiresAt || new Date(req.dbUser!.planExpiresAt) > new Date());
-  const limit = isPro ? 120 : 30;
+  const limit = userIsProPlan ? 120 : 30;
 
-  const WINDOW_MS = 60 * 60 * 1000; // rolling 1-hour window
-  const windowStart = new Date(Date.now() - WINDOW_MS);
+  // ── Source of truth: the rate-limiter store ──────────────────────────────────
+  // Reading from the same MemoryStore that chatMessageRateLimiter uses guarantees
+  // the display counter can never diverge from the counter that controls enforcement
+  // (Task #40).  This eliminates the previous dual-counter approach where the DB
+  // query counted stored messages while the limiter counted requests — two values
+  // that could differ after server restarts, failed requests, or direct DB writes.
+  const { chatRateLimitStore, userKey } = await import("../middlewares/rateLimiter");
+  const key = userKey(req);
+  const storeInfo = await chatRateLimitStore.get(key).catch(() => null);
 
-  // Count user-role messages in conversations owned by this user in the last hour,
-  // and also fetch the oldest message's timestamp so we can compute the real reset time.
-  const [result, oldest] = await Promise.all([
-    db.select({ cnt: count() })
-      .from(messages)
-      .innerJoin(conversations, eq(messages.conversationId, conversations.id))
-      .where(and(eq(conversations.userId, uid), eq(messages.role, "user"), gte(messages.createdAt, windowStart))),
-    db.select({ createdAt: messages.createdAt })
-      .from(messages)
-      .innerJoin(conversations, eq(messages.conversationId, conversations.id))
-      .where(and(eq(conversations.userId, uid), eq(messages.role, "user"), gte(messages.createdAt, windowStart)))
-      .orderBy(messages.createdAt)
-      .limit(1),
-  ]);
-
-  const used = Number(result[0]?.cnt ?? 0);
+  const used      = storeInfo?.totalHits ?? 0;
   const remaining = Math.max(0, limit - used);
-
-  // resetAt = the moment the oldest in-window message expires out of the rolling window.
-  // If there are no in-window messages, the limit is already fully available → null.
-  const resetAt = oldest[0]?.createdAt
-    ? new Date(new Date(oldest[0].createdAt).getTime() + WINDOW_MS).toISOString()
-    : null;
+  // resetTime is the moment the current window expires and the counter resets.
+  const resetAt   = storeInfo?.resetTime?.toISOString() ?? null;
 
   res.json({ used, limit, remaining, resetAt });
 });

@@ -17,7 +17,7 @@
  * NODE_ENV=test skip guard.
  */
 
-import rateLimit, { ipKeyGenerator, type Options, type Store } from "express-rate-limit";
+import rateLimit, { MemoryStore, ipKeyGenerator, type Options, type Store } from "express-rate-limit";
 import type { Request } from "express";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -37,6 +37,14 @@ export function isPro(req: Request): boolean {
   if (user.planExpiresAt && new Date(user.planExpiresAt) < new Date()) return false;
   return true;
 }
+
+// ── Shared store (exported so /users/me/usage reads the exact same counter) ───
+//
+// express-rate-limit's default MemoryStore is an internal implementation detail;
+// by exporting it here we ensure the display counter can never drift from the
+// counter that actually controls enforcement.  Tests that pass `overrides.store`
+// bypass this singleton cleanly.
+export const chatRateLimitStore = new MemoryStore();
 
 // ── Factory options type ──────────────────────────────────────────────────────
 
@@ -73,7 +81,8 @@ export function createChatMessageRateLimiter(overrides: LimiterOverrides = {}) {
       code: "rate_limit_chat",
     },
     skip: overrides.skip ?? (() => process.env.NODE_ENV === "test"),
-    ...(overrides.store ? { store: overrides.store } : {}),
+    // Always use the shared singleton unless tests inject their own store.
+    store: overrides.store ?? chatRateLimitStore,
   });
 }
 
