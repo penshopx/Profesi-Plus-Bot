@@ -11,6 +11,7 @@ import { recommendPersona, isKnownPersona, isConfidentJabkerMatch, DEFAULT_PERSO
 import { findJabkerGroup } from "../../lib/skk-data";
 import { requireAuth } from "../../middlewares/auth";
 import { chatMessageRateLimiter, exumRateLimiter } from "../../middlewares/rateLimiter";
+import { applySharedContextBudget } from "../../lib/context-budget";
 
 const router: IRouter = Router();
 
@@ -251,9 +252,21 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     buildProfileContext(req.dbUser!.id),
     buildKegiatanContext(req.dbUser!.id),
   ]);
+  // Enforce a shared character budget across all context blocks.
+  // Priority (higher = preserved first when budget is tight):
+  //   7 profile, 6 competency, 5 quiz, 4 kegiatan, 3 knowledge, 2 projectBrain, 1 historical
+  const combinedContext = applySharedContextBudget([
+    { content: profileContext,       priority: 7 },
+    { content: competencyContext,    priority: 6 },
+    { content: quizContext,          priority: 5 },
+    { content: kegiatanContext,      priority: 4 },
+    { content: knowledgeContext,     priority: 3 },
+    { content: projectBrainContext,  priority: 2 },
+    { content: historicalPKBContext, priority: 1 },
+  ]);
   const systemPrompt = buildSystemPrompt(
     conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence,
-    knowledgeContext + projectBrainContext + historicalPKBContext + competencyContext + quizContext + profileContext + kegiatanContext,
+    combinedContext,
     conv.personaId,
     req.dbUser!.name,
   );
@@ -449,9 +462,22 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       outlineContext = `\n\nBLUEPRINT YANG TELAH DISETUJUI PENGGUNA:\nGunakan struktur berikut sebagai kerangka wajib penulisan Exum:\n${outline}\n\nPENTING: Ikuti urutan dan judul bagian di atas dengan tepat. Setiap bagian wajib memuat semua poin yang disebutkan.`;
     }
 
+    // Enforce the same shared budget for Exum context.
+    // outlineContext (approved blueprint) gets highest priority since it drives
+    // the document structure. historicalPKBContext is trimmed first.
+    const exumCombinedContext = applySharedContextBudget([
+      { content: outlineContext,    priority: 8 },
+      { content: exumProfile,      priority: 7 },
+      { content: exumCompetency,   priority: 6 },
+      { content: exumQuiz,         priority: 5 },
+      { content: exumKegiatan,     priority: 4 },
+      { content: exumKnowledge,    priority: 3 },
+      { content: exumProjectBrain, priority: 2 },
+      { content: exumHistorical,   priority: 1 },
+    ]);
     const exumPrompt = buildExumPrompt(
       conv.mode, conv.jabker, conv.jenjang, transcript, evidence,
-      exumKnowledge + exumProjectBrain + exumHistorical + exumCompetency + exumQuiz + exumProfile + exumKegiatan + outlineContext,
+      exumCombinedContext,
       req.dbUser!.name,
     );
 
