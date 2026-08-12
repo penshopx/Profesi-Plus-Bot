@@ -1,0 +1,341 @@
+/**
+ * Integration test: POST /chat/conversations/:id/messages
+ *
+ * Verifies that the user's competency analysis context is included in the
+ * system prompt that reaches the LLM. A regression (context silently dropped
+ * due to an exception or code change) will cause this test to fail.
+ *
+ * All external dependencies (DB, LLM, auth, rate-limiter, context builders)
+ * are mocked so the test runs without a real database or network.
+ */
+
+import express from "express";
+import request from "supertest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// ── 1. db mock ────────────────────────────────────────────────────────────────
+//
+// A queue-based chainable stub: each `await db.<chain>` expression pops the
+// next value from the queue, so callers get the right data in call-order.
+
+const dbState = vi.hoisted(() => ({
+  queue: [] as unknown[],
+  push(...items: unknown[]) {
+    this.queue.push(...items);
+  },
+  shift(): unknown {
+    return this.queue.shift() ?? [];
+  },
+}));
+
+vi.mock("@workspace/db", () => {
+  function makeChain() {
+    const obj: Record<string, unknown> = {};
+    obj["then"] = (resolve: (v: unknown) => void, reject: (e: unknown) => void) =>
+      Promise.resolve(dbState.shift()).then(resolve, reject);
+    obj["catch"] = (reject: (e: unknown) => void) =>
+      Promise.resolve(dbState.shift()).catch(reject);
+    for (const m of [
+      "select", "from", "where", "orderBy", "limit",
+      "innerJoin", "insert", "values", "returning",
+      "update", "set", "for", "delete",
+    ]) {
+      obj[m] = vi.fn().mockReturnValue(obj);
+    }
+    return obj;
+  }
+  const chain = makeChain();
+  return {
+    db: {
+      select:      vi.fn().mockReturnValue(chain),
+      insert:      vi.fn().mockReturnValue(chain),
+      update:      vi.fn().mockReturnValue(chain),
+      delete:      vi.fn().mockReturnValue(chain),
+      transaction: vi.fn(),
+    },
+    conversations:    { id: "id", userId: "userId", createdAt: "createdAt" },
+    messages:         { conversationId: "conversationId", createdAt: "createdAt", role: "role" },
+    evidenceItems:    { conversationId: "conversationId", createdAt: "createdAt" },
+    competencyAnalysis: { userId: "userId", createdAt: "createdAt" },
+    usageEvents:      {},
+    users:            { id: "id", exumCredits: "exumCredits" },
+    exumOutlines:     {},
+    profiles:         { userId: "userId" },
+    competencyClaims: { userId: "userId", createdAt: "createdAt" },
+    quizAttempts:     { userId: "userId", quizId: "quizId", completedAt: "completedAt" },
+    quizzes:          { id: "id" },
+    pkbActivities:    { userId: "userId", tanggalMulai: "tanggalMulai" },
+    pkbActivitySkk:   { activityId: "activityId" },
+  };
+});
+
+vi.mock("drizzle-orm", () => ({
+  eq: vi.fn().mockReturnValue({}),
+  and: vi.fn().mockReturnValue({}),
+  ne: vi.fn().mockReturnValue({}),
+  desc: vi.fn().mockReturnValue({}),
+  asc: vi.fn().mockReturnValue({}),
+  isNotNull: vi.fn().mockReturnValue({}),
+  count: vi.fn().mockReturnValue({}),
+  gte: vi.fn().mockReturnValue({}),
+  inArray: vi.fn().mockReturnValue({}),
+  sql: vi.fn().mockReturnValue({}),
+}));
+
+// ── 2. Auth middleware — inject a fake authenticated user ─────────────────────
+
+vi.mock("../middlewares/auth.js", () => ({
+  requireAuth: vi.fn((req: express.Request, _res: express.Response, next: express.NextFunction) => {
+    (req as any).dbUser = {
+      id: 42,
+      name: "Budi Santoso",
+      plan: null,
+      planExpiresAt: null,
+      role: "user",
+    };
+    next();
+  }),
+  requireRole: vi.fn(() => (_req: express.Request, _res: express.Response, next: express.NextFunction) => next()),
+}));
+
+// ── 3. Rate-limiter — passthrough ─────────────────────────────────────────────
+
+vi.mock("../middlewares/rateLimiter.js", () => ({
+  chatMessageRateLimiter: vi.fn((_req: express.Request, _res: express.Response, next: express.NextFunction) => next()),
+  exumRateLimiter: vi.fn((_req: express.Request, _res: express.Response, next: express.NextFunction) => next()),
+  createChatMessageRateLimiter: vi.fn(),
+  createCompetencyRateLimiter: vi.fn(),
+}));
+
+// ── 4. Context builders — return controlled strings ───────────────────────────
+
+const KNOWN_COMPETENCY_CONTEXT = [
+  "\n\n=== ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI) ===",
+  "📊 Jabker: Ahli Muda Teknik Konstruksi / Muda",
+  "   🟡 Kesiapan: cukup | SKPK estimasi: 18/25",
+  "   Gap utama: \"Gap A\"; \"Gap B\"",
+  "   Rekomendasi: (1) Rec A | (2) Rec B",
+].join("\n");
+
+const KNOWN_PROFILE_CONTEXT = [
+  "\n\n=== PROFIL APL 01 TKK ===",
+  "Data identitas resmi TKK. WAJIB pakai nama dan jabatan nyata:",
+  "👷 Jabatan: Manajer Proyek Konstruksi",
+  "🏢 Perusahaan: PT Bangun Sejahtera",
+  "📅 Pengalaman kerja: ≈16 tahun (mulai 2010)",
+].join("\n");
+
+vi.mock("../lib/historical-pkb.js", () => ({
+  buildCompetencyAnalysisContext: vi.fn().mockResolvedValue(KNOWN_COMPETENCY_CONTEXT),
+  buildHistoricalPKBContext:      vi.fn().mockResolvedValue(""),
+  buildQuizContext:               vi.fn().mockResolvedValue(""),
+  buildProfileContext:            vi.fn().mockResolvedValue(KNOWN_PROFILE_CONTEXT),
+  buildKegiatanContext:           vi.fn().mockResolvedValue(""),
+}));
+
+vi.mock("../lib/knowledge-base.js", () => ({
+  buildKnowledgeContext: vi.fn().mockResolvedValue(""),
+}));
+
+vi.mock("../lib/project-brain.js", () => ({
+  buildProjectBrainContext: vi.fn().mockResolvedValue(""),
+}));
+
+// ── 5. LLM — capture messages and stream a fake response ──────────────────────
+
+/** Fake SSE stream: yields a single content chunk then done. */
+async function* fakeStream(text = "Halo, saya sudah membaca profil Anda.") {
+  yield { choices: [{ delta: { content: text } }] };
+}
+
+// Captured LLM call arguments — inspected per-test.
+let capturedLLMMessages: Array<{ role: string; content: string }> = [];
+
+vi.mock("../lib/llm.js", () => ({
+  DEFAULT_MODEL:   "gpt-4o",
+  isKnownModel:    vi.fn().mockReturnValue(false),
+  listModels:      vi.fn().mockReturnValue([]),
+  callWithFallback: vi.fn().mockImplementation(
+    async (_model: string, factory: (llm: any) => Promise<any>) => {
+      const fakeClient = {
+        client: {
+          chat: {
+            completions: {
+              create: vi.fn().mockImplementation((opts: any) => {
+                capturedLLMMessages = opts.messages;
+                return fakeStream();
+              }),
+            },
+          },
+        },
+        model: "gpt-4o",
+      };
+      const result = await factory(fakeClient);
+      return { result, modelUsed: "gpt-4o" };
+    },
+  ),
+}));
+
+// ── 6. Persona / SKK helpers (no real data needed) ───────────────────────────
+
+vi.mock("../lib/personas.js", () => ({
+  recommendPersona:        vi.fn().mockReturnValue({ id: "generalis" }),
+  isKnownPersona:          vi.fn().mockReturnValue(false),
+  isConfidentJabkerMatch:  vi.fn().mockReturnValue(false),
+  DEFAULT_PERSONA_ID:      "generalis",
+  getPersona:              vi.fn().mockReturnValue({ id: "generalis", name: "Pak Budi" }),
+}));
+
+vi.mock("../lib/skk-data.js", () => ({
+  findJabkerGroup: vi.fn().mockReturnValue(null),
+}));
+
+// ── Fixtures ──────────────────────────────────────────────────────────────────
+
+const FAKE_CONV = {
+  id:         1,
+  userId:     42,
+  title:      "Sesi Exum",
+  mode:       "pkb",
+  jabker:     "Ahli Muda Teknik Konstruksi",
+  jenjang:    "Muda",
+  phase:      "profiling",
+  model:      "gpt-4o",
+  personaId:  "generalis",
+  createdAt:  new Date("2026-01-01"),
+  exumContent: null,
+};
+
+const FAKE_USER_MSG = {
+  id:             10,
+  conversationId: 1,
+  role:           "user",
+  content:        "Halo",
+  createdAt:      new Date("2026-01-01T10:00:00Z"),
+};
+
+// ── App setup ─────────────────────────────────────────────────────────────────
+
+async function buildApp() {
+  const { default: chatRouter } = await import("../routes/chat/index.js");
+  const app = express();
+  app.use(express.json());
+  // pino-http and clerk are not needed for these tests — the router is mounted directly.
+  app.use("/api", chatRouter);
+  return app;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("POST /api/chat/conversations/:id/messages", () => {
+  let app: express.Express;
+
+  beforeEach(async () => {
+    capturedLLMMessages = [];
+    dbState.queue = [];
+    app = await buildApp();
+  });
+
+  it("includes competency analysis context in the system prompt sent to the LLM", async () => {
+    // DB call order in the handler:
+    //   1. loadOwnedConversation   → [FAKE_CONV]
+    //   2. db.insert(messages)     → undefined  (user message insert)
+    //   3. db.select messages      → [FAKE_USER_MSG]
+    //   4. db.select evidenceItems → []
+    // Context builders are mocked, so no more DB calls.
+    //   5. db.insert(messages)     → undefined  (assistant message insert)
+    // No phase marker in the fake response, so no phase update.
+    dbState.push([FAKE_CONV], undefined, [FAKE_USER_MSG], [], undefined);
+
+    const res = await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({ content: "Halo" });
+
+    // The route streams SSE — accept 200 with text/event-stream.
+    expect(res.status).toBe(200);
+
+    // The system prompt is the first message in capturedLLMMessages.
+    expect(capturedLLMMessages.length).toBeGreaterThan(0);
+    const systemMessage = capturedLLMMessages[0];
+    expect(systemMessage.role).toBe("system");
+
+    // The known competency context string must appear verbatim in the system prompt.
+    expect(systemMessage.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+    expect(systemMessage.content).toContain("Ahli Muda Teknik Konstruksi");
+    expect(systemMessage.content).toContain("SKPK estimasi: 18/25");
+    expect(systemMessage.content).toContain("Gap A");
+    expect(systemMessage.content).toContain("Rec A");
+  });
+
+  it("includes the user's real APL 01 profile in the system prompt sent to the LLM", async () => {
+    dbState.push([FAKE_CONV], undefined, [FAKE_USER_MSG], [], undefined);
+
+    const res = await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({ content: "Halo" });
+
+    expect(res.status).toBe(200);
+
+    const systemMessage = capturedLLMMessages[0];
+    expect(systemMessage.role).toBe("system");
+
+    // The known profile context string must appear in the system prompt so the
+    // AI can reference the user's real job title and company — not generic placeholders.
+    expect(systemMessage.content).toContain("PROFIL APL 01 TKK");
+    expect(systemMessage.content).toContain("Manajer Proyek Konstruksi");
+    expect(systemMessage.content).toContain("PT Bangun Sejahtera");
+  });
+
+  it("calls buildCompetencyAnalysisContext with the authenticated user's ID", async () => {
+    dbState.push([FAKE_CONV], undefined, [FAKE_USER_MSG], [], undefined);
+
+    await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({ content: "Halo" });
+
+    const { buildCompetencyAnalysisContext } = await import("../lib/historical-pkb.js");
+    expect(vi.mocked(buildCompetencyAnalysisContext)).toHaveBeenCalledWith(42);
+  });
+
+  it("calls buildProfileContext with the authenticated user's ID", async () => {
+    dbState.push([FAKE_CONV], undefined, [FAKE_USER_MSG], [], undefined);
+
+    await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({ content: "Halo" });
+
+    const { buildProfileContext } = await import("../lib/historical-pkb.js");
+    expect(vi.mocked(buildProfileContext)).toHaveBeenCalledWith(42);
+  });
+
+  it("returns 404 when the conversation does not belong to the user", async () => {
+    // loadOwnedConversation returns a conversation owned by a different user
+    dbState.push([{ ...FAKE_CONV, userId: 999 }]);
+
+    const res = await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({ content: "Halo" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 for a non-existent conversation", async () => {
+    dbState.push([]); // no conversation found
+
+    const res = await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({ content: "Halo" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 when content is missing", async () => {
+    const res = await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+});
