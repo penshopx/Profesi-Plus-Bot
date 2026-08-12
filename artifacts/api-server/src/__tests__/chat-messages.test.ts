@@ -64,8 +64,9 @@ vi.mock("@workspace/db", () => {
     competencyClaims: { userId: "userId", createdAt: "createdAt" },
     quizAttempts:     { userId: "userId", quizId: "quizId", completedAt: "completedAt" },
     quizzes:          { id: "id" },
-    pkbActivities:    { userId: "userId", tanggalMulai: "tanggalMulai" },
-    pkbActivitySkk:   { activityId: "activityId" },
+    pkbActivities:       { userId: "userId", tanggalMulai: "tanggalMulai" },
+    pkbActivitySkk:      { activityId: "activityId" },
+    marketplaceWatched:  { userId: "userId" },
   };
 });
 
@@ -131,6 +132,7 @@ vi.mock("../lib/historical-pkb.js", () => ({
   buildQuizContext:               vi.fn().mockResolvedValue(""),
   buildProfileContext:            vi.fn().mockResolvedValue(KNOWN_PROFILE_CONTEXT),
   buildKegiatanContext:           vi.fn().mockResolvedValue(""),
+  buildWatchedModulesContext:     vi.fn().mockResolvedValue(""),
 }));
 
 vi.mock("../lib/knowledge-base.js", () => ({

@@ -852,3 +852,41 @@ export async function dialogGustafta(
   }
   return res.json();
 }
+
+export interface MarketplaceWatchedItem {
+  id: number;
+  userId: number;
+  courseId: string;
+  courseTitle: string;
+  provider: string;
+  watchedAt: string;
+}
+
+export async function markModuleWatched(
+  courseId: string,
+  courseTitle: string,
+  provider: string,
+): Promise<{ ok: boolean; alreadyWatched: boolean }> {
+  const res = await fetch(`${BASE}/marketplace/watched`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ courseId, courseTitle, provider }),
+  });
+  if (!res.ok) throw new Error("Gagal menandai modul sebagai sudah ditonton");
+  return res.json();
+}
+
+export async function unmarkModuleWatched(courseId: string): Promise<void> {
+  await fetch(`${BASE}/marketplace/watched/${encodeURIComponent(courseId)}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+}
+
+export async function listWatchedModules(): Promise<MarketplaceWatchedItem[]> {
+  const res = await fetch(`${BASE}/marketplace/watched`, { credentials: "include" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.watched ?? [];
+}

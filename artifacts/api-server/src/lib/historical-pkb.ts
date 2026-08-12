@@ -1,6 +1,7 @@
 import { db, conversations, evidenceItems, competencyAnalysis, quizAttempts, quizzes, profiles, competencyClaims, pkbActivities, pkbActivitySkk, marketplaceWatches } from "@workspace/db";
 import type { CompetencyAnalysisResult } from "@workspace/db";
 import { and, eq, isNotNull, ne, desc, asc, sql } from "drizzle-orm";
+import { db, conversations, evidenceItems, competencyAnalysis, quizAttempts, quizzes, profiles, competencyClaims, pkbActivities, pkbActivitySkk, marketplaceWatched } from "@workspace/db";
 
 // Token-budget constants — keep prompt injection bounded
 const MAX_PAST_EXUMS = 3;
@@ -428,5 +429,40 @@ export async function buildKegiatanContext(userId: number): Promise<string> {
   const combined = lines.join("\n");
   return combined.length > MAX_BLOCK_CHARS
     ? combined.slice(0, MAX_BLOCK_CHARS) + "\n…[kegiatan dipotong]"
+    : combined;
+}
+
+/**
+ * Injects the user's "sudah ditonton" marketplace modules into Pak Budi's system prompt.
+ * Pak Budi can then reference these modules by name during Exum interviews — asking
+ * the user to elaborate on what they learned — without the user needing to bring it up.
+ */
+export async function buildWatchedModulesContext(userId: number): Promise<string> {
+  const MAX_BLOCK_CHARS = 800;
+
+  const rows = await db
+    .select()
+    .from(marketplaceWatched)
+    .where(eq(marketplaceWatched.userId, userId));
+
+  if (!rows.length) return "";
+
+  const lines: string[] = [
+    "\n\n=== MODUL MARKETPLACE YANG SUDAH DITONTON ===",
+    "TKK sudah menandai modul-modul ini sebagai 'sudah ditonton'. TANYAKAN apa yang mereka pelajari untuk dijadikan bukti PKB:",
+  ];
+
+  for (const row of rows) {
+    const tanggal = row.watchedAt.toISOString().slice(0, 10);
+    lines.push(`\n• "${row.courseTitle}" (${row.provider}) — ditonton ${tanggal}`);
+  }
+
+  lines.push(
+    "\nUntuk setiap modul di atas: tanyakan apa insight atau skill konkret yang dipelajari, lalu bantu formulasikan sebagai bukti PKB."
+  );
+
+  const combined = lines.join("\n");
+  return combined.length > MAX_BLOCK_CHARS
+    ? combined.slice(0, MAX_BLOCK_CHARS) + "\n…[modul dipotong]"
     : combined;
 }

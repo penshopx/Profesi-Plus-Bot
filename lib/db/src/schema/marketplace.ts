@@ -30,3 +30,17 @@ export const marketplaceWatches = pgTable(
     uniqueIndex("marketplace_watches_user_course_uidx").on(t.userId, t.courseId),
   ],
 );
+
+export const marketplaceWatched = pgTable("marketplace_watched", {
+  id:          serial("id").primaryKey(),
+  userId:      integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  courseId:    text("course_id").notNull(),   // matches Course.id in marketplace catalog
+  courseTitle: text("course_title").notNull(),
+  provider:    text("provider").notNull(),
+  watchedAt:   timestamp("watched_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  // Enforce one row per user+course — prevents duplicate entries from concurrent requests
+  userCourseIdx: uniqueIndex("marketplace_watched_user_course_idx").on(table.userId, table.courseId),
+}));
+
+export type MarketplaceWatched = typeof marketplaceWatched.$inferSelect;

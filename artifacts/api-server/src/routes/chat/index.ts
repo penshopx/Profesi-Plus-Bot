@@ -12,6 +12,7 @@ import { findJabkerGroup } from "../../lib/skk-data";
 import { requireAuth } from "../../middlewares/auth";
 import { chatMessageRateLimiter, exumRateLimiter } from "../../middlewares/rateLimiter";
 import { applySharedContextBudget } from "../../lib/context-budget";
+import { buildHistoricalPKBContext, buildCompetencyAnalysisContext, buildQuizContext, buildProfileContext, buildKegiatanContext, buildWatchedModulesContext } from "../../lib/historical-pkb";
 
 const router: IRouter = Router();
 
@@ -88,18 +89,27 @@ router.post("/chat/conversations", async (req, res): Promise<void> => {
     resolvedPersona = recommendPersona(confident ? group.klasifikasi : null).id;
   }
   const [conv] = await db
-    .insert(conversations)
-    .values({ title, mode, model: selectedModel, jabker, jenjang, personaId: resolvedPersona, phase: "profiling", userId: req.dbUser!.id })
+    .update(conversations)
+    .set({ title: title.trim() })
+    .where(eq(conversations.id, id))
     .returning();
-  res.status(201).json(conv);
+  res.json(conv);
 });
 
-router.get("/chat/conversations/:id", async (req, res): Promise<void> => {
+router.delete("/chat/conversations/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
-  const conv = await loadOwnedConversation(req, res, id);
+  const conv = await loadOwnedConversation(req, res, convId);
   if (!conv) return;
-  const msgs = await db.select().from(messages).where(eq(messages.conversationId, id)).orderBy(asc(messages.createdAt));
-  const evidence = await db.select().from(evidenceItems).where(eq(evidenceItems.conversationId, id)).orderBy(asc(evidenceItems.createdAt));
+    const msgs = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, convId))
+      .orderBy(asc(messages.createdAt));
+    const evidence = await db
+      .select()
+      .from(evidenceItems)
+      .where(eq(evidenceItems.conversationId, convId))
+      .orderBy(asc(evidenceItems.createdAt));
   res.json({ ...conv, messages: msgs, evidence });
 });
 
@@ -152,45 +162,39 @@ router.post("/chat/conversations/:id/evidence", async (req, res): Promise<void> 
     res.status(400).json({ error: "type and title are required" });
     return;
   }
-  const conv = await loadOwnedConversation(req, res, id);
+  const conv = await loadOwnedConversation(req, res, convId);
   if (!conv) return;
 
   const socratiStr = socratiDialog ? JSON.stringify(socratiDialog) : null;
 
   const [item] = await db
-    .insert(evidenceItems)
-    .values({
-      conversationId: id,
-      type,
-      category: category ?? "",
-      title,
-      url,
-      description,
-      skkNotes,
-      skkUnitCode: skkUnitCode ?? null,
-      skkUnitName: skkUnitName ?? null,
-      socratiDialog: socratiStr,
-      socratiCompleted: socratiCompleted === true,
-      tier: tier ?? "self",
-    })
+    .update(evidenceItems)
+    .set({ socratiDialog: socratiStr, socratiCompleted: socratiCompleted === true })
+    .where(and(eq(evidenceItems.id, evidenceId), eq(evidenceItems.conversationId, id)))
     .returning();
-  res.status(201).json(item);
+  if (!item) { res.status(404).json({ error: "Evidence not found" }); return; }
+  res.json(item);
 });
 
-router.delete("/chat/conversations/:id/evidence/:evidenceId", async (req, res): Promise<void> => {
+// ─── Messages / Chat ──────────────────────────────────────────────────────────
+
+router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const evidenceId = parseInt(req.params.evidenceId, 10);
   const owned = await loadOwnedConversation(req, res, id);
   if (!owned) return;
   const [item] = await db
-    .delete(evidenceItems)
+    .update(evidenceItems)
+    .set({ socratiDialog: socratiStr, socratiCompleted: socratiCompleted === true })
     .where(and(eq(evidenceItems.id, evidenceId), eq(evidenceItems.conversationId, id)))
     .returning();
   if (!item) { res.status(404).json({ error: "Evidence not found" }); return; }
-  res.sendStatus(204);
+  res.json(item);
 });
 
-router.patch("/chat/conversations/:id/evidence/:evidenceId", async (req, res): Promise<void> => {
+// ─── Messages / Chat ──────────────────────────────────────────────────────────
+
+router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const evidenceId = parseInt(req.params.evidenceId, 10);
   const owned = await loadOwnedConversation(req, res, id);
@@ -212,12 +216,16 @@ router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> =
   const id = parseInt(req.params.id, 10);
   const owned = await loadOwnedConversation(req, res, id);
   if (!owned) return;
-  const msgs = await db.select().from(messages).where(eq(messages.conversationId, id)).orderBy(asc(messages.createdAt));
+    const msgs = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, convId))
+      .orderBy(asc(messages.createdAt));
   res.json(msgs);
 });
 
 router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (req, res): Promise<void> => {
-  const convId = parseInt(String(req.params.id), 10);
+  const convId = parseInt(String(conversationId), 10);
   const { content } = req.body;
 
   if (!content || typeof content !== "string") {
@@ -236,11 +244,11 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     .where(eq(messages.conversationId, convId))
     .orderBy(asc(messages.createdAt));
 
-  const evidence = await db
-    .select()
-    .from(evidenceItems)
-    .where(eq(evidenceItems.conversationId, convId))
-    .orderBy(asc(evidenceItems.createdAt));
+    const evidence = await db
+      .select()
+      .from(evidenceItems)
+      .where(eq(evidenceItems.conversationId, convId))
+      .orderBy(asc(evidenceItems.createdAt));
 
   const lastUserMsg = [...existingMsgs].reverse().find((m: { role: string; content: string }) => m.role === "user")?.content ?? null;
   // safeCtx wraps each context builder so a single DB/network failure cannot
@@ -256,7 +264,7 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     }
   };
 
-  const [knowledgeContext, projectBrainContext, historicalPKBContext, competencyContext, quizContext, profileContext, kegiatanContext, watchedCoursesContext] = await Promise.all([
+  const [knowledgeContext, projectBrainContext, historicalPKBContext, competencyContext, quizContext, profileContext, kegiatanContext, watchedModulesContext] = await Promise.all([
     safeCtx("knowledge",       () => buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: lastUserMsg })),
     safeCtx("projectBrain",    () => buildProjectBrainContext(req.dbUser!.id)),
     safeCtx("historical",      () => buildHistoricalPKBContext(req.dbUser!.id, convId)),
@@ -264,7 +272,7 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     safeCtx("quiz",            () => buildQuizContext(req.dbUser!.id)),
     safeCtx("profile",         () => buildProfileContext(req.dbUser!.id)),
     safeCtx("kegiatan",        () => buildKegiatanContext(req.dbUser!.id)),
-    safeCtx("watchedCourses",  () => buildWatchedCoursesContext(req.dbUser!.id)),
+    safeCtx("watchedModules",  () => buildWatchedModulesContext(req.dbUser!.id)),
   ]);
 
   // Detect silent context degradation: warn in logs if no personalisation data
@@ -276,16 +284,16 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
   }
   // Enforce a shared character budget across all context blocks.
   // Priority (higher = preserved first when budget is tight):
-  //   7 profile, 6 competency, 5 quiz, 4 kegiatan, 3 knowledge, 2 projectBrain, 1 historical
+  //   7 profile, 6 competency, 5 quiz, 4.5 watchedModules, 4 kegiatan, 3 knowledge, 2 projectBrain, 1 historical
   const combinedContext = applySharedContextBudget([
-    { content: profileContext,        priority: 7 },
-    { content: competencyContext,     priority: 6 },
-    { content: quizContext,           priority: 5 },
-    { content: kegiatanContext,       priority: 4 },
-    { content: watchedCoursesContext, priority: 3.5 },
-    { content: knowledgeContext,      priority: 3 },
-    { content: projectBrainContext,   priority: 2 },
-    { content: historicalPKBContext,  priority: 1 },
+    { content: profileContext,         priority: 7 },
+    { content: competencyContext,      priority: 6 },
+    { content: quizContext,            priority: 5 },
+    { content: watchedModulesContext,  priority: 4.5 },
+    { content: kegiatanContext,        priority: 4 },
+    { content: knowledgeContext,       priority: 3 },
+    { content: projectBrainContext,    priority: 2 },
+    { content: historicalPKBContext,   priority: 1 },
   ]);
   const systemPrompt = buildSystemPrompt(
     conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence,
@@ -362,9 +370,9 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
 
     await db.insert(messages).values({ conversationId: convId, role: "assistant", content: cleanResponse });
 
-    const phases = ["profiling", "context", "core_interview", "evidence", "synthesis", "done"];
-    const currentIdx = phases.indexOf(conv.phase);
-    let nextPhase = conv.phase;
+  const phases = ["profiling", "context", "core_interview", "evidence", "synthesis", "done"];
+  const currentIdx = phases.indexOf(conv.phase);
+  const nextPhase = phases[currentIdx + 1];
     if (hasMarker && currentIdx >= 0 && currentIdx < phases.length - 2) {
       nextPhase = phases[currentIdx + 1];
     }
@@ -385,7 +393,7 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
 
 router.post("/chat/conversations/:id/advance-phase", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
-  const conv = await loadOwnedConversation(req, res, id);
+  const conv = await loadOwnedConversation(req, res, convId);
   if (!conv) return;
 
   const phases = ["profiling", "context", "core_interview", "evidence", "synthesis", "done"];
@@ -475,7 +483,7 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       catch (err) { req.log.warn({ err, contextBlock: name }, "Exum context builder failed — falling back to empty string"); return ""; }
     };
 
-    const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency, exumQuiz, exumProfile, exumKegiatan, exumWatchedCourses, approvedOutlineRow] = await Promise.all([
+    const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency, exumQuiz, exumProfile, exumKegiatan, exumWatched, approvedOutlineRow] = await Promise.all([
       safeExumCtx("exum:knowledge",       () => buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: conv.jabker })),
       safeExumCtx("exum:projectBrain",    () => buildProjectBrainContext(req.dbUser!.id)),
       safeExumCtx("exum:historical",      () => buildHistoricalPKBContext(req.dbUser!.id, conversationId)),
@@ -483,7 +491,7 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       safeExumCtx("exum:quiz",            () => buildQuizContext(req.dbUser!.id)),
       safeExumCtx("exum:profile",         () => buildProfileContext(req.dbUser!.id)),
       safeExumCtx("exum:kegiatan",        () => buildKegiatanContext(req.dbUser!.id)),
-      safeExumCtx("exum:watchedCourses",  () => buildWatchedCoursesContext(req.dbUser!.id)),
+      safeExumCtx("exum:watchedModules",  () => buildWatchedModulesContext(req.dbUser!.id)),
       db.select().from(exumOutlines)
         .where(and(eq(exumOutlines.conversationId, convId), eq(exumOutlines.isApproved, true)))
         .then((rows) => rows[0] ?? null)
@@ -506,15 +514,15 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
     // outlineContext (approved blueprint) gets highest priority since it drives
     // the document structure. historicalPKBContext is trimmed first.
     const exumCombinedContext = applySharedContextBudget([
-      { content: outlineContext,       priority: 8 },
-      { content: exumProfile,          priority: 7 },
-      { content: exumCompetency,       priority: 6 },
-      { content: exumQuiz,             priority: 5 },
-      { content: exumKegiatan,         priority: 4 },
-      { content: exumWatchedCourses,   priority: 3.5 },
-      { content: exumKnowledge,        priority: 3 },
-      { content: exumProjectBrain,     priority: 2 },
-      { content: exumHistorical,       priority: 1 },
+      { content: outlineContext,    priority: 8 },
+      { content: exumProfile,       priority: 7 },
+      { content: exumCompetency,    priority: 6 },
+      { content: exumQuiz,          priority: 5 },
+      { content: exumWatched,       priority: 4.5 },
+      { content: exumKegiatan,      priority: 4 },
+      { content: exumKnowledge,     priority: 3 },
+      { content: exumProjectBrain,  priority: 2 },
+      { content: exumHistorical,    priority: 1 },
     ]);
     const exumPrompt = buildExumPrompt(
       conv.mode, conv.jabker, conv.jenjang, transcript, evidence,

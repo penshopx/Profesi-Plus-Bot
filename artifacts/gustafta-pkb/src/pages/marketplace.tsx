@@ -21,9 +21,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getWatchedCourses, markCourseWatched } from "@/lib/api";
+import { getWatchedCourses, markCourseWatched, unmarkModuleWatched } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
 
 type ContentType = "video" | "webinar" | "diklatkerja" | "modul";
 type PriceType = "gratis" | "berbayar";
@@ -1207,7 +1208,7 @@ function ReviewsSection({ reviews }: { reviews: CourseReviews }) {
 
 // ─── Course Card ──────────────────────────────────────────────────────────────
 
-function CourseCard({ course, onClick, isWatched }: { course: Course; onClick: () => void; isWatched?: boolean }) {
+function CourseCard({ course, onClick, isWatched }: { course: Course; onClick: () => void; isWatched: boolean }) {
   const T = TYPE_META[course.type];
   const TIcon = T.icon;
   const [shareOpen, setShareOpen] = useState(false);
@@ -1348,7 +1349,14 @@ function CourseCard({ course, onClick, isWatched }: { course: Course; onClick: (
 
 // ─── Detail Panel ─────────────────────────────────────────────────────────────
 
-function DetailPanel({ course, onClose, onWatch }: { course: Course; onClose: () => void; onWatch: (course: Course) => void }) {
+function DetailPanel({
+  course, onClose, isWatched, onToggleWatch,
+}: {
+  course: Course;
+  onClose: () => void;
+  isWatched: boolean;
+  onToggleWatch: (course: Course, watched: boolean) => Promise<void>;
+}) {
   const T = TYPE_META[course.type];
   const TIcon = T.icon;
   const discount = course.priceOriginalIdr
@@ -1356,6 +1364,16 @@ function DetailPanel({ course, onClose, onWatch }: { course: Course; onClose: ()
     : null;
   const reviews = COURSE_REVIEWS[course.id];
   const [shareOpen, setShareOpen] = useState(false);
+  const [watchLoading, setWatchLoading] = useState(false);
+
+  async function handleToggleWatch() {
+    setWatchLoading(true);
+    try {
+      await onToggleWatch(course, isWatched);
+    } finally {
+      setWatchLoading(false);
+    }
+  }
 
   return (
     <>
@@ -1434,24 +1452,23 @@ function DetailPanel({ course, onClose, onWatch }: { course: Course; onClose: ()
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => {
-                  onWatch(course);
-                  window.open(course.url, "_blank", "noopener,noreferrer");
-                }}
+              <a
+                href={course.url}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="flex items-center justify-center gap-1.5 bg-primary text-primary-foreground rounded-xl py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity"
               >
                 <Play className="w-4 h-4" /> Buka Kursus
                 <ExternalLink className="w-3 h-3 opacity-70" />
-              </button>
+              </a>
               <button
                 onClick={() => {
                   try {
                     sessionStorage.setItem("KEGIATAN_FROM_MARKETPLACE", JSON.stringify({
-                      marketplaceId:   course.id,
-                      courseTitle:     course.title,
-                      courseProvider:  course.provider,
-                      courseJabkerList: course.jabker,
+                      marketplaceId:     course.id,
+                      courseTitle:       course.title,
+                      courseProvider:    course.provider,
+                      courseJabkerList:  course.jabker,
                       courseSkkTagsList: course.skkTags.map((t) => t.code),
                     }));
                   } catch {}
@@ -1462,8 +1479,28 @@ function DetailPanel({ course, onClose, onWatch }: { course: Course; onClose: ()
                 <CheckCircle2 className="w-4 h-4" /> Catat ke PKB
               </button>
             </div>
+
+            {/* Watched toggle */}
+            <button
+              onClick={handleToggleWatch}
+              disabled={watchLoading}
+              className={`w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-all border ${
+                isWatched
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                  : "bg-muted/50 text-foreground border-border hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200"
+              } disabled:opacity-60`}
+            >
+              {watchLoading ? (
+                <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : isWatched ? (
+                <><Eye className="w-4 h-4" /> ✓ Sudah Ditonton — Klik untuk Hapus</>
+              ) : (
+                <><Eye className="w-4 h-4" /> Tandai Sudah Ditonton</>
+              )}
+            </button>
+
             <p className="text-[11px] text-muted-foreground text-center">
-              "Catat ke PKB" akan membuka form dokumentasi Kegiatan PKB yang sudah terisi otomatis dengan data kursus ini.
+              Tandai modul yang sudah ditonton — Pak Budi akan tahu dan bisa langsung membahas isinya tanpa Anda perlu menjelaskan ulang.
             </p>
           </div>
 
@@ -1570,7 +1607,7 @@ export default function MarketplacePage() {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
-  // Watched course IDs — fetched once on mount, invalidated after each watch action.
+  // Watched course IDs — fetched via react-query, invalidated after each watch/unwatch.
   const { data: watchedIds = [] } = useQuery({
     queryKey: ["marketplace-watched"],
     queryFn: getWatchedCourses,
@@ -1578,16 +1615,15 @@ export default function MarketplacePage() {
   });
   const watchedSet = useMemo(() => new Set(watchedIds), [watchedIds]);
 
-  const watchMutation = useMutation({
-    mutationFn: (c: Course) =>
-      markCourseWatched(c.id, {
-        title:       c.title,
-        provider:    c.provider,
-        jabkerList:  c.jabker,
-        skkTagsList: c.skkTags.map((t) => t.code),
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["marketplace-watched"] }),
-  });
+  // Explicit toggle: mark or unmark a module as watched.
+  const handleToggleWatch = async (course: Course, currentlyWatched: boolean) => {
+    if (currentlyWatched) {
+      await unmarkModuleWatched(course.id);
+    } else {
+      await markCourseWatched(course.id);
+    }
+    qc.invalidateQueries({ queryKey: ["marketplace-watched"] });
+  };
 
   const filtered = useMemo(() => {
     return COURSES.filter((c) => {
@@ -1839,7 +1875,285 @@ export default function MarketplacePage() {
         <DetailPanel
           course={selectedCourse}
           onClose={() => setSelectedCourse(null)}
-          onWatch={(c) => watchMutation.mutate(c)}
+          isWatched={watchedSet.has(selectedCourse.id)}
+          onToggleWatch={handleToggleWatch}
+        />
+      )}
+    </div>
+  );
+}
+// removed duplicate MarketplacePage block
+
+  // Watched course IDs — fetched via react-query, invalidated after each watch/unwatch.
+  const { data: watchedIds = [] } = useQuery({
+    queryKey: ["marketplace-watched"],
+    queryFn: getWatchedCourses,
+    staleTime: 5 * 60 * 1000,
+  });
+  const watchedSet = useMemo(() => new Set(watchedIds), [watchedIds]);
+
+  // Explicit toggle: mark or unmark a module as watched.
+  const handleToggleWatch = async (course: Course, currentlyWatched: boolean) => {
+    if (currentlyWatched) {
+      await unmarkModuleWatched(course.id);
+    } else {
+      await markCourseWatched(course.id);
+    }
+    qc.invalidateQueries({ queryKey: ["marketplace-watched"] });
+  };
+
+  const filtered = useMemo(() => {
+    return COURSES.filter((c) => {
+      if (search && !c.title.toLowerCase().includes(search.toLowerCase()) &&
+          !c.provider.toLowerCase().includes(search.toLowerCase()) &&
+          !c.skkTags.some((t) => t.name.toLowerCase().includes(search.toLowerCase()))) {
+        return false;
+      }
+      if (filterJabker && !c.jabker.includes(filterJabker)) return false;
+      if (filterType && c.type !== filterType) return false;
+      if (filterPrice && c.price !== filterPrice) return false;
+      if (filterWatched && !watchedSet.has(c.id)) return false;
+      return true;
+    });
+  }, [search, filterJabker, filterType, filterPrice, filterWatched, watchedSet]);
+
+  const featuredCourses = COURSES.filter((c) => c.isFeatured);
+  const activeFilters = [filterJabker, filterType, filterPrice, filterWatched ? "watched" : ""].filter(Boolean).length;
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-6">
+          <Link href="/sessions">
+            <button className="h-8 w-8 rounded-xl flex items-center justify-center hover:bg-muted transition-colors">
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          </Link>
+          <div className="flex-1">
+            <h1 className="text-xl font-bold flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-primary" />
+              Marketplace PKB Microlearning
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Temukan kursus, webinar, dan video PKB — tonton, lalu ceritakan ke Pak Budi sebagai bukti belajar Anda
+            </p>
+          </div>
+        </div>
+
+        {/* Hero banner */}
+        <div className="rounded-2xl bg-gradient-to-r from-primary to-blue-600 p-6 mb-8 text-white flex items-center justify-between gap-4 overflow-hidden relative">
+          <div className="absolute right-0 top-0 w-64 h-full opacity-10">
+            <div className="w-96 h-96 bg-white rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl" />
+          </div>
+          <div>
+            <p className="text-white/70 text-xs font-semibold uppercase tracking-widest mb-1">Cara Pakai Marketplace</p>
+            <h2 className="text-lg font-bold mb-2">Tonton → Ceritakan → Jadikan Bukti PKB</h2>
+            <p className="text-white/80 text-sm max-w-lg">
+              Pilih kursus yang relevan dengan jabker Anda, tonton hingga selesai, lalu buka sesi interview PKB dan ceritakan apa yang Anda pelajari. Pak Budi akan membantu Anda mengubah pembelajaran itu menjadi bukti PKB yang kuat.
+            </p>
+          </div>
+          <div className="hidden sm:flex flex-col items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center text-lg">🎓</div>
+              <ChevronRight className="w-4 h-4 text-white/60" />
+              <div className="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center text-lg">🗣️</div>
+              <ChevronRight className="w-4 h-4 text-white/60" />
+              <div className="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center text-lg">📜</div>
+            </div>
+            <span className="text-white/60 text-[10px]">Belajar → Wawancara → Exum PKB</span>
+          </div>
+        </div>
+
+        {/* Featured */}
+        {!search && !filterJabker && !filterType && !filterPrice && (
+          <section className="mb-8">
+            <h2 className="font-bold text-base mb-3 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-amber-500" /> Pilihan Editor
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {featuredCourses.map((c) => (
+                <CourseCard key={c.id} course={c} onClick={() => setSelectedCourse(c)} isWatched={watchedSet.has(c.id)} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Search + Filter bar */}
+        <div className="flex gap-2 mb-4">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Cari judul kursus, provider, atau kode SKK..."
+              className="pl-9 rounded-xl"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowFilters((f) => !f)}
+            className={`gap-1.5 rounded-xl shrink-0 ${activeFilters ? "border-primary text-primary" : ""}`}
+          >
+            <Filter className="w-3.5 h-3.5" />
+            Filter
+            {activeFilters > 0 && (
+              <span className="ml-0.5 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
+                {activeFilters}
+              </span>
+            )}
+          </Button>
+        </div>
+
+        {/* Filter panel */}
+        {showFilters && (
+          <div className="mb-4 rounded-2xl border border-border bg-muted/20 p-4 flex flex-wrap gap-4">
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-muted-foreground">Jabatan Kerja</p>
+              <div className="flex gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setFilterJabker("")}
+                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${!filterJabker ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40"}`}
+                >
+                  Semua
+                </button>
+                {ALL_JABKER.map((j) => (
+                  <button
+                    key={j}
+                    onClick={() => setFilterJabker(j === filterJabker ? "" : j)}
+                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${filterJabker === j ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40"}`}
+                  >
+                    {JABKER_LABELS[j] ?? j}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-muted-foreground">Tipe Konten</p>
+              <div className="flex gap-1.5 flex-wrap">
+                <button onClick={() => setFilterType("")} className={`text-xs px-3 py-1 rounded-full border transition-colors ${!filterType ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40"}`}>Semua</button>
+                {ALL_TYPES.map((t) => {
+                  const M = TYPE_META[t];
+                  return (
+                    <button key={t} onClick={() => setFilterType(t === filterType ? "" : t)}
+                      className={`text-xs px-3 py-1 rounded-full border transition-colors ${filterType === t ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40"}`}
+                    >
+                      {M.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-muted-foreground">Harga</p>
+              <div className="flex gap-1.5">
+                <button onClick={() => setFilterPrice("")} className={`text-xs px-3 py-1 rounded-full border transition-colors ${!filterPrice ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40"}`}>Semua</button>
+                <button onClick={() => setFilterPrice(filterPrice === "gratis" ? "" : "gratis")} className={`text-xs px-3 py-1 rounded-full border transition-colors ${filterPrice === "gratis" ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40"}`}>Gratis</button>
+                <button onClick={() => setFilterPrice(filterPrice === "berbayar" ? "" : "berbayar")} className={`text-xs px-3 py-1 rounded-full border transition-colors ${filterPrice === "berbayar" ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40"}`}>Berbayar</button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-muted-foreground">Status</p>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => setFilterWatched((v) => !v)}
+                  className={`flex items-center gap-1 text-xs px-3 py-1 rounded-full border transition-colors ${filterWatched ? "bg-emerald-600 text-white border-emerald-600" : "border-border hover:border-emerald-400"}`}
+                >
+                  <Eye className="w-3 h-3" /> Sudah Ditonton
+                  {filterWatched && watchedIds.length > 0 && (
+                    <span className="ml-0.5 text-[10px] opacity-80">({watchedIds.length})</span>
+                  )}
+                </button>
+              </div>
+            </div>
+            {activeFilters > 0 && (
+              <button
+                onClick={() => { setFilterJabker(""); setFilterType(""); setFilterPrice(""); setFilterWatched(false); }}
+                className="text-xs text-destructive hover:underline flex items-center gap-1 self-end"
+              >
+                <X className="w-3 h-3" /> Hapus semua filter
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Category pills (quick filter) */}
+        {!showFilters && (
+          <div className="flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-hide">
+            <button onClick={() => setFilterJabker("")} className={`text-xs px-3 py-1.5 rounded-full border whitespace-nowrap shrink-0 transition-colors ${!filterJabker ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40 bg-card"}`}>
+              Semua Jabker
+            </button>
+            {ALL_JABKER.map((j) => (
+              <button key={j} onClick={() => setFilterJabker(j === filterJabker ? "" : j)}
+                className={`text-xs px-3 py-1.5 rounded-full border whitespace-nowrap shrink-0 transition-colors ${filterJabker === j ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40 bg-card"}`}
+              >
+                {JABKER_LABELS[j] ?? j}
+              </button>
+            ))}
+            {/* Watched pill — shows count badge when any are watched */}
+            <button
+              onClick={() => setFilterWatched((v) => !v)}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border whitespace-nowrap shrink-0 transition-colors ${filterWatched ? "bg-emerald-600 text-white border-emerald-600" : "border-border hover:border-emerald-400 bg-card"}`}
+            >
+              <Eye className="w-3 h-3" /> Sudah Ditonton
+              {watchedIds.length > 0 && (
+                <span className={`text-[10px] font-bold px-1 py-0 rounded-full ${filterWatched ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-700"}`}>
+                  {watchedIds.length}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Results header */}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-sm text-muted-foreground">
+            {search || filterJabker || filterType || filterPrice
+              ? `${filtered.length} kursus ditemukan`
+              : "Semua Kursus PKB"}
+          </h2>
+          <span className="text-xs text-muted-foreground">{COURSES.length} total tersedia</span>
+        </div>
+
+        {/* Grid */}
+        {filtered.length === 0 ? (
+          <div className="text-center py-16 text-muted-foreground">
+            <BookOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p className="font-medium">Tidak ada kursus yang cocok</p>
+            <p className="text-sm mt-1">Coba ubah filter atau kata kunci pencarian</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map((c) => (
+              <CourseCard key={c.id} course={c} onClick={() => setSelectedCourse(c)} isWatched={watchedSet.has(c.id)} />
+            ))}
+          </div>
+        )}
+
+        {/* Coming soon */}
+        <div className="mt-12 rounded-2xl border border-dashed border-border bg-muted/10 p-8 text-center">
+          <p className="text-2xl mb-2">🔜</p>
+          <h3 className="font-semibold text-sm mb-1">Segera Hadir: Integrasi Platform Mitra</h3>
+          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+            Gustafta PKB akan terintegrasi langsung dengan Skill Academy, Kemnaker Diklatkerja, dan LPJK — sehingga riwayat belajar Anda otomatis tersambung ke portofolio PKB.
+          </p>
+        </div>
+      </div>
+
+      {/* Detail slide-over */}
+      {selectedCourse && (
+        <DetailPanel
+          course={selectedCourse}
+          onClose={() => setSelectedCourse(null)}
+          isWatched={watchedSet.has(selectedCourse.id)}
+          onToggleWatch={handleToggleWatch}
         />
       )}
     </div>

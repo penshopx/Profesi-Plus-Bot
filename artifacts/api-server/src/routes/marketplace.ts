@@ -1,30 +1,39 @@
+/**
+ * /api/marketplace — Status "Sudah Ditonton" untuk modul marketplace PKB
+ *
+ * GET  /api/marketplace/watched             — daftar modul yang sudah ditandai user
+ * POST /api/marketplace/:courseId/watch    — auto-mark saat membuka kursus (idempotent)
+ * POST /api/marketplace/watched             — explicit mark dengan metadata lengkap
+ * DELETE /api/marketplace/watched/:courseId — hapus tanda (unwatch)
+ */
+
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { db } from "@workspace/db";
-import { marketplaceWatches } from "@workspace/db/schema";
+import { marketplaceWatched } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 
 const router = Router();
 
-/**
- * GET /marketplace/watched
- * Returns the list of course IDs the authenticated user has opened.
- */
+// ─── GET /api/marketplace/watched ─────────────────────────────────────────────
+// Returns full objects and courseId-only array for compatibility.
+
 router.get("/marketplace/watched", requireAuth, async (req, res) => {
   const uid = req.dbUser!.id;
   const rows = await db
-    .select({ courseId: marketplaceWatches.courseId })
-    .from(marketplaceWatches)
-    .where(eq(marketplaceWatches.userId, uid));
-  res.json({ watchedIds: rows.map((r) => r.courseId) });
+    .select()
+    .from(marketplaceWatched)
+    .where(eq(marketplaceWatched.userId, uid));
+  res.json({
+    watched: rows,
+    watchedIds: rows.map((r) => r.courseId),
+  });
 });
 
-/**
- * POST /marketplace/:courseId/watch
- * Marks a course as watched for the authenticated user (upsert — idempotent).
- * Accepts optional metadata (title, provider, jabkerList, skkTagsList) so the AI
- * context builder can reference course details without a server-side catalog copy.
- */
+// ─── POST /api/marketplace/:courseId/watch ────────────────────────────────────
+// Auto-watch: triggered when user opens a course. Idempotent upsert.
+// courseTitle and provider are optional in the body — falls back to courseId when absent.
+
 router.post("/marketplace/:courseId/watch", requireAuth, async (req, res) => {
   const uid = req.dbUser!.id;
   const { courseId } = req.params;
@@ -32,30 +41,48 @@ router.post("/marketplace/:courseId/watch", requireAuth, async (req, res) => {
     res.status(400).json({ error: "courseId tidak valid" });
     return;
   }
-  const {
-    title,
-    provider,
-    jabkerList,
-    skkTagsList,
-  }: {
-    title?: string;
-    provider?: string;
-    jabkerList?: string[];
-    skkTagsList?: string[];
-  } = req.body ?? {};
-
+  const { courseTitle = courseId, provider = "" } =
+    (req.body as { courseTitle?: string; provider?: string }) ?? {};
   await db
-    .insert(marketplaceWatches)
-    .values({
-      userId: uid,
-      courseId,
-      courseTitle:    title    ?? null,
-      courseProvider: provider ?? null,
-      jabkerList:     Array.isArray(jabkerList)  ? jabkerList  : [],
-      skkTagsList:    Array.isArray(skkTagsList) ? skkTagsList : [],
-    })
+    .insert(marketplaceWatched)
+    .values({ userId: uid, courseId, courseTitle, provider })
     .onConflictDoNothing();
   res.json({ ok: true });
+});
+
+// ─── POST /api/marketplace/watched ────────────────────────────────────────────
+// Explicit watch with full metadata (courseTitle + provider required).
+
+router.post("/marketplace/watched", requireAuth, async (req, res) => {
+  const uid = req.dbUser!.id;
+  const { courseId, courseTitle, provider } = req.body as {
+    courseId?: string;
+    courseTitle?: string;
+    provider?: string;
+  };
+  if (!courseId || !courseTitle || !provider) {
+    return res.status(400).json({ error: "courseId, courseTitle, and provider are required" });
+  }
+  await db
+    .insert(marketplaceWatched)
+    .values({ userId: uid, courseId, courseTitle, provider })
+    .onConflictDoNothing();
+  return res.json({ ok: true });
+});
+
+// ─── DELETE /api/marketplace/watched/:courseId ────────────────────────────────
+// Unwatch: allows user to un-mark a module.
+
+router.delete("/marketplace/watched/:courseId", requireAuth, async (req, res) => {
+  const uid = req.dbUser!.id;
+  const { courseId } = req.params;
+  await db
+    .delete(marketplaceWatched)
+    .where(and(
+      eq(marketplaceWatched.userId, uid),
+      eq(marketplaceWatched.courseId, courseId),
+    ));
+  return res.json({ ok: true });
 });
 
 export default router;
