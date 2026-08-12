@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Package, Search, X, Cpu, Sparkles, HardHat, DraftingCompass, Building2, ShieldCheck, Cog, Droplets, ClipboardList, Users, type LucideIcon } from "lucide-react";
 import { listConversations, createConversation, deleteConversation, fetchJabkerList, listModels, listPersonas, recommendPersona, type Conversation } from "@/lib/api";
+import { getMyProfile } from "@/lib/api-profile";
 
 const PERSONA_ICONS: Record<string, LucideIcon> = {
   HardHat, DraftingCompass, Building2, ShieldCheck, Cog, Droplets, ClipboardList,
@@ -118,6 +119,12 @@ export default function Home() {
   const { data: conversations = [], isLoading } = useQuery({
     queryKey: ["conversations"],
     queryFn: listConversations,
+  });
+
+  const { data: myProfile } = useQuery({
+    queryKey: ["my-profile"],
+    queryFn: getMyProfile,
+    retry: false,
   });
 
   const createMut = useMutation({
@@ -569,22 +576,37 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <div className="text-center max-w-md">
-            <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
-              <MessageSquare className="w-10 h-10 text-primary" />
+          <div className="flex flex-col items-center gap-6 max-w-md w-full">
+            {/* Profile completeness banner */}
+            {myProfile && !myProfile.isComplete && (
+              <a href="/profil"
+                className="w-full flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3.5 hover:bg-amber-100 transition-colors group">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-800">Profil APL 01 belum lengkap</p>
+                  <p className="text-xs text-amber-700 mt-0.5">Lengkapi data identitas agar Exum Anda dapat dipersonalisasi secara resmi</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-amber-600 group-hover:translate-x-0.5 transition-transform shrink-0" />
+              </a>
+            )}
+
+            <div className="text-center">
+              <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+                <MessageSquare className="w-10 h-10 text-primary" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Selamat Datang di Gustafta PKB</h2>
+              <p className="text-muted-foreground text-sm leading-relaxed mb-6">
+                Pewawancara mandiri untuk membantu Anda membuat <span className="font-semibold text-foreground">Executive Summary PKB</span> berkualitas tinggi (10-15 halaman, hingga 25 SKPK) sesuai Permen PUPR No. 12 Tahun 2021.
+              </p>
+              <button
+                data-testid="button-get-started"
+                onClick={() => setShowNew(true)}
+                className="inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 font-semibold hover:opacity-90 transition-opacity"
+              >
+                <Plus className="w-4 h-4" />
+                Buat Exum Baru
+              </button>
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">Selamat Datang di Gustafta PKB</h2>
-            <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-              Pewawancara mandiri untuk membantu Anda membuat <span className="font-semibold text-foreground">Executive Summary PKB</span> berkualitas tinggi (10-15 halaman, hingga 25 SKPK) sesuai Permen PUPR No. 12 Tahun 2021.
-            </p>
-            <button
-              data-testid="button-get-started"
-              onClick={() => setShowNew(true)}
-              className="inline-flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-6 py-3 font-semibold hover:opacity-90 transition-opacity"
-            >
-              <Plus className="w-4 h-4" />
-              Buat Exum Baru
-            </button>
           </div>
         )}
       </main>

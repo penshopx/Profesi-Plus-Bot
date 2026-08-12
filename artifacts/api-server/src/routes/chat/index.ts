@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and, asc, count, gte, inArray, sql } from "drizzle-orm";
-import { db, conversations, messages, evidenceItems, usageEvents, users, type Conversation } from "@workspace/db";
+import { db, conversations, messages, evidenceItems, usageEvents, users, exumOutlines, type Conversation } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL } from "../../lib/llm";
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
@@ -408,15 +408,31 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       .map((m) => `${m.role === "user" ? "TKK" : "Pak Budi"}: ${m.content}`)
       .join("\n\n");
 
-    const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency] = await Promise.all([
+    const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency, approvedOutlineRow] = await Promise.all([
       buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: conv.jabker }),
       buildProjectBrainContext(req.dbUser!.id),
       buildHistoricalPKBContext(req.dbUser!.id, conversationId),
       buildCompetencyAnalysisContext(req.dbUser!.id),
+      db.select().from(exumOutlines)
+        .where(and(eq(exumOutlines.conversationId, convId), eq(exumOutlines.isApproved, true)))
+        .then((rows) => rows[0] ?? null),
     ]);
+
+    // Build outline context — inject user-approved structure when present
+    let outlineContext = "";
+    if (approvedOutlineRow?.sections) {
+      const secs = approvedOutlineRow.sections as Array<{ title: string; points: string[]; userNotes?: string }>;
+      const outline = secs.map((s, i) => {
+        const pts = s.points.map((p) => `    - ${p}`).join("\n");
+        const note = s.userNotes ? `\n    [Instruksi khusus: ${s.userNotes}]` : "";
+        return `${i + 1}. ${s.title}\n${pts}${note}`;
+      }).join("\n");
+      outlineContext = `\n\nBLUEPRINT YANG TELAH DISETUJUI PENGGUNA:\nGunakan struktur berikut sebagai kerangka wajib penulisan Exum:\n${outline}\n\nPENTING: Ikuti urutan dan judul bagian di atas dengan tepat. Setiap bagian wajib memuat semua poin yang disebutkan.`;
+    }
+
     const exumPrompt = buildExumPrompt(
       conv.mode, conv.jabker, conv.jenjang, transcript, evidence,
-      exumKnowledge + exumProjectBrain + exumHistorical + exumCompetency,
+      exumKnowledge + exumProjectBrain + exumHistorical + exumCompetency + outlineContext,
       req.dbUser!.name,
     );
 
