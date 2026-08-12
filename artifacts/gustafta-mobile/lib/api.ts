@@ -205,6 +205,20 @@ export async function streamMessage(
   }
 }
 
+// ─── Usage / quota ─────────────────────────────────────────────────────────
+
+export interface UsageInfo {
+  used: number;
+  limit: number;
+  remaining: number;
+  windowMs: number;
+}
+
+export async function getMyUsage(): Promise<UsageInfo> {
+  const r = await apiFetch('/users/me/usage');
+  return r.json();
+}
+
 export async function generateExum(
   conversationId: number,
 ): Promise<{ content: string }> {

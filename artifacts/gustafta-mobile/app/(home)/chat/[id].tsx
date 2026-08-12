@@ -26,6 +26,7 @@ import {
   generateExum,
   advancePhase,
   transcribeAudio,
+  getMyUsage,
   type Message,
 } from '@/lib/api';
 import { Audio } from 'expo-av';
@@ -424,6 +425,14 @@ export default function ChatScreen() {
   /** True once the initial AsyncStorage draft load has completed. Gates persistence
    *  so that the persistence effect cannot overwrite a saved draft before it loads. */
   const [draftLoaded, setDraftLoaded] = useState(false);
+
+  // ─── Rate-limit usage indicator ──────────────────────────────────────────
+  const { data: usageInfo } = useQuery({
+    queryKey: ['my-usage'],
+    queryFn: getMyUsage,
+    staleTime: 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+  });
   const recordingRef = useRef<Audio.Recording | null>(null);
   const { getToken } = useAuth();
 
@@ -525,6 +534,7 @@ export default function ChatScreen() {
 
         queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
         queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        queryClient.invalidateQueries({ queryKey: ['my-usage'] });
         if (text !== AUTO_GREETING) {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         }
@@ -927,6 +937,40 @@ export default function ChatScreen() {
             </Pressable>
           )}
 
+          {/* Rate-limit usage indicator */}
+          {usageInfo && (
+            <View
+              style={[
+                styles.usageBar,
+                { backgroundColor: colors.background, borderTopColor: colors.border },
+              ]}
+            >
+              {usageInfo.remaining <= 5 && (
+                <Feather
+                  name="alert-circle"
+                  size={11}
+                  color={usageInfo.remaining <= 2 ? '#EF4444' : '#F59E0B'}
+                  style={{ marginRight: 4 }}
+                />
+              )}
+              <Text
+                style={[
+                  styles.usageText,
+                  {
+                    color:
+                      usageInfo.remaining <= 2
+                        ? '#EF4444'
+                        : usageInfo.remaining <= 5
+                          ? '#F59E0B'
+                          : colors.mutedForeground,
+                  },
+                ]}
+              >
+                {usageInfo.remaining}/{usageInfo.limit} pesan/jam
+              </Text>
+            </View>
+          )}
+
           {/* Input row */}
           <View
             style={[
@@ -1117,4 +1161,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   queueBannerText: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium' },
+  usageBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  usageText: { fontSize: 11, fontFamily: 'PlusJakartaSans_400Regular' },
 });
