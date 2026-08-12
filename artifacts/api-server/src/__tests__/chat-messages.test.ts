@@ -126,10 +126,17 @@ const KNOWN_PROFILE_CONTEXT = [
   "📅 Pengalaman kerja: ≈16 tahun (mulai 2010)",
 ].join("\n");
 
+const KNOWN_QUIZ_CONTEXT = [
+  "\n\n=== DATA QUIZ PKB TKK ===",
+  "Hasil quiz yang telah dikerjakan TKK. GUNAKAN ini untuk menyebut kompetensi terukur secara konkret:",
+  "📘 [SKK.01.001] Manajemen Konstruksi Dasar: Pre=55% → Post=85% (peningkatan: +30%) | LULUS",
+  "🏆 [SKK.02.003] Perencanaan Proyek (Proficiency): 78% — LULUS ✓",
+].join("\n");
+
 vi.mock("../lib/historical-pkb.js", () => ({
   buildCompetencyAnalysisContext: vi.fn().mockResolvedValue(KNOWN_COMPETENCY_CONTEXT),
   buildHistoricalPKBContext:      vi.fn().mockResolvedValue(""),
-  buildQuizContext:               vi.fn().mockResolvedValue(""),
+  buildQuizContext:               vi.fn().mockResolvedValue(KNOWN_QUIZ_CONTEXT),
   buildProfileContext:            vi.fn().mockResolvedValue(KNOWN_PROFILE_CONTEXT),
   buildKegiatanContext:           vi.fn().mockResolvedValue(""),
   buildWatchedModulesContext:     vi.fn().mockResolvedValue(""),
@@ -222,6 +229,13 @@ async function buildApp() {
   const { default: chatRouter } = await import("../routes/chat/index.js");
   const app = express();
   app.use(express.json());
+  // Stub req.log so safeCtx can call req.log.warn/error without pino-http.
+  // Without this, a builder exception causes req.log.warn() to throw a TypeError
+  // (req.log is undefined) and the handler returns 500 instead of falling back gracefully.
+  app.use((_req: any, _res: express.Response, next: express.NextFunction) => {
+    (_req as any).log = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() };
+    next();
+  });
   // pino-http and clerk are not needed for these tests — the router is mounted directly.
   app.use("/api", chatRouter);
   return app;
@@ -310,6 +324,67 @@ describe("POST /api/chat/conversations/:id/messages", () => {
 
     const { buildProfileContext } = await import("../lib/historical-pkb.js");
     expect(vi.mocked(buildProfileContext)).toHaveBeenCalledWith(42);
+  });
+
+  it("includes quiz context in the system prompt sent to the LLM", async () => {
+    dbState.push([FAKE_CONV], undefined, [FAKE_USER_MSG], [], undefined);
+
+    const res = await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({ content: "Halo" });
+
+    expect(res.status).toBe(200);
+
+    const systemMessage = capturedLLMMessages[0];
+    expect(systemMessage.role).toBe("system");
+
+    // Quiz context must appear verbatim so the AI can reference measured competency scores.
+    expect(systemMessage.content).toContain("DATA QUIZ PKB TKK");
+    expect(systemMessage.content).toContain("SKK.01.001");
+    expect(systemMessage.content).toContain("Pre=55%");
+    expect(systemMessage.content).toContain("Post=85%");
+    expect(systemMessage.content).toContain("SKK.02.003");
+  });
+
+  it("does not return 500 and falls back to empty string when buildProfileContext throws", async () => {
+    const { buildProfileContext } = await import("../lib/historical-pkb.js");
+    vi.mocked(buildProfileContext).mockRejectedValueOnce(new Error("DB connection lost"));
+
+    dbState.push([FAKE_CONV], undefined, [FAKE_USER_MSG], [], undefined);
+
+    const res = await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({ content: "Halo" });
+
+    // The handler must absorb the exception and still complete the chat request.
+    // A 500 here would mean the user's entire session is broken — not acceptable.
+    expect(res.status).toBe(200);
+
+    // The system prompt must still be sent (minus the profile block), and other
+    // context (e.g. competency) must still appear so the session is not fully generic.
+    const systemMessage = capturedLLMMessages[0];
+    expect(systemMessage.role).toBe("system");
+    expect(systemMessage.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+  });
+
+  it("does not return 500 and falls back to empty string when buildQuizContext throws", async () => {
+    const { buildQuizContext } = await import("../lib/historical-pkb.js");
+    vi.mocked(buildQuizContext).mockRejectedValueOnce(new Error("Quiz table unavailable"));
+
+    dbState.push([FAKE_CONV], undefined, [FAKE_USER_MSG], [], undefined);
+
+    const res = await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({ content: "Halo" });
+
+    // Must be 200 — a quiz DB failure must not crash the whole chat endpoint.
+    expect(res.status).toBe(200);
+
+    // Profile and competency context must still be present despite the quiz failure.
+    const systemMessage = capturedLLMMessages[0];
+    expect(systemMessage.role).toBe("system");
+    expect(systemMessage.content).toContain("PROFIL APL 01 TKK");
+    expect(systemMessage.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
   });
 
   it("returns 404 when the conversation does not belong to the user", async () => {
