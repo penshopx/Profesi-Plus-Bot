@@ -2,10 +2,11 @@
  * Marketplace PKB — Mobile Screen
  *
  * Browse, share, and mark PKB modules as watched directly from the mobile app.
- * Data mirrors the web marketplace catalog; watch-status is synced to the backend.
+ * Catalog data fetched from backend via GET /api/marketplace/courses.
+ * Watch-status is synced to the backend per session.
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -31,6 +32,8 @@ import {
   getWatchedCourses,
   markCourseWatched,
   unmarkCourseWatched,
+  getMarketplaceCatalog,
+  type MarketplaceCatalogCourse,
 } from '@/lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -68,269 +71,48 @@ interface Course {
   isFeatured?: boolean;
 }
 
-// ─── Catalog ──────────────────────────────────────────────────────────────────
+// ─── Thumbnail → gradient mapping ─────────────────────────────────────────────
+// API stores thumbnail as a Tailwind CSS class; map to solid hex for the accent strip.
 
-const COURSES: Course[] = [
-  {
-    id: 'k3-dasar-pupr',
-    title: 'K3 Konstruksi Dasar — Standar PUPR & BNSP',
-    provider: 'Kemnaker Diklatkerja',
-    providerLogo: '🏛️',
-    gradientStart: '#F97316',
-    gradientEnd: '#EF4444',
-    type: 'diklatkerja',
-    price: 'gratis',
-    rating: 4.8,
-    ratingCount: 1240,
-    durationMinutes: 480,
-    videoCount: 28,
-    hasCertificate: true,
-    jabker: ['ahli_k3_konstruksi', 'pengawas_k3_konstruksi'],
-    skkTags: [
-      { code: 'F.45.2.0.0.0.0.0.01', name: 'Menerapkan SMK3 pada Proyek Konstruksi' },
-      { code: 'F.45.2.0.0.0.0.0.02', name: 'Melaksanakan Inspeksi K3 di Lapangan' },
-    ],
-    description:
-      'Rekaman diklatkerja resmi Kemnaker membahas penerapan Sistem Manajemen K3 (SMK3) pada proyek konstruksi, prosedur inspeksi lapangan, penanganan insiden, dan dokumentasi K3 sesuai standar PUPR.',
-    highlights: [
-      'Modul SMK3 berbasis ISO 45001 & PP 50/2012',
-      'Studi kasus insiden konstruksi nyata',
-      'Formulir inspeksi K3 siap pakai',
-      'Relevan untuk ujian SKK Jenjang 6–8',
-    ],
-    url: 'https://www.diklatkerja.kemnaker.go.id',
-    isBestSeller: true,
-    isFeatured: true,
-  },
-  {
-    id: 'qs-bop-perhitungan',
-    title: 'Perhitungan BOP & RAB Konstruksi Gedung',
-    provider: 'Skill Academy Pro',
-    providerLogo: '🎓',
-    gradientStart: '#3B82F6',
-    gradientEnd: '#06B6D4',
-    type: 'video',
-    price: 'berbayar',
-    priceIdr: 199000,
-    rating: 4.9,
-    ratingCount: 876,
-    durationMinutes: 510,
-    videoCount: 32,
-    hasCertificate: true,
-    jabker: ['quantity_surveyor'],
-    skkTags: [
-      { code: 'M.711000.003.01', name: 'Menghitung Volume Pekerjaan Konstruksi' },
-      { code: 'M.711000.005.01', name: 'Menyusun Rencana Anggaran Biaya (RAB)' },
-    ],
-    description:
-      'Kelas komprehensif menghitung Bill of Quantity, RAB, dan analisa harga satuan untuk proyek gedung bertingkat. Dilengkapi template Excel dan studi kasus proyek nyata.',
-    highlights: [
-      'Template Excel BOQ & RAB langsung pakai',
-      'SNI harga satuan terbaru 2024',
-      'Studi kasus gedung 5 lantai',
-    ],
-    url: 'https://skillacademy.com',
-    isBestSeller: true,
-  },
-  {
-    id: 'pengawas-lapangan-mutu',
-    title: 'Pengendalian Mutu Pekerjaan Struktur Beton',
-    provider: 'LPJK Webinar Series',
-    providerLogo: '🏗️',
-    gradientStart: '#10B981',
-    gradientEnd: '#14B8A6',
-    type: 'webinar',
-    price: 'gratis',
-    rating: 4.7,
-    ratingCount: 2341,
-    durationMinutes: 240,
-    videoCount: 12,
-    hasCertificate: true,
-    jabker: ['pengawas_lapangan', 'ahli_struktur'],
-    skkTags: [
-      { code: 'F.45.2.0.1.1.0.76.II.01', name: 'Melakukan Pengendalian Mutu Beton' },
-    ],
-    description:
-      'Webinar resmi LPJK membahas prosedur pengendalian mutu beton di lapangan — mulai dari mix design, slump test, pengujian silinder beton, hingga acceptance criteria sesuai SNI.',
-    highlights: [
-      'Prosedur slump test & uji kuat tekan beton',
-      'Formulir pengendalian mutu lapangan',
-      'Rekaman webinar LPJK (dapat sebagai bukti CPD)',
-    ],
-    url: 'https://lpjk.pu.go.id',
-    isNew: true,
-  },
-  {
-    id: 'mep-koordinasi-bim',
-    title: 'Koordinasi MEP dengan BIM — Revit MEP Dasar',
-    provider: 'Autodesk Learning',
-    providerLogo: '💻',
-    gradientStart: '#8B5CF6',
-    gradientEnd: '#A855F7',
-    type: 'video',
-    price: 'berbayar',
-    priceIdr: 350000,
-    rating: 4.8,
-    ratingCount: 543,
-    durationMinutes: 600,
-    videoCount: 38,
-    hasCertificate: true,
-    jabker: ['ahli_mekanikal_elektrikal', 'ahli_plumbing'],
-    skkTags: [
-      { code: 'F.45.2.0.4.0.0.19.II.01', name: 'Merencanakan Sistem Mekanikal Bangunan' },
-    ],
-    description:
-      'Panduan lengkap penggunaan Revit MEP untuk koordinasi sistem mekanikal, elektrikal, dan plumbing pada proyek gedung. Termasuk clash detection dan pembuatan shop drawing MEP.',
-    highlights: [
-      'Revit MEP 2024 — lisensi student gratis tersedia',
-      'Clash detection & resolusi koordinasi',
-      'Sertifikat Autodesk diakui internasional',
-    ],
-    url: 'https://learn.autodesk.com',
-    isFeatured: true,
-  },
-  {
-    id: 'manpro-wbs-schedule',
-    title: 'Membuat WBS & Jadwal Proyek dengan MS Project',
-    provider: 'YouTube — Pak Budi Konstruksi',
-    providerLogo: '📺',
-    gradientStart: '#F43F5E',
-    gradientEnd: '#EC4899',
-    type: 'video',
-    price: 'gratis',
-    rating: 4.6,
-    ratingCount: 4200,
-    durationMinutes: 195,
-    videoCount: 15,
-    hasCertificate: false,
-    jabker: ['manajer_proyek', 'pengawas_lapangan'],
-    skkTags: [
-      { code: 'M.711000.012.01', name: 'Menyusun Jadwal Pelaksanaan Proyek' },
-    ],
-    description:
-      'Playlist YouTube lengkap membahas pembuatan Work Breakdown Structure (WBS), Gantt Chart, Baseline, dan pelaporan kemajuan proyek menggunakan Microsoft Project 2021.',
-    highlights: [
-      '15 video praktis — langsung praktek',
-      'Template MS Project tersedia di deskripsi',
-      'Metode Earned Value Analysis (EVA)',
-    ],
-    url: 'https://youtube.com',
-    isBestSeller: true,
-  },
-  {
-    id: 'ahli-struktur-desain-kolom',
-    title: 'Desain Kolom & Balok Beton Bertulang SNI 2847',
-    provider: 'HAKI Webinar',
-    providerLogo: '🏛️',
-    gradientStart: '#F59E0B',
-    gradientEnd: '#F97316',
-    type: 'webinar',
-    price: 'gratis',
-    rating: 4.9,
-    ratingCount: 1876,
-    durationMinutes: 360,
-    videoCount: 18,
-    hasCertificate: true,
-    jabker: ['ahli_struktur'],
-    skkTags: [
-      { code: 'F.45.2.0.1.0.0.19.III.01', name: 'Merencanakan Struktur Beton Bertulang' },
-    ],
-    description:
-      'Webinar HAKI membahas prosedur desain kolom, balok, dan pelat beton bertulang sesuai SNI 2847:2019 dan SNI 1726:2019 (beban gempa).',
-    highlights: [
-      'Metode desain LRFD sesuai SNI 2847:2019',
-      'Contoh hitungan kolom dengan beban gempa',
-      'Spreadsheet desain otomatis disediakan',
-    ],
-    url: 'https://haki.or.id',
-    isFeatured: true,
-  },
-  {
-    id: 'k3-kebakaran-apar',
-    title: 'Pencegahan & Penanganan Kebakaran Konstruksi',
-    provider: 'YouTube — K3 Academy ID',
-    providerLogo: '📺',
-    gradientStart: '#EF4444',
-    gradientEnd: '#EA580C',
-    type: 'video',
-    price: 'gratis',
-    rating: 4.5,
-    ratingCount: 3100,
-    durationMinutes: 120,
-    videoCount: 10,
-    hasCertificate: false,
-    jabker: ['ahli_k3_konstruksi', 'pengawas_k3_konstruksi'],
-    skkTags: [
-      { code: 'F.45.2.0.0.0.0.0.05', name: 'Mengelola Penanganan Darurat K3' },
-    ],
-    description:
-      'Seri video YouTube membahas proteksi kebakaran di proyek konstruksi — jenis APAR, prosedur evakuasi, identifikasi sumber api, dan pembuatan emergency response plan.',
-    highlights: [
-      'Demonstrasi langsung penggunaan APAR',
-      'Template Emergency Response Plan',
-      'Prosedur sesuai Permen 04/MEN/1980',
-    ],
-    url: 'https://youtube.com',
-    isNew: true,
-  },
-  {
-    id: 'pengawas-as-built-drawing',
-    title: 'Membuat As-Built Drawing dengan AutoCAD Civil 3D',
-    provider: 'Skill Academy Pro',
-    providerLogo: '🎓',
-    gradientStart: '#06B6D4',
-    gradientEnd: '#0EA5E9',
-    type: 'video',
-    price: 'berbayar',
-    priceIdr: 255000,
-    rating: 4.9,
-    ratingCount: 892,
-    durationMinutes: 494,
-    videoCount: 33,
-    hasCertificate: true,
-    jabker: ['pengawas_lapangan', 'quantity_surveyor'],
-    skkTags: [
-      { code: 'F.45.2.0.1.1.0.76.II.05', name: 'Membuat Laporan Teknis Pengawasan' },
-    ],
-    description:
-      'Kelas bundle 2 kursus dari Skill Academy Pro — AutoCAD 2D untuk pengawas lapangan dan pembuatan As-Built Drawing berstandar PUPR.',
-    highlights: [
-      'Bundle 2 kursus — akses seumur hidup',
-      'Template As-Built Drawing sesuai standar PUPR',
-      'Sertifikat Skill Academy Pro',
-    ],
-    url: 'https://skillacademy.com',
-    isBestSeller: true,
-  },
-  {
-    id: 'qs-esimpan-tutorial',
-    title: 'Panduan Lengkap Aplikasi ESIMPAN Kemnaker',
-    provider: 'Kemnaker Diklatkerja',
-    providerLogo: '🏛️',
-    gradientStart: '#6366F1',
-    gradientEnd: '#3B82F6',
-    type: 'diklatkerja',
-    price: 'gratis',
-    rating: 4.4,
-    ratingCount: 5600,
-    durationMinutes: 90,
-    videoCount: 8,
-    hasCertificate: false,
-    jabker: ['quantity_surveyor', 'pengawas_lapangan', 'manajer_proyek'],
-    skkTags: [
-      { code: 'M.711000.008.01', name: 'Mendokumentasikan Kemajuan Pekerjaan' },
-    ],
-    description:
-      'Tutorial resmi Kemnaker tentang cara mengoperasikan ESIMPAN — upload bukti PKB, mengajukan SKK, dan tracking status.',
-    highlights: [
-      'Tutorial resmi dari Kemnaker',
-      'Langkah upload bukti PKB di ESIMPAN',
-      'Cara pengajuan SKK online',
-    ],
-    url: 'https://www.diklatkerja.kemnaker.go.id',
-    isNew: true,
-  },
-];
+const THUMBNAIL_TO_HEX: Record<string, [string, string]> = {
+  'from-orange-500 to-red-500':    ['#F97316', '#EF4444'],
+  'from-blue-500 to-cyan-500':     ['#3B82F6', '#06B6D4'],
+  'from-emerald-500 to-teal-500':  ['#10B981', '#14B8A6'],
+  'from-violet-500 to-purple-500': ['#8B5CF6', '#A855F7'],
+  'from-rose-500 to-pink-500':     ['#F43F5E', '#EC4899'],
+  'from-amber-500 to-orange-500':  ['#F59E0B', '#F97316'],
+  'from-red-500 to-orange-600':    ['#EF4444', '#EA580C'],
+  'from-cyan-500 to-sky-500':      ['#06B6D4', '#0EA5E9'],
+  'from-indigo-500 to-blue-600':   ['#6366F1', '#2563EB'],
+};
+
+function mapApiCourse(c: MarketplaceCatalogCourse): Course {
+  const [gradientStart, gradientEnd] = THUMBNAIL_TO_HEX[c.thumbnail] ?? ['#6366F1', '#2563EB'];
+  return {
+    id:              c.id,
+    title:           c.title,
+    provider:        c.provider,
+    providerLogo:    c.providerLogo,
+    gradientStart,
+    gradientEnd,
+    type:            c.type as ContentType,
+    price:           c.price as PriceType,
+    priceIdr:        c.priceIdr ?? undefined,
+    rating:          c.rating,
+    ratingCount:     c.ratingCount,
+    durationMinutes: c.durationMinutes,
+    videoCount:      c.videoCount,
+    hasCertificate:  c.hasCertificate,
+    jabker:          c.jabker,
+    skkTags:         c.skkTags,
+    description:     c.description,
+    highlights:      c.highlights,
+    url:             c.url,
+    isBestSeller:    c.isBestSeller,
+    isNew:           c.isNew,
+    isFeatured:      c.isFeatured,
+  };
+}
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
@@ -358,8 +140,6 @@ const TYPE_ICON: Record<ContentType, string> = {
   diklatkerja: 'book-open',
   modul: 'file-text',
 };
-
-const ALL_JABKER = Array.from(new Set(COURSES.flatMap((c) => c.jabker)));
 
 function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes} mnt`;
@@ -418,13 +198,13 @@ function CourseDetailModal({
               </Text>
             </View>
             {course.isBestSeller && (
-              <View style={[dm.badge, { backgroundColor: '#FEF3C7' }]}>
-                <Text style={[dm.badgeText, { color: '#92400E' }]}>🏆 Best Seller</Text>
+              <View style={[dm.badge, { backgroundColor: '#FEF08A' }]}>
+                <Text style={[dm.badgeText, { color: '#713F12' }]}>🏆 Best Seller</Text>
               </View>
             )}
             {course.isNew && (
-              <View style={[dm.badge, { backgroundColor: '#EDE9FE' }]}>
-                <Text style={[dm.badgeText, { color: '#5B21B6' }]}>✨ Baru</Text>
+              <View style={[dm.badge, { backgroundColor: '#D1FAE5' }]}>
+                <Text style={[dm.badgeText, { color: '#065F46' }]}>✨ Baru</Text>
               </View>
             )}
           </View>
@@ -433,95 +213,97 @@ function CourseDetailModal({
           <Text style={[dm.provider, { color: colors.mutedForeground }]}>{course.provider}</Text>
 
           {/* Stats row */}
-          <View style={[dm.statsRow, { borderColor: colors.border }]}>
-            <View style={dm.stat}>
-              <Feather name="star" size={14} color="#F59E0B" />
-              <Text style={[dm.statText, { color: colors.foreground }]}>{course.rating.toFixed(1)}</Text>
-              <Text style={[dm.statSub, { color: colors.mutedForeground }]}>({course.ratingCount.toLocaleString()})</Text>
-            </View>
-            <View style={[dm.statDivider, { backgroundColor: colors.border }]} />
-            <View style={dm.stat}>
-              <Feather name="clock" size={14} color={colors.mutedForeground} />
-              <Text style={[dm.statText, { color: colors.foreground }]}>{formatDuration(course.durationMinutes)}</Text>
-            </View>
-            <View style={[dm.statDivider, { backgroundColor: colors.border }]} />
-            <View style={dm.stat}>
-              <Feather name="play-circle" size={14} color={colors.mutedForeground} />
-              <Text style={[dm.statText, { color: colors.foreground }]}>{course.videoCount} video</Text>
-            </View>
+          <View style={dm.statsRow}>
+            <Feather name="star" size={13} color="#F59E0B" />
+            <Text style={[dm.stat, { color: colors.mutedForeground }]}>
+              {course.rating.toFixed(1)} ({course.ratingCount.toLocaleString()})
+            </Text>
+            <Text style={[dm.statDot, { color: colors.border }]}>·</Text>
+            <Text style={[dm.stat, { color: colors.mutedForeground }]}>{formatDuration(course.durationMinutes)}</Text>
+            <Text style={[dm.statDot, { color: colors.border }]}>·</Text>
+            <Text style={[dm.stat, { color: colors.mutedForeground }]}>{course.videoCount} video</Text>
+            {course.hasCertificate && (
+              <>
+                <Text style={[dm.statDot, { color: colors.border }]}>·</Text>
+                <Feather name="award" size={12} color="#10B981" />
+                <Text style={[dm.stat, { color: '#10B981' }]}>Sertifikat</Text>
+              </>
+            )}
           </View>
 
-          {/* Description */}
-          <Text style={[dm.sectionLabel, { color: colors.foreground }]}>Tentang Kursus</Text>
-          <Text style={[dm.description, { color: colors.mutedForeground }]}>{course.description}</Text>
-
-          {/* Highlights */}
-          <Text style={[dm.sectionLabel, { color: colors.foreground }]}>Yang Akan Dipelajari</Text>
-          {course.highlights.map((h, i) => (
-            <View key={i} style={dm.highlightRow}>
-              <Feather name="check-circle" size={14} color="#10B981" style={dm.checkIcon} />
-              <Text style={[dm.highlightText, { color: colors.foreground }]}>{h}</Text>
-            </View>
-          ))}
-
-          {/* SKK Tags */}
-          <Text style={[dm.sectionLabel, { color: colors.foreground }]}>Unit SKK yang Dicakup</Text>
-          {course.skkTags.map((tag) => (
-            <View key={tag.code} style={[dm.skkRow, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-              <Text style={[dm.skkCode, { color: colors.primary }]}>{tag.code}</Text>
-              <Text style={[dm.skkName, { color: colors.foreground }]}>{tag.name}</Text>
-            </View>
-          ))}
-
-          {/* Jabker pills */}
-          <Text style={[dm.sectionLabel, { color: colors.foreground }]}>Relevan untuk Jabker</Text>
-          <View style={dm.jabkerRow}>
-            {course.jabker.map((j) => (
-              <View key={j} style={[dm.jabkerPill, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-                <Text style={[dm.jabkerPillText, { color: colors.secondaryForeground }]}>{JABKER_LABELS[j] ?? j}</Text>
-              </View>
-            ))}
+          {/* Action buttons */}
+          <View style={dm.actions}>
+            <Pressable
+              style={[dm.actionBtn, { backgroundColor: colors.primary }]}
+              onPress={onOpen}
+            >
+              <Feather name="play" size={15} color="#fff" />
+              <Text style={dm.actionBtnText}>Buka Kursus</Text>
+            </Pressable>
+            <Pressable
+              style={[dm.actionBtn, { backgroundColor: '#059669' }]}
+              onPress={onCatatPkb}
+            >
+              <Feather name="check-circle" size={15} color="#fff" />
+              <Text style={dm.actionBtnText}>Catat PKB</Text>
+            </Pressable>
           </View>
-        </ScrollView>
 
-        {/* Action bar */}
-        <View style={[dm.actionBar, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
           <Pressable
-            style={[dm.actionBtn, dm.actionBtnSecondary, { borderColor: colors.border }]}
-            onPress={onShare}
-            hitSlop={8}
-          >
-            <Feather name="share-2" size={16} color={colors.primary} />
-          </Pressable>
-          <Pressable
-            style={[dm.actionBtn, dm.actionBtnSecondary, { borderColor: colors.border }]}
+            style={[dm.watchToggle, {
+              backgroundColor: watched ? '#D1FAE5' : colors.muted,
+              borderColor: watched ? '#6EE7B7' : colors.border,
+            }]}
             onPress={onToggleWatch}
-            hitSlop={8}
           >
             <Feather
               name={watched ? 'check-circle' : 'circle'}
               size={16}
-              color={watched ? '#10B981' : colors.mutedForeground}
+              color={watched ? '#065F46' : colors.mutedForeground}
             />
-            <Text style={[dm.actionBtnText, { color: watched ? '#10B981' : colors.mutedForeground }]}>
-              {watched ? 'Ditonton' : 'Tandai'}
+            <Text style={[dm.watchToggleText, { color: watched ? '#065F46' : colors.mutedForeground }]}>
+              {watched ? '✓ Sudah Ditonton — Ketuk untuk hapus' : 'Tandai Sudah Ditonton'}
             </Text>
           </Pressable>
-          <Pressable
-            style={[dm.actionBtn, dm.actionBtnSecondary, { borderColor: '#10B981', flex: 1 }]}
-            onPress={onCatatPkb}
-            hitSlop={8}
-          >
-            <Feather name="file-plus" size={16} color="#10B981" />
-            <Text style={[dm.actionBtnText, { color: '#10B981' }]}>Catat ke PKB</Text>
+
+          {/* Share */}
+          <Pressable style={[dm.shareBtn, { borderColor: colors.border }]} onPress={onShare}>
+            <Feather name="share-2" size={14} color={colors.mutedForeground} />
+            <Text style={[dm.shareBtnText, { color: colors.mutedForeground }]}>Bagikan Modul Ini</Text>
           </Pressable>
-          <Pressable
-            style={[dm.actionBtn, dm.actionBtnPrimary, { backgroundColor: colors.primary }]}
-            onPress={onOpen}
-          >
-            <Feather name="external-link" size={16} color="#fff" />
-          </Pressable>
-        </View>
+
+          {/* Description */}
+          <Text style={[dm.sectionTitle, { color: colors.foreground }]}>Deskripsi</Text>
+          <Text style={[dm.description, { color: colors.mutedForeground }]}>{course.description}</Text>
+
+          {/* Highlights */}
+          <Text style={[dm.sectionTitle, { color: colors.foreground }]}>Yang Anda Dapatkan</Text>
+          {course.highlights.map((h, i) => (
+            <View key={i} style={dm.highlightRow}>
+              <Feather name="check-circle" size={14} color="#10B981" style={{ marginTop: 2 }} />
+              <Text style={[dm.highlightText, { color: colors.mutedForeground }]}>{h}</Text>
+            </View>
+          ))}
+
+          {/* SKK Tags */}
+          <Text style={[dm.sectionTitle, { color: colors.foreground }]}>Unit SKK yang Didukung</Text>
+          {course.skkTags.map((t) => (
+            <View key={t.code} style={[dm.skkRow, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              <Text style={[dm.skkCode, { color: colors.primary }]}>{t.code}</Text>
+              <Text style={[dm.skkName, { color: colors.foreground }]}>{t.name}</Text>
+            </View>
+          ))}
+
+          {/* Jabker */}
+          <Text style={[dm.sectionTitle, { color: colors.foreground }]}>Relevan untuk Jabker</Text>
+          <View style={dm.jabkerRow}>
+            {course.jabker.map((j) => (
+              <View key={j} style={[dm.jabkerPill, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Text style={[dm.jabkerPillText, { color: colors.foreground }]}>{JABKER_LABELS[j] ?? j}</Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -531,22 +313,22 @@ const dm = StyleSheet.create({
   root: { flex: 1 },
   headerStrip: {
     height: 120,
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   closeBtn: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
     width: 32,
     height: 32,
+    backgroundColor: 'rgba(0,0,0,0.3)',
     borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  providerEmoji: { fontSize: 40 },
-  scrollContent: { padding: 20, paddingBottom: 8 },
+  providerEmoji: { fontSize: 48 },
+  scrollContent: { padding: 20, gap: 0 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   badge: {
     flexDirection: 'row',
@@ -557,65 +339,64 @@ const dm = StyleSheet.create({
     borderRadius: 20,
   },
   badgeText: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold' },
-  title: { fontSize: 18, fontFamily: 'PlusJakartaSans_700Bold', lineHeight: 26, marginBottom: 4 },
-  provider: { fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular', marginBottom: 16 },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 20,
-    gap: 0,
-  },
-  stat: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, justifyContent: 'center' },
-  statText: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold' },
-  statSub: { fontSize: 11, fontFamily: 'PlusJakartaSans_400Regular' },
-  statDivider: { width: 1, height: 20 },
-  sectionLabel: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_700Bold',
-    marginBottom: 8,
-    marginTop: 4,
-  },
-  description: { fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular', lineHeight: 20, marginBottom: 16 },
-  highlightRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 },
-  checkIcon: { marginRight: 8, marginTop: 2 },
-  highlightText: { flex: 1, fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular', lineHeight: 20 },
-  skkRow: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 6,
-  },
-  skkCode: { fontSize: 10, fontFamily: 'PlusJakartaSans_600SemiBold', marginBottom: 2 },
-  skkName: { fontSize: 12, fontFamily: 'PlusJakartaSans_400Regular', lineHeight: 18 },
-  jabkerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
-  jabkerPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  jabkerPillText: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium' },
-  actionBar: {
-    flexDirection: 'row',
-    gap: 8,
-    padding: 16,
-    borderTopWidth: 1,
-  },
+  title: { fontSize: 20, fontFamily: 'PlusJakartaSans_700Bold', lineHeight: 28, marginBottom: 4 },
+  provider: { fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular', marginBottom: 10 },
+  statsRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 20, flexWrap: 'wrap' },
+  stat: { fontSize: 12, fontFamily: 'PlusJakartaSans_400Regular' },
+  statDot: { fontSize: 12, marginHorizontal: 1 },
+  actions: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   actionBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 10,
+    borderRadius: 12,
   },
-  actionBtnSecondary: { borderWidth: 1 },
-  actionBtnPrimary: {},
-  actionBtnText: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  actionBtnText: { color: '#fff', fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold' },
+  watchToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  watchToggleText: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium', flex: 1 },
+  shareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 24,
+  },
+  shareBtnText: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium' },
+  sectionTitle: { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', marginBottom: 8, marginTop: 4 },
+  description: { fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular', lineHeight: 20, marginBottom: 16 },
+  highlightRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  highlightText: { fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular', flex: 1, lineHeight: 20 },
+  skkRow: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 10,
+    marginBottom: 6,
+  },
+  skkCode: { fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', fontVariant: ['tabular-nums'], marginBottom: 2 },
+  skkName: { fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular' },
+  jabkerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  jabkerPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  jabkerPillText: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium' },
 });
 
 // ─── Course card ──────────────────────────────────────────────────────────────
@@ -652,6 +433,11 @@ function CourseCard({
           {course.isNew && (
             <View style={cc.accentBadge}>
               <Text style={cc.accentBadgeText}>✨ Baru</Text>
+            </View>
+          )}
+          {watched && (
+            <View style={[cc.accentBadge, { backgroundColor: 'rgba(16,185,129,0.85)' }]}>
+              <Text style={cc.accentBadgeText}>✓ Ditonton</Text>
             </View>
           )}
         </View>
@@ -814,15 +600,36 @@ export default function MarketplaceScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const [search, setSearch] = useState('');
   const [filterJabker, setFilterJabker] = useState('');
   const [filterPrice, setFilterPrice] = useState<'' | 'gratis' | 'berbayar'>('');
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
-  const router = useRouter();
+
+  // Fetch catalog from backend; stale time 10 min (catalog changes rarely)
+  const {
+    data: rawCatalog = [],
+    isLoading: catalogLoading,
+    isError: catalogError,
+    refetch: refetchCatalog,
+  } = useQuery({
+    queryKey: ['marketplace-catalog'],
+    queryFn: getMarketplaceCatalog,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Map API shape to mobile Course shape (compute gradient colors from thumbnail class)
+  const courses = useMemo(() => rawCatalog.map(mapApiCourse), [rawCatalog]);
+
+  // Derive jabker list from fetched catalog
+  const allJabker = useMemo(
+    () => Array.from(new Set(courses.flatMap((c) => c.jabker))),
+    [courses],
+  );
 
   // Fetch watched status from backend
-  const { data: watchedData, isLoading, refetch } = useQuery({
+  const { data: watchedData, isLoading: watchedLoading, refetch: refetchWatched } = useQuery({
     queryKey: ['marketplace-watched'],
     queryFn: getWatchedCourses,
     staleTime: 1000 * 60,
@@ -839,15 +646,12 @@ export default function MarketplaceScreen() {
         await unmarkCourseWatched(course.id);
       } else {
         await markCourseWatched(course.id, {
-          courseTitle:    course.title,
-          courseProvider: course.provider,
-          courseJabkerList:  course.jabker,
-          courseSkkTagsList: course.skkTags.map((t) => t.code),
+          courseTitle: course.title,
+          provider:    course.provider,
         });
       }
     },
     onMutate: async ({ course, isWatched }) => {
-      // Optimistic update
       await queryClient.cancelQueries({ queryKey: ['marketplace-watched'] });
       const prev = queryClient.getQueryData(['marketplace-watched']);
       queryClient.setQueryData(['marketplace-watched'], (old: any) => {
@@ -896,18 +700,19 @@ export default function MarketplaceScreen() {
     }
   }, []);
 
-  // Filter courses
+  // Filter courses based on search, jabker, price
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return COURSES.filter((c) => {
+    return courses.filter((c) => {
       if (filterJabker && !c.jabker.includes(filterJabker)) return false;
       if (filterPrice && c.price !== filterPrice) return false;
       if (q && !c.title.toLowerCase().includes(q) && !c.provider.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [search, filterJabker, filterPrice]);
+  }, [courses, search, filterJabker, filterPrice]);
 
-  const watchedCount = COURSES.filter((c) => watchedIds.has(c.id)).length;
+  const watchedCount = courses.filter((c) => watchedIds.has(c.id)).length;
+  const isLoading = catalogLoading || watchedLoading;
 
   return (
     <View style={[ms.root, { backgroundColor: colors.background }]}>
@@ -925,7 +730,7 @@ export default function MarketplaceScreen() {
           <View style={[ms.watchedBadge, { backgroundColor: colors.muted }]}>
             <Feather name="check-circle" size={14} color={watchedCount > 0 ? '#10B981' : colors.mutedForeground} />
             <Text style={[ms.watchedBadgeText, { color: watchedCount > 0 ? '#10B981' : colors.mutedForeground }]}>
-              {watchedCount}/{COURSES.length}
+              {watchedCount}/{courses.length}
             </Text>
           </View>
         </View>
@@ -965,7 +770,7 @@ export default function MarketplaceScreen() {
             Semua Jabker
           </Text>
         </Pressable>
-        {ALL_JABKER.map((j) => (
+        {allJabker.map((j) => (
           <Pressable
             key={j}
             style={[
@@ -1013,7 +818,21 @@ export default function MarketplaceScreen() {
       {isLoading ? (
         <View style={ms.loadingBox}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={[ms.loadingText, { color: colors.mutedForeground }]}>Memuat status...</Text>
+          <Text style={[ms.loadingText, { color: colors.mutedForeground }]}>
+            {catalogLoading ? 'Memuat katalog kursus...' : 'Memuat status...'}
+          </Text>
+        </View>
+      ) : catalogError ? (
+        <View style={ms.loadingBox}>
+          <Feather name="wifi-off" size={32} color={colors.mutedForeground} />
+          <Text style={[ms.loadingText, { color: colors.mutedForeground }]}>
+            Gagal memuat katalog
+          </Text>
+          <Pressable onPress={() => refetchCatalog()} style={{ marginTop: 8 }}>
+            <Text style={{ color: colors.primary, fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold' }}>
+              Coba lagi
+            </Text>
+          </Pressable>
         </View>
       ) : (
         <FlatList
@@ -1033,7 +852,7 @@ export default function MarketplaceScreen() {
           refreshControl={
             <RefreshControl
               refreshing={false}
-              onRefresh={refetch}
+              onRefresh={() => { refetchCatalog(); refetchWatched(); }}
               tintColor={colors.primary}
             />
           }

@@ -1,4 +1,7 @@
-import { pgTable, serial, integer, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  pgTable, serial, integer, text, timestamp, uniqueIndex,
+  real, boolean, jsonb,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { users } from "./users";
 
@@ -44,3 +47,86 @@ export const marketplaceWatched = pgTable("marketplace_watched", {
 }));
 
 export type MarketplaceWatched = typeof marketplaceWatched.$inferSelect;
+
+// ─── Catalog tables ───────────────────────────────────────────────────────────
+// Courses and reviews are now stored in the DB so admins can add/edit
+// courses without code changes.
+
+/**
+ * marketplace_courses — kursus/webinar/diklatkerja/modul yang tersedia.
+ *
+ * skkTags   : [{code, name}][]  — unit SKK yang dicakup
+ * curriculum: [{title, duration, type}][] — daftar modul
+ * jabker    : string[]          — jabatan kerja yang relevan
+ * highlights: string[]          — poin-poin unggulan
+ */
+export const marketplaceCourses = pgTable("marketplace_courses", {
+  id:               text("id").primaryKey(),         // e.g. "k3-dasar-pupr"
+  title:            text("title").notNull(),
+  provider:         text("provider").notNull(),
+  providerLogo:     text("provider_logo"),
+  thumbnail:        text("thumbnail").notNull(),      // Tailwind gradient classes
+  type:             text("type").notNull(),           // "video"|"webinar"|"diklatkerja"|"modul"
+  price:            text("price").notNull(),          // "gratis"|"berbayar"
+  priceIdr:         integer("price_idr"),
+  priceOriginalIdr: integer("price_original_idr"),
+  rating:           real("rating").notNull(),
+  ratingCount:      integer("rating_count").notNull(),
+  durationMinutes:  integer("duration_minutes").notNull(),
+  videoCount:       integer("video_count").notNull(),
+  quizCount:        integer("quiz_count").notNull(),
+  hasCertificate:   boolean("has_certificate").notNull().default(false),
+  jabker:           text("jabker").array().notNull().default(sql`ARRAY[]::text[]`),
+  skkTags:          jsonb("skk_tags").notNull().default(sql`'[]'::jsonb`),
+  description:      text("description").notNull(),
+  highlights:       text("highlights").array().notNull().default(sql`ARRAY[]::text[]`),
+  curriculum:       jsonb("curriculum").notNull().default(sql`'[]'::jsonb`),
+  url:              text("url").notNull(),
+  isBestSeller:     boolean("is_best_seller").notNull().default(false),
+  isFeatured:       boolean("is_featured").notNull().default(false),
+  isNew:            boolean("is_new").notNull().default(false),
+  sortOrder:        integer("sort_order").notNull().default(0),
+  createdAt:        timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt:        timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type MarketplaceCourse = typeof marketplaceCourses.$inferSelect;
+
+/**
+ * marketplace_ai_reviews — penilaian dari platform AI (ChatGPT, Gemini, Claude, dll.)
+ */
+export const marketplaceAiReviews = pgTable("marketplace_ai_reviews", {
+  id:             serial("id").primaryKey(),
+  courseId:       text("course_id").notNull().references(() => marketplaceCourses.id, { onDelete: "cascade" }),
+  platform:       text("platform").notNull(),       // "ChatGPT", "Gemini", dll.
+  platformIcon:   text("platform_icon").notNull(),  // emoji
+  rating:         real("rating").notNull(),          // 1–5
+  relevanceScore: integer("relevance_score").notNull(), // 0–100
+  comment:        text("comment").notNull(),
+  reviewedAt:     text("reviewed_at").notNull(),     // "Oktober 2025"
+  createdAt:      timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type MarketplaceAiReview = typeof marketplaceAiReviews.$inferSelect;
+
+/**
+ * marketplace_askom_reviews — penilaian resmi dari Asesor Kompetensi BNSP
+ */
+export const marketplaceAskomReviews = pgTable("marketplace_askom_reviews", {
+  id:               serial("id").primaryKey(),
+  courseId:         text("course_id").notNull().references(() => marketplaceCourses.id, { onDelete: "cascade" }),
+  reviewerName:     text("reviewer_name").notNull(),
+  credential:       text("credential").notNull(),
+  institution:      text("institution").notNull(),
+  credentialNumber: text("credential_number"),
+  rating:           real("rating").notNull(),
+  relevanceScore:   integer("relevance_score").notNull(),
+  recommendation:   text("recommendation").notNull(), // "direkomendasikan"|"direkomendasikan_dengan_catatan"|"tidak_direkomendasikan"
+  comment:          text("comment").notNull(),
+  strengths:        text("strengths").array().notNull().default(sql`ARRAY[]::text[]`),
+  notes:            text("notes"),
+  reviewedAt:       text("reviewed_at").notNull(),
+  createdAt:        timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type MarketplaceAskomReview = typeof marketplaceAskomReviews.$inferSelect;

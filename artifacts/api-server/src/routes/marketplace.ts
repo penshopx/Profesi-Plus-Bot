@@ -1,6 +1,7 @@
 /**
- * /api/marketplace — Status "Sudah Ditonton" untuk modul marketplace PKB
+ * /api/marketplace — Katalog kursus + status "Sudah Ditonton"
  *
+ * GET  /api/marketplace/courses              — seluruh catalog + reviews (public, no auth)
  * GET  /api/marketplace/watched             — daftar modul yang sudah ditandai user
  * POST /api/marketplace/:courseId/watch    — auto-mark saat membuka kursus (idempotent)
  * POST /api/marketplace/watched             — explicit mark dengan metadata lengkap
@@ -10,10 +11,72 @@
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { db } from "@workspace/db";
-import { marketplaceWatched } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import {
+  marketplaceWatched,
+  marketplaceCourses,
+  marketplaceAiReviews,
+  marketplaceAskomReviews,
+} from "@workspace/db/schema";
+import { eq, and, asc } from "drizzle-orm";
 
 const router = Router();
+
+// ─── GET /api/marketplace/courses ─────────────────────────────────────────────
+// Public endpoint — no auth needed to browse the catalog.
+// Returns all courses ordered by sort_order, with their AI + ASKOM reviews.
+
+router.get("/marketplace/courses", async (_req, res) => {
+  const [courses, aiReviews, askomReviews] = await Promise.all([
+    db.select().from(marketplaceCourses).orderBy(asc(marketplaceCourses.sortOrder)),
+    db.select().from(marketplaceAiReviews).orderBy(asc(marketplaceAiReviews.id)),
+    db.select().from(marketplaceAskomReviews),
+  ]);
+
+  // Group reviews by courseId
+  const aiMap = new Map<string, typeof aiReviews>();
+  for (const r of aiReviews) {
+    if (!aiMap.has(r.courseId)) aiMap.set(r.courseId, []);
+    aiMap.get(r.courseId)!.push(r);
+  }
+  const askomMap = new Map<string, (typeof askomReviews)[number]>();
+  for (const r of askomReviews) {
+    askomMap.set(r.courseId, r);
+  }
+
+  const result = courses.map((c) => ({
+    ...c,
+    reviews: {
+      aiReviews: (aiMap.get(c.id) ?? []).map((r) => ({
+        platform: r.platform,
+        platformIcon: r.platformIcon,
+        rating: r.rating,
+        relevanceScore: r.relevanceScore,
+        comment: r.comment,
+        reviewedAt: r.reviewedAt,
+      })),
+      askomReview: askomMap.has(c.id)
+        ? (() => {
+            const a = askomMap.get(c.id)!;
+            return {
+              reviewerName: a.reviewerName,
+              credential: a.credential,
+              institution: a.institution,
+              credentialNumber: a.credentialNumber ?? undefined,
+              rating: a.rating,
+              relevanceScore: a.relevanceScore,
+              recommendation: a.recommendation,
+              comment: a.comment,
+              strengths: a.strengths,
+              notes: a.notes ?? undefined,
+              reviewedAt: a.reviewedAt,
+            };
+          })()
+        : undefined,
+    },
+  }));
+
+  res.json({ courses: result });
+});
 
 // ─── GET /api/marketplace/watched ─────────────────────────────────────────────
 // Returns full objects and courseId-only array for compatibility.

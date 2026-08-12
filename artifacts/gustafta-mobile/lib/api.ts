@@ -553,9 +553,78 @@ export async function getWatchedCourses(): Promise<MarketplaceWatchedResponse> {
 
 export interface WatchMetadata {
   courseTitle?: string;
-  courseProvider?: string;
-  courseJabkerList?: string[];
-  courseSkkTagsList?: string[];
+  /** Must match the `provider` field on the marketplace_courses table */
+  provider?: string;
+}
+
+// ─── Marketplace catalog ──────────────────────────────────────────────────────
+
+export interface MarketplaceSkkTag {
+  code: string;
+  name: string;
+}
+
+export interface MarketplaceAiReview {
+  platform: string;
+  platformIcon: string;
+  rating: number;
+  comment: string;
+  relevanceScore: number;
+  reviewedAt: string;
+}
+
+export interface MarketplaceAskomReview {
+  reviewerName: string;
+  credential: string;
+  credentialNumber?: string;
+  institution: string;
+  rating: number;
+  recommendation: string;
+  comment: string;
+  relevanceScore: number;
+  strengths: string[];
+  notes?: string;
+  reviewedAt: string;
+}
+
+export interface MarketplaceCourseReviews {
+  aiReviews: MarketplaceAiReview[];
+  askomReview: MarketplaceAskomReview | null;
+}
+
+export interface MarketplaceCatalogCourse {
+  id: string;
+  title: string;
+  provider: string;
+  providerLogo: string;
+  thumbnail: string;
+  type: string;
+  price: string;
+  priceIdr: number | null;
+  priceOriginalIdr: number | null;
+  rating: number;
+  ratingCount: number;
+  durationMinutes: number;
+  videoCount: number;
+  quizCount: number;
+  hasCertificate: boolean;
+  jabker: string[];
+  skkTags: MarketplaceSkkTag[];
+  description: string;
+  highlights: string[];
+  curriculum: { type: string; title: string; duration: string }[];
+  url: string;
+  isBestSeller: boolean;
+  isNew: boolean;
+  isFeatured: boolean;
+  sortOrder: number;
+  reviews: MarketplaceCourseReviews;
+}
+
+export async function getMarketplaceCatalog(): Promise<MarketplaceCatalogCourse[]> {
+  const res = await apiFetch('/marketplace/courses');
+  const json = await res.json();
+  return json.courses as MarketplaceCatalogCourse[];
 }
 
 export async function markCourseWatched(

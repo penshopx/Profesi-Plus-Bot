@@ -372,10 +372,9 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
 
   const phases = ["profiling", "context", "core_interview", "evidence", "synthesis", "done"];
   const currentIdx = phases.indexOf(conv.phase);
-  let nextPhase = phases[currentIdx + 1] ?? conv.phase;
-    if (!hasMarker || currentIdx < 0 || currentIdx >= phases.length - 2) {
-      nextPhase = conv.phase;
-    }
+  let nextPhase = (hasMarker && currentIdx >= 0 && currentIdx < phases.length - 2)
+    ? phases[currentIdx + 1]
+    : conv.phase;
     if (nextPhase !== conv.phase) {
       await db.update(conversations).set({ phase: nextPhase }).where(eq(conversations.id, convId));
     }

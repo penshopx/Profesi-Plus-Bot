@@ -788,6 +788,76 @@ export async function seedKnowledgeBase(): Promise<{ inserted: number; skipped: 
   return res.json();
 }
 
+// ─── Marketplace catalog ──────────────────────────────────────────────────────
+
+export interface SkkTag { code: string; name: string; }
+export interface CurriculumItem { title: string; duration: string; type: "video" | "quiz" | "reading"; }
+
+export interface AIReview {
+  platform: string;
+  platformIcon: string;
+  rating: number;
+  relevanceScore: number;
+  comment: string;
+  reviewedAt: string;
+}
+
+export interface AskomReview {
+  reviewerName: string;
+  credential: string;
+  institution: string;
+  credentialNumber?: string;
+  rating: number;
+  relevanceScore: number;
+  recommendation: "direkomendasikan" | "direkomendasikan_dengan_catatan" | "tidak_direkomendasikan";
+  comment: string;
+  strengths: string[];
+  notes?: string;
+  reviewedAt: string;
+}
+
+export interface CourseReviews {
+  aiReviews: AIReview[];
+  askomReview?: AskomReview;
+}
+
+export interface MarketplaceCourseItem {
+  id: string;
+  title: string;
+  provider: string;
+  providerLogo: string | null;
+  thumbnail: string;
+  type: "video" | "webinar" | "diklatkerja" | "modul";
+  price: "gratis" | "berbayar";
+  priceIdr: number | null;
+  priceOriginalIdr: number | null;
+  rating: number;
+  ratingCount: number;
+  durationMinutes: number;
+  videoCount: number;
+  quizCount: number;
+  hasCertificate: boolean;
+  jabker: string[];
+  skkTags: SkkTag[];
+  description: string;
+  highlights: string[];
+  curriculum: CurriculumItem[];
+  url: string;
+  isBestSeller: boolean;
+  isFeatured: boolean;
+  isNew: boolean;
+  sortOrder: number;
+  reviews: CourseReviews;
+}
+
+/** Fetches the full marketplace catalog + reviews from the backend. */
+export async function getMarketplaceCatalog(): Promise<MarketplaceCourseItem[]> {
+  const res = await fetch(`${BASE}/marketplace/courses`);
+  if (!res.ok) throw new Error("Gagal memuat katalog marketplace");
+  const data: { courses: MarketplaceCourseItem[] } = await res.json();
+  return data.courses;
+}
+
 // ─── Marketplace watches ──────────────────────────────────────────────────────
 
 /** Returns course IDs the authenticated user has already opened ("watched"). */
