@@ -5,7 +5,7 @@
  * Data mirrors the web marketplace catalog; watch-status is synced to the backend.
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import {
   Platform,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -380,6 +381,7 @@ function CourseDetailModal({
   onToggleWatch,
   onShare,
   onOpen,
+  onCatatPkb,
 }: {
   course: Course;
   watched: boolean;
@@ -387,6 +389,7 @@ function CourseDetailModal({
   onToggleWatch: () => void;
   onShare: () => void;
   onOpen: () => void;
+  onCatatPkb: () => void;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -505,11 +508,18 @@ function CourseDetailModal({
             </Text>
           </Pressable>
           <Pressable
-            style={[dm.actionBtn, dm.actionBtnPrimary, { backgroundColor: colors.primary, flex: 1 }]}
+            style={[dm.actionBtn, dm.actionBtnSecondary, { borderColor: '#10B981', flex: 1 }]}
+            onPress={onCatatPkb}
+            hitSlop={8}
+          >
+            <Feather name="file-plus" size={16} color="#10B981" />
+            <Text style={[dm.actionBtnText, { color: '#10B981' }]}>Catat ke PKB</Text>
+          </Pressable>
+          <Pressable
+            style={[dm.actionBtn, dm.actionBtnPrimary, { backgroundColor: colors.primary }]}
             onPress={onOpen}
           >
             <Feather name="external-link" size={16} color="#fff" />
-            <Text style={[dm.actionBtnText, { color: '#fff' }]}>Buka Kursus</Text>
           </Pressable>
         </View>
       </View>
@@ -809,6 +819,7 @@ export default function MarketplaceScreen() {
   const [filterJabker, setFilterJabker] = useState('');
   const [filterPrice, setFilterPrice] = useState<'' | 'gratis' | 'berbayar'>('');
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const router = useRouter();
 
   // Fetch watched status from backend
   const { data: watchedData, isLoading, refetch } = useQuery({
@@ -823,21 +834,26 @@ export default function MarketplaceScreen() {
   );
 
   const toggleWatch = useMutation({
-    mutationFn: async ({ courseId, courseTitle, isWatched }: { courseId: string; courseTitle: string; isWatched: boolean }) => {
+    mutationFn: async ({ course, isWatched }: { course: Course; isWatched: boolean }) => {
       if (isWatched) {
-        await unmarkCourseWatched(courseId);
+        await unmarkCourseWatched(course.id);
       } else {
-        await markCourseWatched(courseId, courseTitle);
+        await markCourseWatched(course.id, {
+          courseTitle:    course.title,
+          courseProvider: course.provider,
+          courseJabkerList:  course.jabker,
+          courseSkkTagsList: course.skkTags.map((t) => t.code),
+        });
       }
     },
-    onMutate: async ({ courseId, isWatched }) => {
+    onMutate: async ({ course, isWatched }) => {
       // Optimistic update
       await queryClient.cancelQueries({ queryKey: ['marketplace-watched'] });
       const prev = queryClient.getQueryData(['marketplace-watched']);
       queryClient.setQueryData(['marketplace-watched'], (old: any) => {
         if (!old) return old;
         const ids: string[] = old.watchedIds ?? [];
-        const newIds = isWatched ? ids.filter((id: string) => id !== courseId) : [...ids, courseId];
+        const newIds = isWatched ? ids.filter((id: string) => id !== course.id) : [...ids, course.id];
         return { ...old, watchedIds: newIds };
       });
       return { prev };
@@ -854,7 +870,7 @@ export default function MarketplaceScreen() {
     (course: Course) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const isWatched = watchedIds.has(course.id);
-      toggleWatch.mutate({ courseId: course.id, courseTitle: course.title, isWatched });
+      toggleWatch.mutate({ course, isWatched });
     },
     [watchedIds, toggleWatch],
   );
@@ -1042,6 +1058,20 @@ export default function MarketplaceScreen() {
           onToggleWatch={() => handleToggleWatch(selectedCourse)}
           onShare={() => handleShare(selectedCourse)}
           onOpen={() => Linking.openURL(selectedCourse.url).catch(() => {})}
+          onCatatPkb={() => {
+            const c = selectedCourse;
+            setSelectedCourse(null);
+            router.push({
+              pathname: '/kegiatan',
+              params: {
+                marketplaceId:    c.id,
+                courseTitle:      c.title,
+                courseProvider:   c.provider,
+                courseJabkerList: JSON.stringify(c.jabker),
+                courseSkkTagsList: JSON.stringify(c.skkTags.map((t) => t.code)),
+              },
+            } as any);
+          }}
         />
       )}
     </View>

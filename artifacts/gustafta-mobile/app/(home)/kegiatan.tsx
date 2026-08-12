@@ -6,12 +6,12 @@
  * diupload via web app). Field 5 (SKK mapping) dapat diisi secara manual.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, Pressable, ScrollView, StyleSheet, TextInput, Alert,
   Modal, ActivityIndicator, FlatList,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -250,11 +250,19 @@ function SkkManager({
 
 type FormData = Partial<CreateKegiatanBody> & { namaKegiatan: string; tanggalMulai: string };
 
+interface MarketplacePrefill {
+  marketplaceId: string;
+  courseTitle: string;
+  courseProvider: string;
+  courseJabkerList: string[];
+  courseSkkTagsList: string[];
+}
+
 function ActivityFormModal({
-  visible, initial, onClose, onSaved, colors,
+  visible, initial, prefill, onClose, onSaved, colors,
 }: {
-  visible: boolean; initial?: PkbActivity | null; onClose: () => void;
-  onSaved: (act: PkbActivity) => void; colors: ReturnType<typeof useColors>;
+  visible: boolean; initial?: PkbActivity | null; prefill?: MarketplacePrefill | null;
+  onClose: () => void; onSaved: (act: PkbActivity) => void; colors: ReturnType<typeof useColors>;
 }) {
   const [form, setForm] = useState<FormData>(() =>
     initial
@@ -264,7 +272,13 @@ function ActivityFormModal({
           penyelenggara: initial.penyelenggara ?? '', namaInstruktur: initial.namaInstruktur ?? '',
           uraianSingkat: initial.uraianSingkat ?? '', linkRekaman: initial.linkRekaman ?? '',
           jenisPkb: initial.jenisPkb ?? '', jpPkb: initial.jpPkb ?? undefined }
-      : { namaKegiatan: '', tanggalMulai: '' }
+      : {
+          namaKegiatan: prefill?.courseTitle ?? '',
+          namaMateri:   prefill?.courseTitle ?? '',
+          penyelenggara: prefill?.courseProvider ?? '',
+          jenisPkb:     prefill ? 'Kursus Online' : '',
+          tanggalMulai: '',
+        }
   );
 
   const qc = useQueryClient();
@@ -302,6 +316,14 @@ function ActivityFormModal({
       linkRekaman: form.linkRekaman?.trim() || undefined,
       jenisPkb: form.jenisPkb?.trim() || undefined,
       jpPkb: form.jpPkb ? Number(form.jpPkb) : undefined,
+      // Marketplace link — triggers auto-watch server-side when present
+      ...(prefill && !initial ? {
+        marketplaceId:    prefill.marketplaceId,
+        courseTitle:      prefill.courseTitle,
+        courseProvider:   prefill.courseProvider,
+        courseJabkerList: prefill.courseJabkerList,
+        courseSkkTagsList: prefill.courseSkkTagsList,
+      } : {}),
     };
     if (initial) { updateMut.mutate(body); }
     else { createMut.mutate(body); }
@@ -641,10 +663,30 @@ function InfoItem({ label, value, colors }: { label: string; value: string; colo
 
 export default function KegiatanScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    marketplaceId?: string; courseTitle?: string; courseProvider?: string;
+    courseJabkerList?: string; courseSkkTagsList?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const [showCreate, setShowCreate] = useState(false);
+  const [marketplacePrefill, setMarketplacePrefill] = useState<MarketplacePrefill | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<PkbActivity | null>(null);
+
+  // Open create form pre-filled when navigated from marketplace "Catat ke PKB".
+  useEffect(() => {
+    if (params.marketplaceId && params.courseTitle) {
+      setMarketplacePrefill({
+        marketplaceId:    params.marketplaceId,
+        courseTitle:      params.courseTitle,
+        courseProvider:   params.courseProvider ?? '',
+        courseJabkerList: params.courseJabkerList ? JSON.parse(params.courseJabkerList) : [],
+        courseSkkTagsList: params.courseSkkTagsList ? JSON.parse(params.courseSkkTagsList) : [],
+      });
+      setShowCreate(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: activities = [], isLoading, refetch } = useQuery<PkbActivity[]>({
     queryKey: ['kegiatan'],
@@ -734,8 +776,9 @@ export default function KegiatanScreen() {
       {showCreate && (
         <ActivityFormModal
           visible={showCreate}
-          onClose={() => setShowCreate(false)}
-          onSaved={() => setShowCreate(false)}
+          prefill={marketplacePrefill}
+          onClose={() => { setShowCreate(false); setMarketplacePrefill(null); }}
+          onSaved={() => { setShowCreate(false); setMarketplacePrefill(null); }}
           colors={colors}
         />
       )}

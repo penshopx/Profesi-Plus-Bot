@@ -551,13 +551,20 @@ export async function getWatchedCourses(): Promise<MarketplaceWatchedResponse> {
   return res.json();
 }
 
+export interface WatchMetadata {
+  courseTitle?: string;
+  courseProvider?: string;
+  courseJabkerList?: string[];
+  courseSkkTagsList?: string[];
+}
+
 export async function markCourseWatched(
   courseId: string,
-  courseTitle?: string,
+  meta?: WatchMetadata,
 ): Promise<void> {
   await apiFetch(`/marketplace/${encodeURIComponent(courseId)}/watch`, {
     method: 'POST',
-    body: JSON.stringify({ courseTitle }),
+    body: JSON.stringify(meta ?? {}),
   });
 }
 
