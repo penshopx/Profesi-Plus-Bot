@@ -16,10 +16,12 @@ import {
   Youtube, Video, Monitor, BookOpen, X, ExternalLink, CheckCircle2,
   Filter, Tag, Zap, TrendingUp, Gift, ChevronRight, Play,
   Bot, UserCheck, MessageSquare, ThumbsUp, AlertCircle, Sparkles,
-  Share2, Copy, Check, Mail, Send,
+  Share2, Copy, Check, Mail, Send, Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getWatchedCourses, markCourseWatched } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1205,7 +1207,7 @@ function ReviewsSection({ reviews }: { reviews: CourseReviews }) {
 
 // ─── Course Card ──────────────────────────────────────────────────────────────
 
-function CourseCard({ course, onClick }: { course: Course; onClick: () => void }) {
+function CourseCard({ course, onClick, isWatched }: { course: Course; onClick: () => void; isWatched?: boolean }) {
   const T = TYPE_META[course.type];
   const TIcon = T.icon;
   const [shareOpen, setShareOpen] = useState(false);
@@ -1236,6 +1238,11 @@ function CourseCard({ course, onClick }: { course: Course; onClick: () => void }
               {T.label}
             </span>
             <div className="flex flex-col gap-1 items-end">
+              {isWatched && (
+                <span className="flex items-center gap-1 bg-emerald-500/90 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
+                  <Eye className="w-2.5 h-2.5" /> Sudah Ditonton
+                </span>
+              )}
               {course.isBestSeller && (
                 <span className="bg-amber-400 text-amber-900 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
                   ⭐ Best Seller
@@ -1341,7 +1348,7 @@ function CourseCard({ course, onClick }: { course: Course; onClick: () => void }
 
 // ─── Detail Panel ─────────────────────────────────────────────────────────────
 
-function DetailPanel({ course, onClose }: { course: Course; onClose: () => void }) {
+function DetailPanel({ course, onClose, onWatch }: { course: Course; onClose: () => void; onWatch: (courseId: string) => void }) {
   const T = TYPE_META[course.type];
   const TIcon = T.icon;
   const discount = course.priceOriginalIdr
@@ -1427,15 +1434,16 @@ function DetailPanel({ course, onClose }: { course: Course; onClose: () => void 
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <a
-                href={course.url}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={() => {
+                  onWatch(course.id);
+                  window.open(course.url, "_blank", "noopener,noreferrer");
+                }}
                 className="flex items-center justify-center gap-1.5 bg-primary text-primary-foreground rounded-xl py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity"
               >
                 <Play className="w-4 h-4" /> Buka Kursus
                 <ExternalLink className="w-3 h-3 opacity-70" />
-              </a>
+              </button>
               <a
                 href="/sessions"
                 className="flex items-center justify-center gap-1.5 bg-emerald-600 text-white rounded-xl py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity"
@@ -1542,12 +1550,27 @@ const ALL_JABKER = Array.from(new Set(COURSES.flatMap((c) => c.jabker)));
 const ALL_TYPES: ContentType[] = ["video", "webinar", "diklatkerja", "modul"];
 
 export default function MarketplacePage() {
+  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [filterJabker, setFilterJabker] = useState<string>("");
   const [filterType, setFilterType] = useState<ContentType | "">("");
   const [filterPrice, setFilterPrice] = useState<PriceType | "">("");
+  const [filterWatched, setFilterWatched] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Watched course IDs — fetched once on mount, invalidated after each watch action.
+  const { data: watchedIds = [] } = useQuery({
+    queryKey: ["marketplace-watched"],
+    queryFn: getWatchedCourses,
+    staleTime: 5 * 60 * 1000,
+  });
+  const watchedSet = useMemo(() => new Set(watchedIds), [watchedIds]);
+
+  const watchMutation = useMutation({
+    mutationFn: markCourseWatched,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["marketplace-watched"] }),
+  });
 
   const filtered = useMemo(() => {
     return COURSES.filter((c) => {
@@ -1559,12 +1582,13 @@ export default function MarketplacePage() {
       if (filterJabker && !c.jabker.includes(filterJabker)) return false;
       if (filterType && c.type !== filterType) return false;
       if (filterPrice && c.price !== filterPrice) return false;
+      if (filterWatched && !watchedSet.has(c.id)) return false;
       return true;
     });
-  }, [search, filterJabker, filterType, filterPrice]);
+  }, [search, filterJabker, filterType, filterPrice, filterWatched, watchedSet]);
 
   const featuredCourses = COURSES.filter((c) => c.isFeatured);
-  const activeFilters = [filterJabker, filterType, filterPrice].filter(Boolean).length;
+  const activeFilters = [filterJabker, filterType, filterPrice, filterWatched ? "watched" : ""].filter(Boolean).length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -1620,7 +1644,7 @@ export default function MarketplacePage() {
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {featuredCourses.map((c) => (
-                <CourseCard key={c.id} course={c} onClick={() => setSelectedCourse(c)} />
+                <CourseCard key={c.id} course={c} onClick={() => setSelectedCourse(c)} isWatched={watchedSet.has(c.id)} />
               ))}
             </div>
           </section>
@@ -1705,9 +1729,23 @@ export default function MarketplacePage() {
                 <button onClick={() => setFilterPrice(filterPrice === "berbayar" ? "" : "berbayar")} className={`text-xs px-3 py-1 rounded-full border transition-colors ${filterPrice === "berbayar" ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40"}`}>Berbayar</button>
               </div>
             </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold text-muted-foreground">Status</p>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => setFilterWatched((v) => !v)}
+                  className={`flex items-center gap-1 text-xs px-3 py-1 rounded-full border transition-colors ${filterWatched ? "bg-emerald-600 text-white border-emerald-600" : "border-border hover:border-emerald-400"}`}
+                >
+                  <Eye className="w-3 h-3" /> Sudah Ditonton
+                  {filterWatched && watchedIds.length > 0 && (
+                    <span className="ml-0.5 text-[10px] opacity-80">({watchedIds.length})</span>
+                  )}
+                </button>
+              </div>
+            </div>
             {activeFilters > 0 && (
               <button
-                onClick={() => { setFilterJabker(""); setFilterType(""); setFilterPrice(""); }}
+                onClick={() => { setFilterJabker(""); setFilterType(""); setFilterPrice(""); setFilterWatched(false); }}
                 className="text-xs text-destructive hover:underline flex items-center gap-1 self-end"
               >
                 <X className="w-3 h-3" /> Hapus semua filter
@@ -1729,6 +1767,18 @@ export default function MarketplacePage() {
                 {JABKER_LABELS[j] ?? j}
               </button>
             ))}
+            {/* Watched pill — shows count badge when any are watched */}
+            <button
+              onClick={() => setFilterWatched((v) => !v)}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border whitespace-nowrap shrink-0 transition-colors ${filterWatched ? "bg-emerald-600 text-white border-emerald-600" : "border-border hover:border-emerald-400 bg-card"}`}
+            >
+              <Eye className="w-3 h-3" /> Sudah Ditonton
+              {watchedIds.length > 0 && (
+                <span className={`text-[10px] font-bold px-1 py-0 rounded-full ${filterWatched ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-700"}`}>
+                  {watchedIds.length}
+                </span>
+              )}
+            </button>
           </div>
         )}
 
@@ -1752,7 +1802,7 @@ export default function MarketplacePage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((c) => (
-              <CourseCard key={c.id} course={c} onClick={() => setSelectedCourse(c)} />
+              <CourseCard key={c.id} course={c} onClick={() => setSelectedCourse(c)} isWatched={watchedSet.has(c.id)} />
             ))}
           </div>
         )}
@@ -1769,7 +1819,11 @@ export default function MarketplacePage() {
 
       {/* Detail slide-over */}
       {selectedCourse && (
-        <DetailPanel course={selectedCourse} onClose={() => setSelectedCourse(null)} />
+        <DetailPanel
+          course={selectedCourse}
+          onClose={() => setSelectedCourse(null)}
+          onWatch={(id) => watchMutation.mutate(id)}
+        />
       )}
     </div>
   );

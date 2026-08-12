@@ -753,6 +753,20 @@ export async function seedKnowledgeBase(): Promise<{ inserted: number; skipped: 
   return res.json();
 }
 
+// ─── Marketplace watches ──────────────────────────────────────────────────────
+
+/** Returns course IDs the authenticated user has already opened ("watched"). */
+export async function getWatchedCourses(): Promise<string[]> {
+  const res = await f("/marketplace/watched");
+  const data: { watchedIds: string[] } = await res.json();
+  return data.watchedIds;
+}
+
+/** Idempotent — marks a course as watched. Fire-and-forget is fine. */
+export async function markCourseWatched(courseId: string): Promise<void> {
+  await f(`/marketplace/${encodeURIComponent(courseId)}/watch`, { method: "POST" });
+}
+
 // ─── Dialog Gustafta (public landing demo) ──────────────────────────────────
 
 export interface DialogProfile {

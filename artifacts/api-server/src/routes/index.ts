@@ -18,6 +18,7 @@ import kegiatanRouter from "./kegiatan";
 import storageRouter from "./storage";
 import askomRouter from "./askom";
 import asosiasiRouter from "./asosiasi";
+import marketplaceRouter from "./marketplace";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(kegiatanRouter);
 router.use(storageRouter);
 router.use(askomRouter);
 router.use(asosiasiRouter);
+router.use(marketplaceRouter);
 
 export default router;
