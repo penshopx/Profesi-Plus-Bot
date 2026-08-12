@@ -24,8 +24,11 @@ import {
   streamMessage,
   generateExum,
   advancePhase,
+  transcribeAudio,
   type Message,
 } from '@/lib/api';
+import { Audio } from 'expo-av';
+import { useAuth } from '@clerk/expo';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -370,6 +373,10 @@ export default function ChatScreen() {
   const [exumContent, setExumContent] = useState<string | null>(null);
   const [exumVisible, setExumVisible] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const { getToken } = useAuth();
 
   // Load conversation
   const { isLoading, isError, data: convData } = useQuery({
@@ -496,6 +503,66 @@ export default function ChatScreen() {
     const text = inputText.trim();
     if (text) doSend(text);
   }, [inputText, doSend]);
+
+  /**
+   * Tap mic to start recording; tap again to stop → transcribe → fill input.
+   */
+  const handleMicPress = useCallback(async () => {
+    if (isDone) return;
+
+    if (isRecording) {
+      // ── Stop recording ──────────────────────────────────────────────────
+      try {
+        const rec = recordingRef.current;
+        if (!rec) return;
+        await rec.stopAndUnloadAsync();
+        const uri = rec.getURI();
+        recordingRef.current = null;
+        setIsRecording(false);
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+
+        if (!uri) return;
+        setIsTranscribing(true);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+        const token = await getToken();
+        if (!token) return;
+
+        const text = await transcribeAudio(uri, token);
+        if (text.trim()) {
+          setInputText((prev) => (prev ? `${prev} ${text.trim()}` : text.trim()));
+        }
+      } catch {
+        Alert.alert('Transkrip gagal', 'Tidak dapat memproses rekaman. Coba lagi.');
+      } finally {
+        setIsTranscribing(false);
+      }
+    } else {
+      // ── Start recording ─────────────────────────────────────────────────
+      try {
+        const { granted } = await Audio.requestPermissionsAsync();
+        if (!granted) {
+          Alert.alert(
+            'Izin mikrofon diperlukan',
+            'Buka Pengaturan dan izinkan akses mikrofon untuk merekam catatan suara.',
+          );
+          return;
+        }
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+        });
+        const rec = new Audio.Recording();
+        await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+        await rec.startAsync();
+        recordingRef.current = rec;
+        setIsRecording(true);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch {
+        Alert.alert('Gagal memulai rekaman', 'Pastikan mikrofon tersedia.');
+      }
+    }
+  }, [isDone, isRecording, getToken]);
 
   const handleAdvancePhase = useCallback(async () => {
     if (isAdvancing || isStreaming) return;
@@ -664,19 +731,54 @@ export default function ChatScreen() {
                 {
                   color: isDone ? colors.mutedForeground : colors.foreground,
                   backgroundColor: colors.card,
-                  borderColor: colors.border,
+                  borderColor: isRecording ? '#EF4444' : colors.border,
                 },
               ]}
               value={inputText}
               onChangeText={setInputText}
-              placeholder={isDone ? 'Sesi selesai' : 'Ketik pesan…'}
-              placeholderTextColor={colors.mutedForeground}
+              placeholder={
+                isDone
+                  ? 'Sesi selesai'
+                  : isRecording
+                    ? '🎙 Merekam… ketuk mic untuk berhenti'
+                    : isTranscribing
+                      ? '⏳ Mentranskrip…'
+                      : 'Ketik pesan…'
+              }
+              placeholderTextColor={isRecording ? '#EF4444' : colors.mutedForeground}
               multiline
               maxLength={2000}
-              editable={!isDone}
+              editable={!isDone && !isRecording && !isTranscribing}
               blurOnSubmit={false}
               onSubmitEditing={handleSend}
             />
+            {/* Mic button — tap to record voice note, tap again to transcribe */}
+            {!isDone && (
+              <Pressable
+                style={[
+                  styles.sendBtn,
+                  {
+                    backgroundColor: isRecording
+                      ? '#EF4444'
+                      : isTranscribing
+                        ? colors.muted
+                        : colors.secondary,
+                  },
+                ]}
+                onPress={handleMicPress}
+                disabled={isTranscribing}
+              >
+                {isTranscribing ? (
+                  <ActivityIndicator size="small" color={colors.mutedForeground} />
+                ) : (
+                  <Feather
+                    name={isRecording ? 'mic-off' : 'mic'}
+                    size={18}
+                    color={isRecording ? '#fff' : colors.foreground}
+                  />
+                )}
+              </Pressable>
+            )}
             <Pressable
               style={[
                 styles.sendBtn,
@@ -686,7 +788,7 @@ export default function ChatScreen() {
                 },
               ]}
               onPress={handleSend}
-              disabled={!inputText.trim() || isStreaming || isDone}
+              disabled={!inputText.trim() || isStreaming || isDone || isRecording}
             >
               {isStreaming ? (
                 <ActivityIndicator size="small" color={colors.mutedForeground} />

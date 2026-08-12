@@ -10,6 +10,7 @@ import projectBrainRouter from "./project-brain";
 import competencyStudioRouter from "./competency-studio";
 import personasRouter from "./personas";
 import scalevWebhookRouter from "./webhooks/scalev";
+import transcribeRouter from "./transcribe";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(projectBrainRouter);
 router.use(competencyStudioRouter);
 router.use(personasRouter);
 router.use(scalevWebhookRouter);
+router.use(transcribeRouter);
 
 export default router;

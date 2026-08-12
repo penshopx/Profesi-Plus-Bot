@@ -37,6 +37,17 @@ router.patch("/users/me/role", requireAuth, async (req, res) => {
   res.json(updated);
 });
 
+// Save the Expo push token for this device so the server can send notifications.
+router.post("/users/me/push-token", requireAuth, async (req, res) => {
+  const { token } = req.body as { token?: string };
+  if (!token || typeof token !== "string") {
+    res.status(400).json({ error: "token required" });
+    return;
+  }
+  await db.update(users).set({ expoPushToken: token }).where(eq(users.id, req.dbUser!.id));
+  res.json({ ok: true });
+});
+
 router.get("/users", requireAuth, requireRole("admin"), async (_req, res) => {
   const all = await db.select().from(users).orderBy(users.createdAt);
   res.json(all);

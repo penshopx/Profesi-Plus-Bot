@@ -6,9 +6,11 @@ import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL } from "../.
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
 import { buildKnowledgeContext } from "../../lib/knowledge-base";
 import { buildProjectBrainContext } from "../../lib/project-brain";
+import { buildHistoricalPKBContext } from "../../lib/historical-pkb";
 import { recommendPersona, isKnownPersona, isConfidentJabkerMatch, DEFAULT_PERSONA_ID } from "../../lib/personas";
 import { findJabkerGroup } from "../../lib/skk-data";
 import { requireAuth } from "../../middlewares/auth";
+import { chatMessageRateLimiter, exumRateLimiter } from "../../middlewares/rateLimiter";
 
 const router: IRouter = Router();
 
@@ -213,7 +215,7 @@ router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> =
   res.json(msgs);
 });
 
-router.post("/chat/conversations/:id/messages", async (req, res): Promise<void> => {
+router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (req, res): Promise<void> => {
   const convId = parseInt(req.params.id, 10);
   const { content } = req.body;
 
@@ -248,13 +250,17 @@ router.post("/chat/conversations/:id/messages", async (req, res): Promise<void> 
     .orderBy(asc(evidenceItems.createdAt));
 
   const lastUserMsg = [...existingMsgs].reverse().find((m: { role: string; content: string }) => m.role === "user")?.content ?? null;
-  const knowledgeContext = await buildKnowledgeContext({
-    jabker: conv.jabker,
-    jenjang: conv.jenjang,
-    query: lastUserMsg,
-  });
-  const projectBrainContext = await buildProjectBrainContext(req.dbUser!.id);
-  const systemPrompt = buildSystemPrompt(conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence, knowledgeContext + projectBrainContext, conv.personaId);
+  const [knowledgeContext, projectBrainContext, historicalPKBContext] = await Promise.all([
+    buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: lastUserMsg }),
+    buildProjectBrainContext(req.dbUser!.id),
+    buildHistoricalPKBContext(req.dbUser!.id, convId),
+  ]);
+  const systemPrompt = buildSystemPrompt(
+    conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence,
+    knowledgeContext + projectBrainContext + historicalPKBContext,
+    conv.personaId,
+    req.dbUser!.name,
+  );
   const phaseInstruction = getPhaseInstruction(conv.phase, conv.mode);
 
   const chatMessages = existingMsgs.map((m) => ({
@@ -332,7 +338,7 @@ router.post("/chat/conversations/:id/advance-phase", async (req, res): Promise<v
 
 // ─── Generate Exum ────────────────────────────────────────────────────────────
 
-router.post("/chat/generate-exum", async (req, res): Promise<void> => {
+router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<void> => {
   const { conversationId } = req.body;
   if (!conversationId) {
     res.status(400).json({ error: "conversationId is required" });
@@ -401,13 +407,16 @@ router.post("/chat/generate-exum", async (req, res): Promise<void> => {
       .map((m) => `${m.role === "user" ? "TKK" : "Pak Budi"}: ${m.content}`)
       .join("\n\n");
 
-    const exumKnowledge = await buildKnowledgeContext({
-      jabker: conv.jabker,
-      jenjang: conv.jenjang,
-      query: conv.jabker,
-    });
-    const exumProjectBrain = await buildProjectBrainContext(req.dbUser!.id);
-    const exumPrompt = buildExumPrompt(conv.mode, conv.jabker, conv.jenjang, transcript, evidence, exumKnowledge + exumProjectBrain);
+    const [exumKnowledge, exumProjectBrain, exumHistorical] = await Promise.all([
+      buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: conv.jabker }),
+      buildProjectBrainContext(req.dbUser!.id),
+      buildHistoricalPKBContext(req.dbUser!.id, conversationId),
+    ]);
+    const exumPrompt = buildExumPrompt(
+      conv.mode, conv.jabker, conv.jenjang, transcript, evidence,
+      exumKnowledge + exumProjectBrain + exumHistorical,
+      req.dbUser!.name,
+    );
 
     let llm: ReturnType<typeof getClientForModel>;
     try {
@@ -431,6 +440,22 @@ router.post("/chat/generate-exum", async (req, res): Promise<void> => {
 
     // Audit log of a successfully delivered Exum (source: paid credit or free trial).
     await db.insert(usageEvents).values({ userId: req.dbUser!.id, kind: `exum_${creditSource}` });
+
+    // Non-blocking push notification to the user's device
+    const pushToken = req.dbUser!.expoPushToken;
+    if (pushToken) {
+      fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip, deflate" },
+        body: JSON.stringify({
+          to: pushToken,
+          title: "Exum Anda Siap! 🎉",
+          body: "Executive Summary PKB telah selesai dibuat. Ketuk untuk melihat.",
+          data: { conversationId: String(conversationId) },
+          channelId: "exum",
+        }),
+      }).catch((err) => req.log.warn({ err }, "Failed to send Expo push"));
+    }
 
     res.json({ content, conversationId });
   } catch (err) {
@@ -518,7 +543,8 @@ function buildExumPrompt(
   jenjang: string | null,
   transcript: string,
   evidence: EvidenceRow[],
-  knowledgeContext: string = ""
+  knowledgeContext: string = "",
+  userName: string | null = null,
 ): string {
   const modeLabel =
     mode === "A" ? "Pengalaman Kerja" : mode === "B" ? "Hasil Belajar" : "Hybrid (Pengalaman + Hasil Belajar)";
@@ -547,7 +573,7 @@ function buildExumPrompt(
 Berdasarkan transkrip wawancara dan serpihan bukti di bawah ini, buatlah Executive Summary yang lengkap, profesional, dan berkualitas tinggi (setara 10-15 halaman A4).
 
 INFORMASI PENULIS:
-- Jabatan Kerja: ${jabker ?? "Tenaga Ahli Konstruksi"}
+${userName ? `- Nama: ${userName}\n` : ""}- Jabatan Kerja: ${jabker ?? "Tenaga Ahli Konstruksi"}
 - Jenjang SKK: ${jenjang ?? "Ahli"}
 - Mode Exum: ${modeLabel}
 ${skkCovered ? `\nUNIT SKK YANG DICAKUP:\n  - ${skkCovered}` : ""}

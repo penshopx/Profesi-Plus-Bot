@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/reac
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import Landing from "@/pages/landing";
 import Home from "@/pages/home";
 import ChatPage from "@/pages/chat";
@@ -192,6 +193,7 @@ function ClerkProviderWithRoutes() {
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
         <TooltipProvider>
+          <OfflineBanner />
           <Router />
           <Toaster />
         </TooltipProvider>

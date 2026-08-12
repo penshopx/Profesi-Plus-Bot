@@ -18,6 +18,7 @@ export const users = pgTable("users", {
   planExpiresAt: timestamp("plan_expires_at", { withTimezone: true }),
   exumCredits: integer("exum_credits").notNull().default(0),
   freeExumUsed: boolean("free_exum_used").notNull().default(false),
+  expoPushToken: text("expo_push_token"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

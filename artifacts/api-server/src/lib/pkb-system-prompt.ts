@@ -64,7 +64,8 @@ export function buildSystemPrompt(
   phase: string,
   evidence: EvidenceRow[] = [],
   knowledgeContext: string = "",
-  personaId: string | null = null
+  personaId: string | null = null,
+  userName: string | null = null,
 ): string {
   const jabkerInfo = jabker ? `Jabatan Kerja: **${jabker}**` : "Jabatan Kerja: belum ditentukan";
   const jenjangInfo = jenjang ? `Jenjang SKK: **${jenjang}**` : "Jenjang SKK: belum ditentukan";
@@ -83,7 +84,7 @@ KEAHLIAN SPESIALIS ${upperName}:
 ${persona.focus}
 
 KONTEKS PENGGUNA:
-- ${jabkerInfo}
+${userName ? `- Nama TKK: **${userName}** — sapa dengan nama ini agar wawancara terasa personal\n` : ""}- ${jabkerInfo}
 - ${jenjangInfo}
 - Mode: ${mode === "A" ? "Pengalaman Kerja (berbasis proyek/ESIMPAN)" : mode === "B" ? "Hasil Belajar (video YouTube, webinar, diklatkerja)" : "Hybrid (gabungan pengalaman + hasil belajar)"}
 - Jenjang adaptasi: ${jenjangNum >= 9 ? "Jenjang 9 — fokus STRATEGIS (kebijakan, inovasi, dampak organisasi)" : jenjangNum === 8 ? "Jenjang 8 — fokus MANAJERIAL (koordinasi, pengambilan keputusan, manajemen risiko)" : "Jenjang 7 — fokus TEKNIS-OPERASIONAL (prosedur, pelaksanaan, K3)"}

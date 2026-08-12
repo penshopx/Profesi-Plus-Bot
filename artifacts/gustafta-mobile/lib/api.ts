@@ -262,6 +262,58 @@ export async function runStudioAnalysis(
 
 // ─── Users / Profile ──────────────────────────────────────────────────────────
 
+/**
+ * Register an Expo push token with the server so it can notify this device
+ * when an Exum finishes generating. `authToken` is passed explicitly because
+ * this runs at app startup before setAuthTokenGetter has been called.
+ */
+export async function registerPushToken(
+  pushToken: string,
+  authToken: string,
+): Promise<void> {
+  const url = `${getBaseUrl()}/api/users/me/push-token`;
+  await expoFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({ token: pushToken }),
+  }).catch(() => {}); // Non-fatal
+}
+
+/**
+ * Transcribes an audio file to Indonesian text using Whisper.
+ * `audioUri` is the local file URI from expo-av recording.
+ * Returns the transcribed text.
+ */
+export async function transcribeAudio(
+  audioUri: string,
+  authToken: string,
+): Promise<string> {
+  const url = `${getBaseUrl()}/api/transcribe`;
+  const formData = new FormData();
+  formData.append('audio', {
+    uri: audioUri,
+    type: 'audio/m4a',
+    name: 'voice-note.m4a',
+  } as unknown as Blob);
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${authToken}` },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Transcription failed: ${text || response.status}`);
+  }
+
+  const data = await response.json() as { text: string };
+  return data.text ?? '';
+}
+
 export async function getMe(): Promise<UserProfile> {
   const res = await apiFetch('/users/me');
   return res.json();
