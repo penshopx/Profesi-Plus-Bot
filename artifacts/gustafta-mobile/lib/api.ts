@@ -119,6 +119,8 @@ export type UserProfile = {
 export type UserPlan = {
   plan: string;
   expiresAt?: string | null;
+  exumCredits?: number;
+  canGenerate?: boolean;
 };
 
 // ─── Conversations ─────────────────────────────────────────────────────────────
@@ -208,10 +210,12 @@ export async function streamMessage(
 // ─── Usage / quota ─────────────────────────────────────────────────────────
 
 export interface UsageInfo {
+  resetAt: string | null;
   used: number;
   limit: number;
   remaining: number;
-  windowMs: number;
+  /** @deprecated use resetAt instead */
+  windowMs?: number;
 }
 
 export async function getMyUsage(): Promise<UsageInfo> {
@@ -383,10 +387,173 @@ export async function createProjectBrainEntry(data: {
   role?: string;
   period?: string;
   location?: string;
+  highlights?: string;
+  skkUnitCodes?: string;
+  jenjang?: string;
 }): Promise<ProjectBrainEntry> {
   const res = await apiFetch('/project-brain', {
     method: 'POST',
     body: JSON.stringify({ kind: 'project', ...data }),
   });
+  return res.json();
+}
+
+export async function updateProjectBrainEntry(
+  id: number,
+  data: Partial<Parameters<typeof createProjectBrainEntry>[0]>,
+): Promise<ProjectBrainEntry> {
+  const res = await apiFetch(`/project-brain/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function deleteProjectBrainEntry(id: number): Promise<void> {
+  await apiFetch(`/project-brain/${id}`, { method: 'DELETE' });
+}
+
+// ─── Kegiatan PKB ─────────────────────────────────────────────────────────────
+
+export interface PkbSkkUnit {
+  id?: number;
+  skkCode: string;
+  skkName: string;
+  jabkerId?: string;
+  jabkerName?: string;
+}
+
+export interface PkbActivity {
+  id: number;
+  namaKegiatan: string;
+  tanggalMulai: string;
+  tanggalSelesai?: string | null;
+  tempatKegiatan?: string | null;
+  modePelaksanaan?: string | null;
+  namaMateri?: string | null;
+  penyelenggara?: string | null;
+  namaInstruktur?: string | null;
+  uraianSingkat?: string | null;
+  linkRekaman?: string | null;
+  jenisPkb?: string | null;
+  jpPkb?: number | null;
+  status: string;
+  askomNote?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  skk: PkbSkkUnit[];
+  docCount?: number;
+}
+
+export async function listMyKegiatanPkb(): Promise<PkbActivity[]> {
+  const res = await apiFetch('/kegiatan');
+  if (!res.ok) throw new Error('Gagal memuat daftar kegiatan');
+  return res.json();
+}
+
+export async function getKegiatanPkb(id: number): Promise<PkbActivity> {
+  const res = await apiFetch(`/kegiatan/${id}`);
+  if (!res.ok) throw new Error('Gagal memuat detail kegiatan');
+  return res.json();
+}
+
+export interface CreateKegiatanBody {
+  namaKegiatan: string;
+  tanggalMulai: string;
+  tanggalSelesai?: string;
+  tempatKegiatan?: string;
+  modePelaksanaan?: string;
+  namaMateri?: string;
+  penyelenggara?: string;
+  namaInstruktur?: string;
+  uraianSingkat?: string;
+  linkRekaman?: string;
+  jenisPkb?: string;
+  jpPkb?: number;
+}
+
+export async function createKegiatanPkb(body: CreateKegiatanBody): Promise<PkbActivity> {
+  const res = await apiFetch('/kegiatan', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? 'Gagal membuat kegiatan');
+  }
+  return res.json();
+}
+
+export async function updateKegiatanPkb(id: number, body: Partial<CreateKegiatanBody>): Promise<PkbActivity> {
+  const patchRes = await apiFetch(`/kegiatan/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  if (!patchRes.ok) {
+    const err = await patchRes.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? 'Gagal memperbarui kegiatan');
+  }
+  // Refetch the full activity (PATCH returns only { success, status })
+  return getKegiatanPkb(id);
+}
+
+export async function deleteKegiatanPkb(id: number): Promise<void> {
+  await apiFetch(`/kegiatan/${id}`, { method: 'DELETE' });
+}
+
+export async function updateKegiatanSkk(
+  id: number,
+  skk: PkbSkkUnit[],
+): Promise<{ success: boolean; status: string; skk: PkbSkkUnit[] }> {
+  const res = await apiFetch(`/kegiatan/${id}/skk`, {
+    method: 'PUT',
+    body: JSON.stringify({ skk }),
+  });
+  if (!res.ok) throw new Error('Gagal memperbarui SKK');
+  return res.json();
+}
+
+export async function ajukanKegiatanPkb(id: number): Promise<{ success: boolean }> {
+  const res = await apiFetch(`/kegiatan/${id}/ajukan`, { method: 'POST' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? 'Gagal mengajukan kegiatan');
+  }
+  return res.json();
+}
+
+// ─── Credits & payments ───────────────────────────────────────────────────────
+
+export interface PaymentRecord {
+  id: number;
+  provider: string;
+  externalId: string;
+  customerEmail: string;
+  status: string;
+  amount: number;
+  creditsGranted: number;
+  createdAt: string;
+}
+
+export async function getMyPayments(): Promise<PaymentRecord[]> {
+  const res = await apiFetch('/users/me/payments');
+  return res.json();
+}
+
+export async function claimPayment(
+  orderId: string,
+  customerEmail: string,
+): Promise<{ ok: boolean; creditsGranted: number; alreadyClaimed?: boolean }> {
+  const res = await apiFetch('/users/me/claim-payment', {
+    method: 'POST',
+    body: JSON.stringify({ orderId, customerEmail }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw Object.assign(
+      new Error((body as { error?: string }).error ?? 'Gagal klaim pesanan'),
+      { status: res.status, body },
+    );
+  }
   return res.json();
 }

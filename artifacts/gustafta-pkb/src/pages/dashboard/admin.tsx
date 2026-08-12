@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   LayoutDashboard, LogOut, Users, Video, MessageSquare,
-  CheckCircle2, ChevronDown, Search, BookOpen, Plus, Pencil, Trash2, X, Sparkles,
+  CheckCircle2, ChevronDown, Search, BookOpen, Plus, Pencil, Trash2, X, Sparkles, Award,
 } from "lucide-react";
 import {
   listAllUsers, updateUserRole, listVideos, type VideoItem, type DbUser,
@@ -16,6 +16,7 @@ const ROLE_LABELS: Record<string, string> = {
   user: "Peserta",
   instruktur: "Instruktur",
   lembaga_diklat: "Lembaga Diklat",
+  askom: "ASKOM",
   admin: "Admin",
 };
 
@@ -23,6 +24,7 @@ const ROLE_COLORS: Record<string, string> = {
   user: "bg-blue-50 text-blue-600",
   instruktur: "bg-emerald-50 text-emerald-600",
   lembaga_diklat: "bg-violet-50 text-violet-600",
+  askom: "bg-orange-50 text-orange-600",
   admin: "bg-amber-50 text-amber-600",
 };
 
@@ -85,6 +87,7 @@ export default function DashboardAdmin() {
     { label: "Total Video", value: (videos as any[]).length, icon: Video, color: "text-red-500 bg-red-50" },
     { label: "Instruktur", value: (users as any[]).filter((u) => u.role === "instruktur").length, icon: CheckCircle2, color: "text-emerald-500 bg-emerald-50" },
     { label: "Lembaga Diklat", value: (users as any[]).filter((u) => u.role === "lembaga_diklat").length, icon: MessageSquare, color: "text-violet-500 bg-violet-50" },
+    { label: "ASKOM", value: (users as any[]).filter((u) => u.role === "askom").length, icon: Award, color: "text-orange-500 bg-orange-50" },
   ];
 
   return (

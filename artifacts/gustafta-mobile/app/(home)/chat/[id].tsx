@@ -436,6 +436,21 @@ export default function ChatScreen() {
     refetchInterval: 5 * 60 * 1000,
   });
 
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const { getToken } = useAuth();
+
+  // Keep isOnlineRef in sync for use inside callbacks without stale closure
+  useEffect(() => {
+    isOnlineRef.current = isOnline;
+  }, [isOnline]);
+
+  // Load conversation
+  const { isLoading, isError, data: convData } = useQuery({
+    queryKey: ['conversation', conversationId],
+    queryFn: () => getConversation(conversationId),
+    enabled: !isNaN(conversationId),
+  });
+
   // ─── Studio Kompetensi nudge ──────────────────────────────────────────────
   const jabker = convData?.jabker ?? null;
   const { data: hasAnalysisForJabker, status: analysisCheckStatus } = useQuery({
@@ -465,21 +480,6 @@ export default function ChatScreen() {
       .then((val) => setStudioBannerDismissedRaw(val === '1'))
       .catch(() => setStudioBannerDismissedRaw(false));
   }, [jabker]);
-
-  const recordingRef = useRef<Audio.Recording | null>(null);
-  const { getToken } = useAuth();
-
-  // Keep isOnlineRef in sync for use inside callbacks without stale closure
-  useEffect(() => {
-    isOnlineRef.current = isOnline;
-  }, [isOnline]);
-
-  // Load conversation
-  const { isLoading, isError, data: convData } = useQuery({
-    queryKey: ['conversation', conversationId],
-    queryFn: () => getConversation(conversationId),
-    enabled: !isNaN(conversationId),
-  });
 
   // Sync conversation data into local state
   useEffect(() => {
@@ -796,6 +796,13 @@ export default function ChatScreen() {
         const text = await transcribeAudio(uri, token);
         if (text.trim()) {
           setInputText((prev) => (prev ? `${prev} ${text.trim()}` : text.trim()));
+        } else {
+          // Whisper returned an empty transcript — warn the user so they know
+          // the recording didn't capture anything and can try again.
+          Alert.alert(
+            'Rekaman tidak terdeteksi',
+            'Tidak ada suara yang berhasil ditranskripsi. Pastikan mikrofon tidak terhalang dan coba rekam ulang.',
+          );
         }
       } catch {
         Alert.alert('Transkrip gagal', 'Tidak dapat memproses rekaman. Coba lagi.');
@@ -1023,6 +1030,12 @@ export default function ChatScreen() {
                 ]}
               >
                 {usageInfo.remaining}/{usageInfo.limit} pesan/jam
+                {usageInfo.remaining <= 5 && usageInfo.resetAt ? (() => {
+                  const d = new Date(usageInfo.resetAt);
+                  const hh = d.getHours().toString().padStart(2, '0');
+                  const mm = d.getMinutes().toString().padStart(2, '0');
+                  return ` · reset ${hh}:${mm}`;
+                })() : null}
               </Text>
             </View>
           )}

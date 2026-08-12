@@ -14,10 +14,11 @@ import { users } from "./users";
 // ─── Status lifecycle kegiatan ────────────────────────────────────────────────
 
 export const KEGIATAN_STATUS = [
-  "draft",      // sedang diisi
-  "lengkap",    // semua field wajib terisi
-  "diajukan",   // sudah dikirim ke asesor / ASKOM
-  "diverifikasi", // ASKOM sudah verifikasi
+  "draft",        // sedang diisi
+  "lengkap",      // semua field wajib terisi
+  "diajukan",     // sudah dikirim ke asesor / ASKOM
+  "diverifikasi", // ASKOM sudah setuju — SKK alignment sesuai
+  "ditolak",      // ASKOM menolak — perlu perbaikan
 ] as const;
 export type KegiatanStatus = (typeof KEGIATAN_STATUS)[number];
 
@@ -42,6 +43,7 @@ export const JOURNEY_EVENT = [
   "siap_diajukan",
   "diajukan",
   "diverifikasi",
+  "ditolak",
 ] as const;
 export type JourneyEvent = (typeof JOURNEY_EVENT)[number];
 
@@ -78,6 +80,14 @@ export const pkbActivities = pgTable("pkb_activities", {
   status:          text("status").notNull().default("draft"),
   jenisPkb:        text("jenis_pkb"),                // "seminar" | "webinar" | "diklatkerja" | "workshop" | "kursus" | "mandiri"
   jpPkb:           integer("jp_pkb"),                // jam pelajaran / kredit PKB
+
+  // ── ASKOM Verification ─────────────────────────────────────────────────────
+  // ASKOM reviews whether the kegiatan's materi/modul aligns with the SKK
+  // (jabatan kerja + jenjang) — they do NOT comment on content quality.
+  askomNote:       text("askom_note"),               // ASKOM's SKK alignment comment
+  askomVerifiedAt: timestamp("askom_verified_at", { withTimezone: true }),
+  askomVerifiedBy: integer("askom_verified_by"),     // FK users.id of the verifying ASKOM
+
   createdAt:       timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt:       timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

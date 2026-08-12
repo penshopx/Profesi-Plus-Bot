@@ -1897,12 +1897,12 @@ export default function ChatPage() {
           const low     = usage.remaining <= 5;
           const veryLow = usage.remaining <= 2;
           const exhausted = usage.remaining <= 0;
-          // Compute reset time from windowMs (rolling window end ≈ now + windowMs)
-          const resetMs = usage.windowMs ?? 60 * 60 * 1000;
-          const resetAt = new Date(Date.now() + resetMs);
-          const resetHH = resetAt.getHours().toString().padStart(2, "0");
-          const resetMM = resetAt.getMinutes().toString().padStart(2, "0");
-          const resetStr = `${resetHH}:${resetMM}`;
+          // resetAt comes directly from the server: the exact moment the oldest
+          // in-window message expires out of the rolling 1-hour window.
+          const resetAt = usage.resetAt ? new Date(usage.resetAt) : null;
+          const resetStr = resetAt
+            ? `${resetAt.getHours().toString().padStart(2,"0")}:${resetAt.getMinutes().toString().padStart(2,"0")}`
+            : "—";
 
           const barColor = exhausted ? "bg-red-500"
             : veryLow  ? "bg-red-400"

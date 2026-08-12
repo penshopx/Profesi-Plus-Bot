@@ -37,25 +37,34 @@ router.get("/users/me/usage", requireAuth, async (req, res) => {
     (!req.dbUser!.planExpiresAt || new Date(req.dbUser!.planExpiresAt) > new Date());
   const limit = isPro ? 120 : 30;
 
-  const windowStart = new Date(Date.now() - 60 * 60 * 1000); // last 1 hour
+  const WINDOW_MS = 60 * 60 * 1000; // rolling 1-hour window
+  const windowStart = new Date(Date.now() - WINDOW_MS);
 
-  // Count user-role messages in conversations owned by this user in the last hour
-  const result = await db
-    .select({ cnt: count() })
-    .from(messages)
-    .innerJoin(conversations, eq(messages.conversationId, conversations.id))
-    .where(
-      and(
-        eq(conversations.userId, uid),
-        eq(messages.role, "user"),
-        gte(messages.createdAt, windowStart),
-      ),
-    );
+  // Count user-role messages in conversations owned by this user in the last hour,
+  // and also fetch the oldest message's timestamp so we can compute the real reset time.
+  const [result, oldest] = await Promise.all([
+    db.select({ cnt: count() })
+      .from(messages)
+      .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+      .where(and(eq(conversations.userId, uid), eq(messages.role, "user"), gte(messages.createdAt, windowStart))),
+    db.select({ createdAt: messages.createdAt })
+      .from(messages)
+      .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+      .where(and(eq(conversations.userId, uid), eq(messages.role, "user"), gte(messages.createdAt, windowStart)))
+      .orderBy(messages.createdAt)
+      .limit(1),
+  ]);
 
   const used = Number(result[0]?.cnt ?? 0);
   const remaining = Math.max(0, limit - used);
 
-  res.json({ used, limit, remaining, windowMs: 60 * 60 * 1000 });
+  // resetAt = the moment the oldest in-window message expires out of the rolling window.
+  // If there are no in-window messages, the limit is already fully available → null.
+  const resetAt = oldest[0]?.createdAt
+    ? new Date(new Date(oldest[0].createdAt).getTime() + WINDOW_MS).toISOString()
+    : null;
+
+  res.json({ used, limit, remaining, resetAt });
 });
 
 // Credit balance + purchase history for the authenticated user.
@@ -181,6 +190,22 @@ router.post("/users/me/claim-payment", requireAuth, claimPaymentRateLimiter, asy
   }
 
   req.log.info({ uid, orderId: trimmedId, creditsGranted }, "Manual payment claim succeeded");
+
+  // Non-blocking push notification to the claimant's device
+  const pushToken = req.dbUser!.expoPushToken;
+  if (pushToken) {
+    fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip, deflate" },
+      body: JSON.stringify({
+        to: pushToken,
+        title: "Klaim kredit berhasil! 🎉",
+        body: `${creditsGranted} kredit Exum telah ditambahkan ke akun Anda.`,
+        channelId: "payments",
+      }),
+    }).catch((err) => req.log.warn({ err, orderId: trimmedId }, "Failed to send claim push notification"));
+  }
+
   res.json({ ok: true, creditsGranted });
 });
 
@@ -218,7 +243,7 @@ router.get("/users", requireAuth, requireRole("admin"), async (_req, res) => {
 router.patch("/users/:id/role", requireAuth, requireRole("admin"), async (req, res) => {
   const id = Number(req.params.id);
   const { role } = req.body as { role: string };
-  const allowed = ["user", "instruktur", "lembaga_diklat", "admin"];
+  const allowed = ["user", "instruktur", "lembaga_diklat", "askom", "admin"];
   if (!allowed.includes(role)) {
     res.status(400).json({ error: "Invalid role" });
     return;

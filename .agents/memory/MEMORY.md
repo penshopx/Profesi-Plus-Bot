@@ -9,3 +9,4 @@
 - [Rate limiter IPv6 validation](rate-limiter-ipv6.md) — express-rate-limit v8 throws ERR_ERL_KEY_GEN_IPV6 if keyGenerator uses req.ip directly; must use ipKeyGenerator(req) from the package for IP fallback.
 - [Expo push notifications](expo-push-notifications.md) — use Expo Push API (exp.host) from the server; store token in users.expoPushToken; SDK version: expo-notifications@~0.32.17 + expo-device@~8.0.10 for SDK 54.
 - [Voice notes transcription](voice-notes-transcription.md) — multer memory storage → OpenAI toFile() → whisper-1 with language:"id"; mobile uses standard fetch (not expo/fetch) for multipart; expo-av@~15.0.0 for recording in SDK 54.
+- [ASKOM PKB verification](askom-verification.md) — role "askom" added to ROLES; pkbActivities has askomNote/askomVerifiedAt/askomVerifiedBy; status adds "ditolak"; GET/POST /askom/submissions/* endpoints; web panel at /dashboard/askom; rejected activities can be re-submitted (resets askomNote).

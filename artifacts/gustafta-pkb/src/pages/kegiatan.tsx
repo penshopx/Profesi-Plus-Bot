@@ -21,7 +21,7 @@ import {
   ChevronLeft, Plus, FileText, Calendar, MapPin, BookOpen, Link2,
   Upload, Trash2, CheckCircle2, Clock, AlertCircle, ChevronRight,
   X, Tag, Camera, Users, ClipboardList, Pencil, ExternalLink,
-  Award, Building2, Eye, Send, Loader2,
+  Award, Building2, Eye, Send, Loader2, XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,7 @@ interface Activity {
   tempatKegiatan?: string; modePelaksanaan?: string; namaMateri?: string;
   penyelenggara?: string; namaInstruktur?: string; uraianSingkat?: string;
   linkRekaman?: string; status: string; jenisPkb?: string; jpPkb?: number;
-  marketplaceId?: string; createdAt: string; updatedAt: string;
+  marketplaceId?: string; askomNote?: string | null; createdAt: string; updatedAt: string;
   skk: SkkUnit[]; docCount?: number; latestJourney?: JourneyEntry | null;
   docs?: ActivityDoc[]; journey?: JourneyEntry[];
 }
@@ -78,10 +78,11 @@ async function uploadFile(file: File): Promise<string> {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const STATUS_META: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
-  draft:       { label: "Draft",        color: "bg-gray-100 text-gray-600 border-gray-200",       icon: Clock },
-  lengkap:     { label: "Lengkap",      color: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: CheckCircle2 },
-  diajukan:    { label: "Diajukan",     color: "bg-blue-50 text-blue-700 border-blue-200",         icon: Send },
-  diverifikasi:{ label: "Terverifikasi",color: "bg-violet-50 text-violet-700 border-violet-200",   icon: Award },
+  draft:       { label: "Draft",        color: "bg-gray-100 text-gray-600 border-gray-200",           icon: Clock },
+  lengkap:     { label: "Lengkap",      color: "bg-emerald-50 text-emerald-700 border-emerald-200",   icon: CheckCircle2 },
+  diajukan:    { label: "Diajukan",     color: "bg-blue-50 text-blue-700 border-blue-200",             icon: Send },
+  diverifikasi:{ label: "Terverifikasi",color: "bg-violet-50 text-violet-700 border-violet-200",       icon: Award },
+  ditolak:     { label: "Ditolak ASKOM",color: "bg-rose-50 text-rose-700 border-rose-200",             icon: XCircle },
 };
 
 const JENIS_PKB = ["Seminar","Webinar","Diklatkerja","Workshop","Kursus Online","Pelatihan Mandiri","Lainnya"];
@@ -263,13 +264,14 @@ function JourneyTimeline({ entries }: { entries: JourneyEntry[] }) {
     surat_undangan_diunggah: FileText, daftar_hadir_diunggah: Users,
     foto_diunggah: Camera, link_rekaman_ditambahkan: Link2,
     dokumen_diunggah: Upload, siap_diajukan: CheckCircle2,
-    diajukan: Send, diverifikasi: Award,
+    diajukan: Send, diverifikasi: Award, ditolak: XCircle,
   };
   const eventColor: Record<string, string> = {
     kegiatan_dibuat: "bg-blue-100 text-blue-600",
     skk_dipetakan:   "bg-violet-100 text-violet-600",
     diajukan:        "bg-amber-100 text-amber-600",
     diverifikasi:    "bg-emerald-100 text-emerald-600",
+    ditolak:         "bg-rose-100 text-rose-600",
   };
 
   return (
@@ -592,6 +594,26 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           {tab === "info" && (
             <>
+              {/* ASKOM rejection notice */}
+              {full.status === "ditolak" && full.askomNote && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 space-y-1">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-rose-700 uppercase tracking-wide">
+                    <XCircle className="w-3.5 h-3.5" /> Catatan ASKOM
+                  </div>
+                  <p className="text-sm text-rose-800 leading-relaxed">{full.askomNote}</p>
+                  <p className="text-xs text-rose-600 mt-1">Perbaiki dokumentasi sesuai catatan di atas, lalu ajukan ulang.</p>
+                </div>
+              )}
+              {/* ASKOM verified notice */}
+              {full.status === "diverifikasi" && full.askomNote && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-1">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                    <Award className="w-3.5 h-3.5" /> Catatan ASKOM
+                  </div>
+                  <p className="text-sm text-emerald-800 leading-relaxed">{full.askomNote}</p>
+                </div>
+              )}
+
               {full.namaMateri && (
                 <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
                   <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -669,10 +691,11 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
             <Trash2 className="w-3.5 h-3.5" /> Hapus
           </button>
           <div className="flex gap-2">
-            {full.status === "lengkap" && (
-              <Button size="sm" onClick={submit} disabled={submitting} className="bg-emerald-600 hover:bg-emerald-700">
+            {(full.status === "lengkap" || full.status === "ditolak") && (
+              <Button size="sm" onClick={submit} disabled={submitting}
+                className={full.status === "ditolak" ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"}>
                 {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
-                Ajukan ke ASKOM
+                {full.status === "ditolak" ? "Ajukan Ulang" : "Ajukan ke ASKOM"}
               </Button>
             )}
           </div>

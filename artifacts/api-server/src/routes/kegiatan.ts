@@ -278,9 +278,20 @@ router.post("/kegiatan/:id/ajukan", requireAuth, async (req, res) => {
     .where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
   if (!act) return res.status(404).json({ error: "not found" });
   if (act.status === "draft") return res.status(400).json({ error: "Lengkapi semua field wajib sebelum mengajukan" });
+  if (act.status === "diajukan") return res.status(400).json({ error: "Dokumentasi sudah dalam antrian verifikasi ASKOM" });
+  if (act.status === "diverifikasi") return res.status(400).json({ error: "Dokumentasi sudah diverifikasi oleh ASKOM" });
 
-  await db.update(pkbActivities).set({ status: "diajukan", updatedAt: new Date() }).where(eq(pkbActivities.id, id));
-  await addJourney(id, "diajukan", "Dokumentasi diajukan ke asesor / ASKOM");
+  // Allow re-submission after ASKOM rejection ("ditolak") by resetting the note
+  await db.update(pkbActivities).set({
+    status: "diajukan",
+    askomNote: null,
+    askomVerifiedAt: null,
+    askomVerifiedBy: null,
+    updatedAt: new Date(),
+  }).where(eq(pkbActivities.id, id));
+  await addJourney(id, "diajukan", act.status === "ditolak"
+    ? "Dokumentasi diajukan ulang setelah koreksi"
+    : "Dokumentasi diajukan ke asesor / ASKOM");
   res.json({ success: true });
 });
 

@@ -8,8 +8,10 @@
 import { Readable } from "stream";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
+import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { ObjectNotFoundError, ObjectStorageService } from "../lib/objectStorage";
+import { db, pkbActivityDocs, pkbActivities } from "@workspace/db";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -70,6 +72,25 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
+
+    // Ownership check for PKB documents: if this objectPath belongs to a
+    // pkbActivityDoc, only the activity owner may download it. Other private
+    // objects (e.g. voice note transcripts) are not in this table and pass
+    // through to the normal auth-only gate below.
+    const [docRow] = await db
+      .select({ ownerId: pkbActivities.userId })
+      .from(pkbActivityDocs)
+      .innerJoin(pkbActivities, eq(pkbActivityDocs.activityId, pkbActivities.id))
+      .where(eq(pkbActivityDocs.objectPath, objectPath))
+      .limit(1);
+
+    const userRole = req.dbUser!.role;
+    const canBypassOwnership = userRole === "askom" || userRole === "admin";
+    if (docRow && docRow.ownerId !== req.dbUser!.id && !canBypassOwnership) {
+      res.status(403).json({ error: "Akses ditolak — dokumen ini bukan milik Anda." });
+      return;
+    }
+
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
 
     const response = await objectStorageService.downloadObject(objectFile);

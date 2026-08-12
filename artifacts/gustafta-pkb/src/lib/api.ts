@@ -520,10 +520,34 @@ export interface CompetencyAnalysisFull extends CompetencyAnalysisSummary {
   result: CompetencyResult;
 }
 
+// ─── Offline cache helpers ────────────────────────────────────────────────────
+// Analyses are cached in localStorage so the Studio page remains readable when
+// the user is offline. The cache is keyed per data type; individual full
+// analyses are cached by their numeric ID.
+
+const STUDIO_LIST_KEY = "GUSTAFTA_STUDIO_ANALYSES_v1";
+const STUDIO_FULL_PREFIX = "GUSTAFTA_STUDIO_FULL_";
+
+function readCache<T>(key: string): T | null {
+  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) as T : null; }
+  catch { return null; }
+}
+function writeCache(key: string, data: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
+}
+
 export async function listCompetencyAnalyses(): Promise<CompetencyAnalysisSummary[]> {
-  const res = await fetch(`${BASE}/competency-studio`, { credentials: "include" });
-  if (!res.ok) throw new Error("Failed to fetch analyses");
-  return res.json();
+  try {
+    const res = await fetch(`${BASE}/competency-studio`, { credentials: "include" });
+    if (!res.ok) throw new Error("Failed to fetch analyses");
+    const data: CompetencyAnalysisSummary[] = await res.json();
+    writeCache(STUDIO_LIST_KEY, data);
+    return data;
+  } catch (err) {
+    const cached = readCache<CompetencyAnalysisSummary[]>(STUDIO_LIST_KEY);
+    if (cached) return cached;
+    throw err;
+  }
 }
 
 /**
@@ -542,9 +566,17 @@ export async function checkCompetencyAnalysisForJabker(jabker: string): Promise<
 }
 
 export async function getCompetencyAnalysis(id: number): Promise<CompetencyAnalysisFull> {
-  const res = await fetch(`${BASE}/competency-studio/${id}`, { credentials: "include" });
-  if (!res.ok) throw new Error("Failed to fetch analysis");
-  return res.json();
+  try {
+    const res = await fetch(`${BASE}/competency-studio/${id}`, { credentials: "include" });
+    if (!res.ok) throw new Error("Failed to fetch analysis");
+    const data: CompetencyAnalysisFull = await res.json();
+    writeCache(`${STUDIO_FULL_PREFIX}${id}`, data);
+    return data;
+  } catch (err) {
+    const cached = readCache<CompetencyAnalysisFull>(`${STUDIO_FULL_PREFIX}${id}`);
+    if (cached) return cached;
+    throw err;
+  }
 }
 
 export async function analyzeCompetency(jabker: string, model?: string): Promise<CompetencyAnalysisFull> {

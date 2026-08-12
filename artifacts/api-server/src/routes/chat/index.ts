@@ -243,15 +243,32 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     .orderBy(asc(evidenceItems.createdAt));
 
   const lastUserMsg = [...existingMsgs].reverse().find((m: { role: string; content: string }) => m.role === "user")?.content ?? null;
+  // safeCtx wraps each context builder so a single DB/network failure cannot
+  // kill the entire chat request. Failures are logged as warnings so we can
+  // detect context degradation in the server logs without surfacing an error
+  // to the user.
+  const safeCtx = async (name: string, fn: () => Promise<string>): Promise<string> => {
+    try { return await fn(); }
+    catch (err) { req.log.warn({ err, contextBlock: name }, "Context builder failed — falling back to empty string"); return ""; }
+  };
+
   const [knowledgeContext, projectBrainContext, historicalPKBContext, competencyContext, quizContext, profileContext, kegiatanContext] = await Promise.all([
-    buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: lastUserMsg }),
-    buildProjectBrainContext(req.dbUser!.id),
-    buildHistoricalPKBContext(req.dbUser!.id, convId),
-    buildCompetencyAnalysisContext(req.dbUser!.id),
-    buildQuizContext(req.dbUser!.id),
-    buildProfileContext(req.dbUser!.id),
-    buildKegiatanContext(req.dbUser!.id),
+    safeCtx("knowledge",    () => buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: lastUserMsg })),
+    safeCtx("projectBrain", () => buildProjectBrainContext(req.dbUser!.id)),
+    safeCtx("historical",   () => buildHistoricalPKBContext(req.dbUser!.id, convId)),
+    safeCtx("competency",   () => buildCompetencyAnalysisContext(req.dbUser!.id)),
+    safeCtx("quiz",         () => buildQuizContext(req.dbUser!.id)),
+    safeCtx("profile",      () => buildProfileContext(req.dbUser!.id)),
+    safeCtx("kegiatan",     () => buildKegiatanContext(req.dbUser!.id)),
   ]);
+
+  // Detect silent context degradation: warn in logs if no personalisation data
+  // reached the prompt. The AI would otherwise give generic advice without the
+  // user knowing anything went wrong.
+  const hasPersonalisation = profileContext || projectBrainContext || competencyContext || kegiatanContext;
+  if (!hasPersonalisation) {
+    req.log.warn({ userId: req.dbUser!.id, convId }, "All personalisation context blocks are empty — AI will give generic advice");
+  }
   // Enforce a shared character budget across all context blocks.
   // Priority (higher = preserved first when budget is tight):
   //   7 profile, 6 competency, 5 quiz, 4 kegiatan, 3 knowledge, 2 projectBrain, 1 historical
@@ -437,17 +454,23 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       .map((m) => `${m.role === "user" ? "TKK" : "Pak Budi"}: ${m.content}`)
       .join("\n\n");
 
+    const safeExumCtx = async (name: string, fn: () => Promise<string>): Promise<string> => {
+      try { return await fn(); }
+      catch (err) { req.log.warn({ err, contextBlock: name }, "Exum context builder failed — falling back to empty string"); return ""; }
+    };
+
     const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency, exumQuiz, exumProfile, exumKegiatan, approvedOutlineRow] = await Promise.all([
-      buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: conv.jabker }),
-      buildProjectBrainContext(req.dbUser!.id),
-      buildHistoricalPKBContext(req.dbUser!.id, conversationId),
-      buildCompetencyAnalysisContext(req.dbUser!.id),
-      buildQuizContext(req.dbUser!.id),
-      buildProfileContext(req.dbUser!.id),
-      buildKegiatanContext(req.dbUser!.id),
+      safeExumCtx("exum:knowledge",    () => buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: conv.jabker })),
+      safeExumCtx("exum:projectBrain", () => buildProjectBrainContext(req.dbUser!.id)),
+      safeExumCtx("exum:historical",   () => buildHistoricalPKBContext(req.dbUser!.id, conversationId)),
+      safeExumCtx("exum:competency",   () => buildCompetencyAnalysisContext(req.dbUser!.id)),
+      safeExumCtx("exum:quiz",         () => buildQuizContext(req.dbUser!.id)),
+      safeExumCtx("exum:profile",      () => buildProfileContext(req.dbUser!.id)),
+      safeExumCtx("exum:kegiatan",     () => buildKegiatanContext(req.dbUser!.id)),
       db.select().from(exumOutlines)
         .where(and(eq(exumOutlines.conversationId, convId), eq(exumOutlines.isApproved, true)))
-        .then((rows) => rows[0] ?? null),
+        .then((rows) => rows[0] ?? null)
+        .catch((err) => { req.log.warn({ err }, "Failed to load approved outline — proceeding without it"); return null; }),
     ]);
 
     // Build outline context — inject user-approved structure when present

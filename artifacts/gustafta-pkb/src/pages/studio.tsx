@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useUser } from "@clerk/react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -39,11 +39,23 @@ export default function StudioPage() {
   const [model, setModel] = useState("");
   const [active, setActive] = useState<CompetencyAnalysisFull | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+
+  useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
 
   const { data: jabkers = [] } = useQuery({ queryKey: ["jabkers"], queryFn: fetchJabkerList });
   const { data: modelData } = useQuery({ queryKey: ["models"], queryFn: listModels });
   const { data: brain = [] } = useQuery({ queryKey: ["project-brain"], queryFn: listProjectBrain });
-  const { data: history = [] } = useQuery({ queryKey: ["competency-analyses"], queryFn: listCompetencyAnalyses });
+  const { data: history = [], fetchStatus } = useQuery({ queryKey: ["competency-analyses"], queryFn: listCompetencyAnalyses });
+
+  // True when the list is showing stale/cached data because the network is unavailable
+  const showingCached = !isOnline && history.length > 0;
 
   const models = modelData?.models.filter((m) => m.available) ?? [];
 
@@ -108,6 +120,14 @@ export default function StudioPage() {
           <p className="text-sm font-medium text-foreground">{user?.fullName ?? user?.firstName}</p>
         </div>
       </header>
+
+      {/* Offline cached-data banner */}
+      {showingCached && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center gap-2 text-amber-800 text-sm">
+          <span className="shrink-0">📶</span>
+          <span>Anda sedang offline — menampilkan analisis tersimpan. Data akan diperbarui saat koneksi pulih.</span>
+        </div>
+      )}
 
       <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-8 space-y-6">
         {/* Intro */}

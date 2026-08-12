@@ -155,33 +155,81 @@ export default function ProfileScreen() {
         PKB
       </Text>
       <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <InfoRow
-          icon="book-open"
-          label="Project Brain"
-          value={
-            pbLoading
-              ? '…'
-              : projectBrains.length === 0
-                ? 'Belum ada'
-                : `${projectBrains.length} entri`
-          }
-          colors={colors}
-        />
-        {planLoading ? (
-          <ActivityIndicator color={colors.primary} style={{ paddingVertical: 12 }} />
-        ) : (
+        <Pressable onPress={() => router.push('/(home)/project-brain')} style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}>
           <InfoRow
-            icon="zap"
-            label="Paket"
+            icon="book-open"
+            label="Project Brain"
             value={
-              planData?.plan
-                ? planData.plan.charAt(0).toUpperCase() + planData.plan.slice(1)
-                : 'Gratis'
+              pbLoading
+                ? '…'
+                : projectBrains.length === 0
+                  ? 'Tambah entri →'
+                  : `${projectBrains.length} entri →`
             }
             colors={colors}
           />
+        </Pressable>
+        {planLoading ? (
+          <ActivityIndicator color={colors.primary} style={{ paddingVertical: 12 }} />
+        ) : (
+          <>
+            <InfoRow
+              icon="zap"
+              label="Paket"
+              value={
+                planData?.plan
+                  ? planData.plan.charAt(0).toUpperCase() + planData.plan.slice(1)
+                  : 'Gratis'
+              }
+              colors={colors}
+            />
+            <InfoRow
+              icon="award"
+              label="Kredit Exum"
+              value={
+                planData?.exumCredits !== undefined
+                  ? planData.exumCredits === 0 && planData.canGenerate
+                    ? 'Sisa uji coba gratis'
+                    : `${planData.exumCredits} kredit`
+                  : '—'
+              }
+              colors={colors}
+            />
+          </>
         )}
       </View>
+
+      {/* Kegiatan PKB shortcut */}
+      <Pressable
+        onPress={() => router.push('/(home)/kegiatan')}
+        style={({ pressed }) => [
+          styles.infoCard,
+          { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+        ]}
+      >
+        <InfoRow
+          icon="file-text"
+          label="Dokumentasi Kegiatan PKB"
+          value="Buka →"
+          colors={colors}
+        />
+      </Pressable>
+
+      {/* Kredit shortcut */}
+      <Pressable
+        onPress={() => router.push('/(home)/kredits')}
+        style={({ pressed }) => [
+          styles.infoCard,
+          { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+        ]}
+      >
+        <InfoRow
+          icon="award"
+          label="Kredit & Riwayat Pembelian"
+          value="Lihat →"
+          colors={colors}
+        />
+      </Pressable>
 
       {/* Info */}
       <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>

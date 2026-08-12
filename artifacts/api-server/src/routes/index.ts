@@ -16,6 +16,7 @@ import quizzesRouter from "./quizzes";
 import outlinesRouter from "./outlines";
 import kegiatanRouter from "./kegiatan";
 import storageRouter from "./storage";
+import askomRouter from "./askom";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(quizzesRouter);
 router.use(outlinesRouter);
 router.use(kegiatanRouter);
 router.use(storageRouter);
+router.use(askomRouter);
 
 export default router;

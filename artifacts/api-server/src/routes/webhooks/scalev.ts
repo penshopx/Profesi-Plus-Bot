@@ -108,6 +108,7 @@ router.post("/webhooks/scalev", async (req, res): Promise<void> => {
   // Resolve the buyer by email. Order deterministically so that, in the unlikely
   // event of duplicate emails, the same account is always chosen.
   let userId: number | null = null;
+  let userPushToken: string | null = null;
   if (email) {
     const [matched] = await db
       .select()
@@ -117,6 +118,7 @@ router.post("/webhooks/scalev", async (req, res): Promise<void> => {
       .limit(1);
     if (matched) {
       userId = matched.id;
+      userPushToken = matched.expoPushToken ?? null;
     } else {
       req.log.warn({ email }, "Scalev paid order has no matching user by email");
     }
@@ -178,6 +180,21 @@ router.post("/webhooks/scalev", async (req, res): Promise<void> => {
 
   if (!credited) {
     req.log.warn({ orderId, email }, "Scalev paid order has no matching user by email — payment stored for manual claim");
+  }
+
+  // Non-blocking push notification — fire after the response is committed so a
+  // slow Expo API never delays Scalev's webhook acknowledgement.
+  if (credited && userPushToken) {
+    fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip, deflate" },
+      body: JSON.stringify({
+        to: userPushToken,
+        title: "Kredit Exum masuk! 🎉",
+        body: `${quantity} kredit Exum telah ditambahkan ke akun Anda. Siap membuat Exum berikutnya?`,
+        channelId: "payments",
+      }),
+    }).catch((err) => req.log.warn({ err, orderId }, "Failed to send credit push notification"));
   }
 
   res.status(200).json({ received: true, credited, quantity });

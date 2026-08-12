@@ -337,6 +337,7 @@ export async function buildHistoricalPKBContext(
 export async function buildKegiatanContext(userId: number): Promise<string> {
   const MAX_KEGIATAN = 8;
   const MAX_URAIAN_CHARS = 200;
+  const MAX_BLOCK_CHARS = 2400; // hard cap — keeps kegiatan from crowding higher-priority blocks
 
   const activities = await db
     .select()
@@ -382,5 +383,8 @@ export async function buildKegiatanContext(userId: number): Promise<string> {
     );
   }
 
-  return lines.join("\n");
+  const combined = lines.join("\n");
+  return combined.length > MAX_BLOCK_CHARS
+    ? combined.slice(0, MAX_BLOCK_CHARS) + "\n…[kegiatan dipotong]"
+    : combined;
 }
