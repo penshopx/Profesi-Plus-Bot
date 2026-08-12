@@ -1,4 +1,5 @@
-import { db, conversations, evidenceItems } from "@workspace/db";
+import { db, conversations, evidenceItems, competencyAnalysis } from "@workspace/db";
+import type { CompetencyAnalysisResult } from "@workspace/db";
 import { and, eq, isNotNull, ne, desc } from "drizzle-orm";
 
 // Token-budget constants — keep prompt injection bounded
@@ -7,6 +8,83 @@ const MAX_EXUM_TEASER_CHARS = 600;   // per past Exum document
 const MAX_PAST_EVIDENCE = 8;
 const MAX_PAST_EVIDENCE_DESC = 200;  // per evidence item
 const MAX_TOTAL_CHARS = 3200;
+
+// Competency snapshot budget
+const MAX_COMPETENCY_ANALYSES = 3;  // most recent analyses per user
+const MAX_GAPS = 5;                  // cap listed gaps per analysis
+const MAX_RECS = 3;                  // cap recommendations per analysis
+
+/**
+ * Builds a context block from the user's competency analysis snapshot:
+ * SKPK estimate, readiness level, covered/partial/gap unit breakdown, and
+ * concrete recommendations. This gives the AI an up-to-date picture of where
+ * the user stands on their target Jabker so it can give sharper, non-generic advice.
+ */
+export async function buildCompetencyAnalysisContext(userId: number): Promise<string> {
+  const analyses = await db
+    .select({
+      jabkerName: competencyAnalysis.jabkerName,
+      jenjang: competencyAnalysis.jenjang,
+      klasifikasi: competencyAnalysis.klasifikasi,
+      estimatedSkpk: competencyAnalysis.estimatedSkpk,
+      readiness: competencyAnalysis.readiness,
+      summary: competencyAnalysis.summary,
+      result: competencyAnalysis.result,
+      createdAt: competencyAnalysis.createdAt,
+    })
+    .from(competencyAnalysis)
+    .where(eq(competencyAnalysis.userId, userId))
+    .orderBy(desc(competencyAnalysis.createdAt))
+    .limit(MAX_COMPETENCY_ANALYSES);
+
+  if (!analyses.length) return "";
+
+  const lines: string[] = [
+    "\n\n=== ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI) ===",
+    "Hasil penilaian kesiapan kompetensi berdasarkan Otak Proyek TKK. GUNAKAN ini agar saran bersifat spesifik — bukan generik:",
+  ];
+
+  for (const row of analyses) {
+    const result = row.result as CompetencyAnalysisResult | null;
+    const jabkerLine = [row.jabkerName, row.jenjang, row.klasifikasi].filter(Boolean).join(" / ");
+    const readinessEmoji = row.readiness === "kuat" ? "🟢" : row.readiness === "cukup" ? "🟡" : "🔴";
+
+    lines.push(`\n📊 Jabker: ${jabkerLine}`);
+    lines.push(`   ${readinessEmoji} Kesiapan: ${row.readiness} | SKPK estimasi: ${row.estimatedSkpk}/25`);
+    if (row.summary) lines.push(`   Ringkasan: ${row.summary}`);
+
+    if (result) {
+      // Unit coverage counts
+      const covered = result.units?.filter((u) => u.status === "covered").length ?? 0;
+      const partial = result.units?.filter((u) => u.status === "partial").length ?? 0;
+      const gap = result.units?.filter((u) => u.status === "gap").length ?? 0;
+      if (result.units?.length) {
+        lines.push(`   Unit SKK: ✅ ${covered} covered · ⚠️ ${partial} partial · ❌ ${gap} gap`);
+      }
+
+      // Key gaps
+      const gaps = result.gaps?.slice(0, MAX_GAPS) ?? [];
+      if (gaps.length) {
+        lines.push(`   Gap utama: ${gaps.map((g) => `"${g}"`).join("; ")}`);
+      }
+
+      // Concrete recommendations
+      const recs = result.recommendations?.slice(0, MAX_RECS) ?? [];
+      if (recs.length) {
+        lines.push(`   Rekomendasi: ${recs.map((r, i) => `(${i + 1}) ${r}`).join(" | ")}`);
+      }
+    }
+  }
+
+  lines.push(
+    "\nGUNAKAN data di atas: sebut unit yang sudah covered/partial saat wawancara berlangsung, " +
+    "arahkan pertanyaan ke gap yang belum terisi, dan sesuaikan rekomendasi dengan status kesiapan TKK.",
+  );
+
+  const combined = lines.join("\n");
+  // Hard cap so this block doesn't crowd out evidence/messages
+  return combined.length > 2000 ? combined.slice(0, 2000) + "\n…[analisis dipotong]" : combined;
+}
 
 /**
  * Builds a context block from the user's full PKB history across ALL sessions

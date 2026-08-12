@@ -6,7 +6,7 @@ import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL } from "../.
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
 import { buildKnowledgeContext } from "../../lib/knowledge-base";
 import { buildProjectBrainContext } from "../../lib/project-brain";
-import { buildHistoricalPKBContext } from "../../lib/historical-pkb";
+import { buildHistoricalPKBContext, buildCompetencyAnalysisContext } from "../../lib/historical-pkb";
 import { recommendPersona, isKnownPersona, isConfidentJabkerMatch, DEFAULT_PERSONA_ID } from "../../lib/personas";
 import { findJabkerGroup } from "../../lib/skk-data";
 import { requireAuth } from "../../middlewares/auth";
@@ -250,14 +250,15 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     .orderBy(asc(evidenceItems.createdAt));
 
   const lastUserMsg = [...existingMsgs].reverse().find((m: { role: string; content: string }) => m.role === "user")?.content ?? null;
-  const [knowledgeContext, projectBrainContext, historicalPKBContext] = await Promise.all([
+  const [knowledgeContext, projectBrainContext, historicalPKBContext, competencyContext] = await Promise.all([
     buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: lastUserMsg }),
     buildProjectBrainContext(req.dbUser!.id),
     buildHistoricalPKBContext(req.dbUser!.id, convId),
+    buildCompetencyAnalysisContext(req.dbUser!.id),
   ]);
   const systemPrompt = buildSystemPrompt(
     conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence,
-    knowledgeContext + projectBrainContext + historicalPKBContext,
+    knowledgeContext + projectBrainContext + historicalPKBContext + competencyContext,
     conv.personaId,
     req.dbUser!.name,
   );
@@ -407,14 +408,15 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       .map((m) => `${m.role === "user" ? "TKK" : "Pak Budi"}: ${m.content}`)
       .join("\n\n");
 
-    const [exumKnowledge, exumProjectBrain, exumHistorical] = await Promise.all([
+    const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency] = await Promise.all([
       buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: conv.jabker }),
       buildProjectBrainContext(req.dbUser!.id),
       buildHistoricalPKBContext(req.dbUser!.id, conversationId),
+      buildCompetencyAnalysisContext(req.dbUser!.id),
     ]);
     const exumPrompt = buildExumPrompt(
       conv.mode, conv.jabker, conv.jenjang, transcript, evidence,
-      exumKnowledge + exumProjectBrain + exumHistorical,
+      exumKnowledge + exumProjectBrain + exumHistorical + exumCompetency,
       req.dbUser!.name,
     );
 
