@@ -8,6 +8,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import ProfilPage from "@/pages/profil";
+import QuizPage from "@/pages/quiz";
 import Landing from "@/pages/landing";
 import Home from "@/pages/home";
 import ChatPage from "@/pages/chat";
@@ -158,6 +160,8 @@ function Router() {
       <Route path="/dashboard/instruktur" component={DashboardInstruktur} />
       <Route path="/dashboard/lembaga" component={DashboardLembaga} />
       <Route path="/dashboard/admin" component={DashboardAdmin} />
+      <Route path="/profil" component={ProfilPage} />
+      <Route path="/quiz" component={QuizPage} />
       <Route component={NotFound} />
     </Switch>
   );

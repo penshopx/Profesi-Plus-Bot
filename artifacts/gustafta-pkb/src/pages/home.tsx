@@ -178,7 +178,7 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="p-4">
+        <div className="p-4 space-y-2">
           <button
             data-testid="button-new-session"
             onClick={() => setShowNew(true)}
@@ -187,6 +187,16 @@ export default function Home() {
             <Plus className="w-4 h-4" />
             Sesi Baru
           </button>
+          <div className="flex gap-2">
+            <a href="/profil"
+              className="flex-1 flex items-center justify-center gap-1.5 bg-sidebar-accent/60 hover:bg-sidebar-accent text-sidebar-foreground rounded-xl px-3 py-2 text-xs font-medium transition-colors border border-sidebar-border/50">
+              <Users className="w-3.5 h-3.5" /> Profil
+            </a>
+            <a href="/quiz"
+              className="flex-1 flex items-center justify-center gap-1.5 bg-sidebar-accent/60 hover:bg-sidebar-accent text-sidebar-foreground rounded-xl px-3 py-2 text-xs font-medium transition-colors border border-sidebar-border/50">
+              <Award className="w-3.5 h-3.5" /> Quiz
+            </a>
+          </div>
         </div>
 
         {/* Search + filter */}

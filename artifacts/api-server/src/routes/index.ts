@@ -11,6 +11,9 @@ import competencyStudioRouter from "./competency-studio";
 import personasRouter from "./personas";
 import scalevWebhookRouter from "./webhooks/scalev";
 import transcribeRouter from "./transcribe";
+import profilesRouter from "./profiles";
+import quizzesRouter from "./quizzes";
+import outlinesRouter from "./outlines";
 
 const router: IRouter = Router();
 
@@ -26,5 +29,8 @@ router.use(competencyStudioRouter);
 router.use(personasRouter);
 router.use(scalevWebhookRouter);
 router.use(transcribeRouter);
+router.use(profilesRouter);
+router.use(quizzesRouter);
+router.use(outlinesRouter);
 
 export default router;

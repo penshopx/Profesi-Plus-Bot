@@ -14,6 +14,7 @@ import {
   fetchSkkUnits, updateConversation, listPersonas, PlanLimitError, SCALEV_CHECKOUT_URL,
   type Message, type EvidenceItem, type SkkUnit, type SocratiDialog,
 } from "@/lib/api";
+import { ExumOutlineEditor } from "@/components/ExumOutlineEditor";
 
 // ─── Markdown → HTML helpers (module-level, used by print & HTML export) ──────
 function mdEsc(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -1741,6 +1742,18 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </div>
       </div>
+
+      {/* Exum Outline Editor — shown at synthesis phase before Exum is generated */}
+      {currentPhase === "synthesis" && !exum && id > 0 && (
+        <div className="border-t border-border bg-card/50 px-4 py-4 shrink-0">
+          <div className="max-w-3xl mx-auto">
+            <ExumOutlineEditor
+              conversationId={id}
+              onApproved={handleGenerateExum}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Input */}
       <div className="border-t border-border bg-card px-4 pt-2.5 pb-3 shrink-0">

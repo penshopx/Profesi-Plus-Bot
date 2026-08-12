@@ -102,7 +102,9 @@ export interface SkkUnitsResponse {
 
 export async function listConversations(): Promise<Conversation[]> {
   const r = await fetch(`${BASE}/chat/conversations`, { credentials: "include" });
-  return r.json();
+  if (!r.ok) return [];
+  const data = await r.json();
+  return Array.isArray(data) ? data : [];
 }
 
 export async function createConversation(data: {

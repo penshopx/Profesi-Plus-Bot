@@ -7,3 +7,5 @@ export * from "./videos";
 export * from "./knowledge-base";
 export * from "./project-brain";
 export * from "./competency-analysis";
+export * from "./profiles";
+export * from "./quizzes";
