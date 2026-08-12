@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Package, Search, X, Cpu, Sparkles, HardHat, DraftingCompass, Building2, ShieldCheck, Cog, Droplets, ClipboardList, Users, type LucideIcon } from "lucide-react";
+import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Package, Search, X, Cpu, Sparkles, HardHat, DraftingCompass, Building2, ShieldCheck, Cog, Droplets, ClipboardList, Users, TrendingUp, type LucideIcon } from "lucide-react";
 import { listConversations, createConversation, deleteConversation, fetchJabkerList, listModels, listPersonas, recommendPersona, type Conversation } from "@/lib/api";
 import { getMyProfile, getMyPlan } from "@/lib/api-profile";
 
@@ -211,6 +211,10 @@ export default function Home() {
               <Award className="w-3.5 h-3.5" /> Quiz
             </a>
           </div>
+          <a href="/marketplace"
+            className="w-full flex items-center justify-center gap-1.5 bg-sidebar-accent/60 hover:bg-sidebar-accent text-sidebar-foreground rounded-xl px-3 py-2 text-xs font-medium transition-colors border border-sidebar-border/50">
+            <TrendingUp className="w-3.5 h-3.5 text-amber-500" /> Marketplace PKB
+          </a>
         </div>
 
         {/* Credit balance */}

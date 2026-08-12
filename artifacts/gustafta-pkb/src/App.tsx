@@ -10,6 +10,7 @@ import NotFound from "@/pages/not-found";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import ProfilPage from "@/pages/profil";
 import QuizPage from "@/pages/quiz";
+import MarketplacePage from "@/pages/marketplace";
 import Landing from "@/pages/landing";
 import Home from "@/pages/home";
 import ChatPage from "@/pages/chat";
@@ -162,6 +163,7 @@ function Router() {
       <Route path="/dashboard/admin" component={DashboardAdmin} />
       <Route path="/profil" component={ProfilPage} />
       <Route path="/quiz" component={QuizPage} />
+      <Route path="/marketplace" component={MarketplacePage} />
       <Route component={NotFound} />
     </Switch>
   );
