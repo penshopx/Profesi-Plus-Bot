@@ -22,6 +22,7 @@ import { describe, it, expect } from "vitest";
 import {
   createChatMessageRateLimiter,
   createCompetencyRateLimiter,
+  createClaimPaymentRateLimiter,
 } from "../middlewares/rateLimiter.js";
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
@@ -235,5 +236,80 @@ describe("competencyRateLimiter", () => {
     const res = await request(app).get("/test");
     expect(res.status).toBe(429);
     expect(res.body).toMatchObject({ code: "rate_limit_competency" });
+  });
+});
+
+// ── claimPaymentRateLimiter ───────────────────────────────────────────────────
+// Task #87: confirm the limiter actually blocks brute-force order ID guessing.
+//
+// The limiter is account-keyed (userKey), not IP-keyed, so different user IDs
+// must have independent buckets even when sharing a MemoryStore.
+
+describe("claimPaymentRateLimiter (#87 — blocks brute-force order ID guessing)", () => {
+  const CLAIM_LIMIT = 10;
+
+  function makeApp(user: DbUser, store = new MemoryStore()) {
+    const limiter = createClaimPaymentRateLimiter({ skip: () => false, store });
+    const app = express();
+    app.set("trust proxy", 1);
+    app.use(asUser(user));
+    app.use(limiter);
+    app.post("/test", (_req, res) => res.json({ ok: true }));
+    return app;
+  }
+
+  async function postN(app: express.Express, count: number): Promise<number[]> {
+    const statuses: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const res = await request(app).post("/test");
+      statuses.push(res.status);
+    }
+    return statuses;
+  }
+
+  it("allows exactly 10 claim attempts before blocking", async () => {
+    const app = makeApp({ id: 50 });
+    const statuses = await postN(app, CLAIM_LIMIT);
+    expect(statuses.every((s) => s === 200)).toBe(true);
+  });
+
+  it("blocks the 11th attempt with 429", async () => {
+    const app = makeApp({ id: 51 });
+    await postN(app, CLAIM_LIMIT);
+    const res = await request(app).post("/test");
+    expect(res.status).toBe(429);
+  });
+
+  it("returns code=rate_limit_claim (not 500) when blocked", async () => {
+    const app = makeApp({ id: 52 });
+    await postN(app, CLAIM_LIMIT);
+    const res = await request(app).post("/test");
+    expect(res.status).toBe(429);
+    expect(res.body).toMatchObject({ code: "rate_limit_claim" });
+    expect(res.status).not.toBe(500);
+  });
+
+  it("tracks limits per user independently — different users share no bucket", async () => {
+    // One shared store to confirm keying is per-user-id
+    const store = new MemoryStore();
+    const appA = makeApp({ id: 60 }, store);
+    const appB = makeApp({ id: 61 }, store);
+
+    // Exhaust user 60's quota entirely
+    await postN(appA, CLAIM_LIMIT);
+    const blockedA = await request(appA).post("/test");
+    expect(blockedA.status).toBe(429);
+
+    // User 61 must still be allowed — their bucket is independent
+    const allowedB = await request(appB).post("/test");
+    expect(allowedB.status).toBe(200);
+  });
+
+  it("reports RateLimit-Limit of 10 in the response headers", async () => {
+    const app = makeApp({ id: 62 });
+    const res = await request(app).post("/test");
+    expect(res.status).toBe(200);
+    // draft-7 combined header: "limit=10, remaining=9, reset=3600"
+    expect(parseDraft7Limit(res.headers as Record<string, string>)).toBe(CLAIM_LIMIT);
   });
 });
