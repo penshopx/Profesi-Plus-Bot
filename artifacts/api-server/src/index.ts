@@ -4,6 +4,24 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
 /**
+ * One-time migration: revoke legacy "askom" role from any users still carrying
+ * it in the database. The ASKOM role has been removed from the platform; those
+ * users are downgraded to "user". Runs on every startup but is a no-op once all
+ * rows are cleared.
+ */
+async function migrateAskomRoleToUser(): Promise<void> {
+  try {
+    const result = await db.execute(sql`UPDATE users SET role = 'user' WHERE role = 'askom'`);
+    const count = (result as unknown as { rowCount?: number }).rowCount ?? 0;
+    if (count > 0) {
+      logger.info({ count }, "Migrated legacy 'askom' role to 'user'");
+    }
+  } catch (err) {
+    logger.warn({ err }, "askom role migration failed (non-fatal)");
+  }
+}
+
+/**
  * One-time backfill: payment rows created before the credits_granted column was
  * added to the schema all have credits_granted = 0 (the column default). Every
  * Scalev order corresponds to exactly 1 Exum credit, so we can safely backfill
@@ -63,7 +81,7 @@ function validateEmailConfig(): void {
 
 validateEmailConfig();
 
-backfillCreditsGranted().then(() => {
+migrateAskomRoleToUser().then(() => backfillCreditsGranted()).then(() => {
   app.listen(port, (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");

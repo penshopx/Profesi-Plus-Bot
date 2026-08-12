@@ -255,7 +255,9 @@ router.get("/users", requireAuth, requireRole("admin"), async (_req, res) => {
 router.patch("/users/:id/role", requireAuth, requireRole("admin"), async (req, res) => {
   const id = Number(req.params.id);
   const { role } = req.body as { role: string };
-  const allowed = ["user", "instruktur", "lembaga_diklat", "askom", "admin"];
+  // "askom" role intentionally omitted — it was removed from the platform.
+  // Existing askom accounts are migrated to "user" at startup.
+  const allowed = ["user", "instruktur", "lembaga_diklat", "asosiasi", "admin"];
   if (!allowed.includes(role)) {
     res.status(400).json({ error: "Invalid role" });
     return;

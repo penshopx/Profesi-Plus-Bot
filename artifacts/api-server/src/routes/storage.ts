@@ -89,7 +89,7 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
       .limit(1);
 
     const userRole = req.dbUser!.role;
-    const canBypassOwnership = userRole === "askom" || userRole === "admin";
+    const canBypassOwnership = userRole === "admin";
     if (docRow && docRow.ownerId !== req.dbUser!.id && !canBypassOwnership) {
       res.status(403).json({ error: "Akses ditolak — dokumen ini bukan milik Anda." });
       return;

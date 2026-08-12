@@ -1,8 +1,9 @@
 /**
- * ASKOM verify/reject routes
+ * Internal verification routes (admin-only)
  *
  * Covers:
- * - Role guard: 403 for non-askom/non-admin roles
+ * - Role guard: 403 for non-admin roles (including the removed "askom" role)
+ * - Admin can verify and reject
  * - verify: sets status diverifikasi, inserts journey row, returns ok
  * - reject: requires non-empty note, sets status ditolak, inserts journey row
  * - verify/reject send push notification when owner has a token
@@ -128,8 +129,9 @@ function primeActivity(
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("ASKOM role guard", () => {
-  for (const role of ["user", "instruktur", "lembaga_diklat", "asosiasi"]) {
+describe("Role guard — only admin may access verification routes", () => {
+  // All non-admin roles including the removed "askom" role must receive 403
+  for (const role of ["user", "instruktur", "lembaga_diklat", "asosiasi", "askom"]) {
     it(`returns 403 for role=${role} on verify`, async () => {
       primeActivity("diajukan");
       const app = await buildApp(role);
@@ -153,7 +155,8 @@ describe("POST /api/askom/submissions/:id/verify", () => {
     vi.clearAllMocks();
     lastPushPayload = null;
     pushShouldThrow = false;
-    app = await buildApp("askom");
+    // Use admin role — the only authorized role after the ASKOM removal
+    app = await buildApp("admin");
   });
 
   it("sets status diverifikasi and inserts a journey row", async () => {
@@ -161,7 +164,7 @@ describe("POST /api/askom/submissions/:id/verify", () => {
 
     const res = await request(app)
       .post("/api/askom/submissions/10/verify")
-      .send({ note: "SKK sesuai" });
+      .send({ note: "Dokumen lengkap" });
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ ok: true, status: "diverifikasi" });
@@ -211,7 +214,7 @@ describe("POST /api/askom/submissions/:id/verify", () => {
     // Second select for the db.update in sendPushNotification will also be needed
     selectResponses.push([]); // update owner push token
 
-    const app2 = await buildApp("askom");
+    const app2 = await buildApp("admin");
     const res = await request(app2).post("/api/askom/submissions/10/verify").send({});
     expect(res.status).toBe(200);
     await new Promise((r) => setTimeout(r, 50));
@@ -234,7 +237,7 @@ describe("POST /api/askom/submissions/:id/verify", () => {
     expect(res.body.ok).toBe(true);
   });
 
-  it("admin role can also verify", async () => {
+  it("admin role can verify (only authorized role)", async () => {
     primeActivity("diajukan", null);
     const adminApp = await buildApp("admin");
 
@@ -253,7 +256,8 @@ describe("POST /api/askom/submissions/:id/reject", () => {
     vi.clearAllMocks();
     lastPushPayload = null;
     pushShouldThrow = false;
-    app = await buildApp("askom");
+    // Use admin role — the only authorized role after the ASKOM removal
+    app = await buildApp("admin");
   });
 
   it("returns 400 when note is missing", async () => {

@@ -1,13 +1,14 @@
 /**
- * Panel Tim Verifikasi Internal
+ * Panel Tim Verifikasi Internal (Admin Only)
  *
- * Digunakan oleh admin / tim internal Gustafta untuk meninjau kegiatan PKB
- * yang sudah lengkap sebelum dilanjutkan ke verifikasi Asosiasi.
+ * Digunakan oleh admin Gustafta untuk meninjau kegiatan PKB yang diajukan.
+ * SKK mapping dilakukan otomatis oleh platform AI — panel ini hanya untuk
+ * verifikasi kelengkapan dokumen formal.
  *
  * Catatan regulasi: ASKOM (Asesor BNSP) tidak boleh melakukan review PKB
- * di luar skema uji kompetensi formal. Panel ini bersifat internal Gustafta.
+ * di luar skema uji kompetensi formal. Panel ini khusus admin Gustafta.
  *
- * Role yang bisa akses: "askom" (internal reviewer) | "admin"
+ * Role yang bisa akses: "admin" saja.
  */
 
 import { useState } from "react";
@@ -349,7 +350,7 @@ export default function AskomDashboard() {
         </div>
         <div className="text-right hidden sm:block">
           <p className="text-sm font-medium text-foreground">{user?.fullName ?? user?.firstName}</p>
-          <p className="text-[11px] text-muted-foreground">Asesor Kompetensi</p>
+          <p className="text-[11px] text-muted-foreground">Admin Gustafta</p>
         </div>
       </header>
 

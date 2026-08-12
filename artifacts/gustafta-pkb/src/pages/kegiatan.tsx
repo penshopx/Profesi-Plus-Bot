@@ -536,8 +536,6 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [tab, setTab] = useState<"info"|"dokumen"|"journey">("info");
-  const [submitting, setSubmitting] = useState(false);
-
   const { data: full, refetch } = useQuery<Activity>({
     queryKey: ["kegiatan-detail", activity.id],
     queryFn: () => apiFetch(`/kegiatan/${activity.id}`),
@@ -548,11 +546,13 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
   const s = STATUS_META[full.status] ?? STATUS_META.draft;
   const SIcon = s.icon;
 
-  async function submit() {
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submitForReview() {
     setSubmitting(true);
     try {
       await apiFetch(`/kegiatan/${full.id}/ajukan`, { method: "POST" });
-      toast({ title: full.status === "ditolak" ? "Dokumentasi diajukan ulang ke Asosiasi" : "Dokumentasi berhasil diajukan ke Asosiasi" });
+      toast({ title: full.status === "ditolak" ? "Dokumentasi diajukan ulang untuk verifikasi" : "Dokumentasi berhasil diajukan untuk verifikasi" });
       queryClient.invalidateQueries({ queryKey: ["kegiatan"] });
       refetch();
     } catch (err: unknown) {
@@ -733,7 +733,7 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
                 )}
 
                 {(full.skk ?? []).length === 0 && skkSuggestions.length === 0 && (
-                  <p className="text-xs text-muted-foreground italic">Belum ada unit SKK. Klik "Saran dari AI" untuk pemetaan otomatis.</p>
+                  <p className="text-xs text-muted-foreground italic">Platform sedang memetakan SKK secara otomatis. Klik "Saran dari AI" untuk memicu ulang.</p>
                 )}
               </div>
 
@@ -788,10 +788,10 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
           </button>
           <div className="flex gap-2">
             {(full.status === "lengkap" || full.status === "ditolak") && (
-              <Button size="sm" onClick={submit} disabled={submitting}
+              <Button size="sm" onClick={submitForReview} disabled={submitting}
                 className={full.status === "ditolak" ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"}>
                 {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
-                {full.status === "ditolak" ? "Ajukan Ulang" : "Ajukan ke Asosiasi"}
+                {full.status === "ditolak" ? "Ajukan Ulang" : "Ajukan untuk Verifikasi"}
               </Button>
             )}
           </div>

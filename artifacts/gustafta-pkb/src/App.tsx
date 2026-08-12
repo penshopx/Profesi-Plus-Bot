@@ -22,7 +22,6 @@ import VideosPage from "@/pages/videos";
 import StudioPage from "@/pages/studio";
 import KreditsPage from "@/pages/kredits";
 import KegiatanPage from "@/pages/kegiatan";
-import AskomDashboard from "@/pages/dashboard/askom";
 import AsosiasiDashboard from "@/pages/dashboard/asosiasi";
 
 const queryClient = new QueryClient();
@@ -132,7 +131,6 @@ function DashboardRedirect() {
   if (role === "admin") return <Redirect to="/dashboard/admin" />;
   if (role === "instruktur") return <Redirect to="/dashboard/instruktur" />;
   if (role === "lembaga_diklat") return <Redirect to="/dashboard/lembaga" />;
-  if (role === "askom") return <Redirect to="/dashboard/askom" />;
   if (role === "asosiasi") return <Redirect to="/dashboard/asosiasi" />;
   return <Redirect to="/dashboard/user" />;
 }
@@ -172,7 +170,6 @@ function Router() {
       <Route path="/marketplace" component={MarketplacePage} />
       <Route path="/kredits" component={KreditsPage} />
       <Route path="/kegiatan" component={KegiatanPage} />
-      <Route path="/dashboard/askom" component={AskomDashboard} />
       <Route path="/dashboard/asosiasi" component={AsosiasiDashboard} />
       <Route component={NotFound} />
     </Switch>

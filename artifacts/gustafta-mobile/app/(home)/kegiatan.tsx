@@ -722,7 +722,6 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
   const [activeTab, setActiveTab] = useState<DetailTab>('info');
   const [skk, setSkk] = useState<PkbSkkUnit[]>(activity.skk ?? []);
   const [showEdit, setShowEdit] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const qc = useQueryClient();
 
   const { data: detail, isLoading: loadingDetail, refetch: refetchDetail } = useQuery({
@@ -739,6 +738,7 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['kegiatan'] }); onClose(); },
   });
 
+  const [submitting, setSubmitting] = useState(false);
   const canEdit = activity.status !== 'diverifikasi';
   const canSubmit = activity.status === 'lengkap' || activity.status === 'ditolak';
 
@@ -748,8 +748,8 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
       await ajukanKegiatanPkb(activity.id);
       qc.invalidateQueries({ queryKey: ['kegiatan'] });
       Alert.alert('Berhasil', activity.status === 'ditolak'
-        ? 'Dokumentasi diajukan ulang ke Asosiasi.'
-        : 'Dokumentasi berhasil diajukan ke Asosiasi.');
+        ? 'Dokumentasi diajukan ulang untuk verifikasi.'
+        : 'Dokumentasi berhasil diajukan untuk verifikasi.');
       onClose();
     } catch (err) {
       Alert.alert('Gagal', (err as Error).message);
@@ -861,7 +861,7 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
                     {submitting
                       ? <ActivityIndicator color="#fff" size="small" />
                       : <Text style={s.btnText}>
-                          {activity.status === 'ditolak' ? '🔄 Ajukan Ulang ke Asosiasi' : '✅ Ajukan ke Asosiasi'}
+                          {activity.status === 'ditolak' ? '🔄 Ajukan Ulang untuk Verifikasi' : '✅ Ajukan untuk Verifikasi'}
                         </Text>}
                   </Pressable>
                 )}

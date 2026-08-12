@@ -1,12 +1,16 @@
 /**
- * ASKOM (Asesor Kompetensi) verification routes
+ * Internal verification routes (admin-only)
  *
- * ASKOM reviews whether a kegiatan PKB's materi/modul aligns with the SKK
- * (jabatan kerja + jenjang) — NOT the content quality or user profile.
+ * Used by Gustafta admin to review kegiatan PKB that have been submitted.
+ * SKK mapping is now performed automatically by the platform AI, so these
+ * routes are for document completeness review only.
+ *
+ * Note: ASKOM (Asesor BNSP) should not review PKB documentation per
+ * regulation — this panel is restricted to admin role only.
  *
  * GET  /askom/submissions        — list all kegiatan with status "diajukan"
  * GET  /askom/submissions/:id    — full detail of one submission
- * POST /askom/submissions/:id/verify  — approve with SKK alignment note
+ * POST /askom/submissions/:id/verify  — approve with note
  * POST /askom/submissions/:id/reject  — reject with reason
  */
 
@@ -57,15 +61,15 @@ async function sendPushNotification(
 
 const router = Router();
 
-/** Middleware: only users with role "askom" or "admin" may call these routes. */
+/** Middleware: only users with role "admin" may call these routes. */
 async function requireAskom(
   req: import("express").Request,
   res: import("express").Response,
   next: import("express").NextFunction,
 ): Promise<void> {
   const role = req.dbUser?.role;
-  if (role !== "askom" && role !== "admin") {
-    res.status(403).json({ error: "Akses ditolak — hanya ASKOM atau admin." });
+  if (role !== "admin") {
+    res.status(403).json({ error: "Akses ditolak — hanya admin." });
     return;
   }
   next();

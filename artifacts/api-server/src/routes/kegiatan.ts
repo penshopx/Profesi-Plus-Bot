@@ -153,6 +153,10 @@ router.post("/kegiatan", requireAuth, async (req, res) => {
   if (linkRekaman) await addJourney(act.id, "link_rekaman_ditambahkan", "Link rekaman ditambahkan");
 
   const status = await recomputeStatus(act.id);
+
+  // Automatically map SKK in the background — does not block the response
+  void autoMapSkk(act.id, act, req.log);
+
   res.status(201).json({ ...act, status, skk: [], docs: [], journey: [] });
 });
 
@@ -313,11 +317,107 @@ router.delete("/kegiatan/:id/docs/:docId", requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
+// ─── Automatic SKK mapping helper ────────────────────────────────────────────
+// Called fire-and-forget after create/update to map SKK automatically.
+// Only runs when the activity has enough content to map; skips silently otherwise.
+// Does NOT overwrite SKK entries that already exist (preserves manual edits).
+
+async function autoMapSkk(
+  activityId: number,
+  act: { namaKegiatan: string; namaMateri?: string | null; jenisPkb?: string | null; penyelenggara?: string | null; uraianSingkat?: string | null },
+  log?: import("pino").Logger,
+): Promise<void> {
+  try {
+    // Only map when there's enough signal
+    const hasContent = act.namaMateri || act.uraianSingkat;
+    if (!hasContent) return;
+
+    // Skip if SKK already exists — respect manual edits
+    const existing = await db.select({ id: pkbActivitySkk.id })
+      .from(pkbActivitySkk).where(eq(pkbActivitySkk.activityId, activityId)).limit(1);
+    if (existing.length > 0) return;
+
+    const { SKK_DATA } = await import("../lib/skk-data");
+    const { getClientForModel, DEFAULT_MODEL } = await import("../lib/llm");
+
+    const skkLines = SKK_DATA.flatMap((g) =>
+      g.units.map((u) => `${u.code}|${u.name}|${g.name}|${g.klasifikasi}`)
+    ).join("\n");
+
+    const activityDesc = [
+      `Nama Kegiatan: ${act.namaKegiatan}`,
+      act.namaMateri   && `Materi/Modul: ${act.namaMateri}`,
+      act.jenisPkb     && `Jenis PKB: ${act.jenisPkb}`,
+      act.penyelenggara && `Penyelenggara: ${act.penyelenggara}`,
+      act.uraianSingkat && `Uraian: ${act.uraianSingkat}`,
+    ].filter(Boolean).join("\n");
+
+    const { client, model } = getClientForModel(DEFAULT_MODEL);
+    const completion = await client.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: "system",
+          content: `Kamu adalah sistem pemetaan SKK konstruksi Indonesia (Standar Kompetensi Kerja BNSP/LPJK).
+Pilih 3-5 unit SKK yang paling relevan dengan kegiatan PKB yang diberikan.
+Format baris SKK: skkCode|skkName|jabkerName|klasifikasi
+Balas HANYA dengan JSON (tidak ada teks lain): {"suggestions":[{"skkCode":"...","skkName":"...","jabkerName":"..."}]}`,
+        },
+        {
+          role: "user",
+          content: `Kegiatan PKB:\n${activityDesc}\n\nDaftar seluruh unit SKK:\n${skkLines}`,
+        },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.2,
+      max_tokens: 512,
+    });
+
+    let suggestions: { skkCode: string; skkName: string; jabkerName?: string }[] = [];
+    try {
+      const parsed = JSON.parse(completion.choices[0]?.message?.content ?? "{}");
+      suggestions = parsed.suggestions ?? parsed.result ?? [];
+    } catch {
+      suggestions = [];
+    }
+
+    if (suggestions.length === 0) return;
+
+    // Validate codes against the authoritative SKK dataset to prevent
+    // hallucinated or malformed codes from being persisted.
+    const validCodes = new Set(SKK_DATA.flatMap((g) => g.units.map((u) => u.code)));
+    const validated = suggestions
+      .slice(0, 5)
+      .filter((s) => s.skkCode && validCodes.has(s.skkCode));
+
+    if (validated.length === 0) return;
+
+    const items = validated.map((s) => ({
+      activityId,
+      skkCode: s.skkCode,
+      skkName: s.skkName,
+      jabkerId: null,
+      jabkerName: s.jabkerName ?? null,
+    }));
+
+    await db.insert(pkbActivitySkk).values(items);
+    await db.insert(pkbActivityJourney).values({
+      activityId,
+      event: "skk_dipetakan",
+      label: `${items.length} unit SKK dipetakan otomatis oleh platform`,
+      metadata: { auto: true, count: items.length },
+    });
+    // Recompute status so activity transitions draft→lengkap when SKK now satisfies requirement
+    await recomputeStatus(activityId);
+  } catch (err) {
+    // Fire-and-forget — log and swallow so the user's request is never affected
+    log?.warn({ err, activityId }, "autoMapSkk failed (non-fatal)");
+  }
+}
+
 // ─── POST /api/kegiatan/:id/suggest-skk — AI SKK mapping suggestion ───────────
-// Platform-side automatic SKK suggestion using LLM + SKK database.
-// Replaces the former "ASKOM manual review" flow per regulatory guidance:
-// ASKOM (Asesor BNSP) should only conduct formal competency assessments,
-// not validate PKB documentation records.
+// Platform-side on-demand SKK suggestion using LLM + SKK database.
+// Returns suggestions without saving — client applies them via PUT /skk.
 
 router.post("/kegiatan/:id/suggest-skk", requireAuth, async (req, res) => {
   const userId = await getUserId(req.auth!.userId);
