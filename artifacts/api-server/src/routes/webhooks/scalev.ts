@@ -122,37 +122,65 @@ router.post("/webhooks/scalev", async (req, res): Promise<void> => {
     }
   }
 
-  // Idempotency: insert the payment first. The unique externalId means a
-  // retried/concurrent duplicate delivery loses the race (no row returned) and
-  // must not grant again. Only the winning insert proceeds to add credits.
-  const inserted = await db
-    .insert(payments)
-    .values({
-      userId,
-      provider: "scalev",
-      externalId: orderId,
-      customerEmail: email,
-      status,
-      amount,
-      creditsGranted: quantity,
-      raw: JSON.stringify(payload).slice(0, 8000),
-    })
-    .onConflictDoNothing({ target: payments.externalId })
-    .returning({ id: payments.id });
+  // Idempotency + atomicity: the payment insert and the credit grant are wrapped
+  // in a single transaction. A crash between the two would have previously left
+  // the payment row committed (preventing any future retry from re-inserting via
+  // the unique externalId constraint) while credits were never granted. Wrapping
+  // both operations in one transaction ensures they either both commit or both
+  // roll back — Scalev can then retry a 500 safely, and the next delivery will
+  // win the INSERT again and grant credits correctly.
+  let isDuplicate = false;
+  let credited = false;
+  try {
+    await db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(payments)
+        .values({
+          userId,
+          provider: "scalev",
+          externalId: orderId,
+          customerEmail: email,
+          status,
+          amount,
+          creditsGranted: quantity,
+          raw: JSON.stringify(payload).slice(0, 8000),
+        })
+        .onConflictDoNothing({ target: payments.externalId })
+        .returning({ id: payments.id });
 
-  if (inserted.length === 0) {
+      if (inserted.length === 0) {
+        // Duplicate delivery — the row already exists; commit this no-op.
+        isDuplicate = true;
+        return;
+      }
+
+      if (userId !== null) {
+        await tx
+          .update(users)
+          .set({ exumCredits: sql`${users.exumCredits} + ${quantity}` })
+          .where(eq(users.id, userId));
+        credited = true;
+      }
+    });
+  } catch (err) {
+    req.log.error({ err, orderId }, "Scalev webhook transaction failed");
+    // Return 500 so Scalev retries. The transaction was rolled back, so the
+    // externalId row does not exist — the next delivery will attempt the full
+    // insert + credit grant without any double-granting risk.
+    res.status(500).json({ error: "Internal error processing payment" });
+    return;
+  }
+
+  if (isDuplicate) {
     res.status(200).json({ received: true, duplicate: true });
     return;
   }
 
-  if (userId !== null) {
-    await db
-      .update(users)
-      .set({ exumCredits: sql`${users.exumCredits} + ${quantity}` })
-      .where(eq(users.id, userId));
+  if (!credited) {
+    req.log.warn({ orderId, email }, "Scalev paid order has no matching user by email — payment stored for manual claim");
   }
 
-  res.status(200).json({ received: true, credited: userId !== null, quantity });
+  res.status(200).json({ received: true, credited, quantity });
 });
 
 export default router;

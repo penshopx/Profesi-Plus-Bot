@@ -5,7 +5,7 @@
 - [Express router.use auth leak](express-router-mounting.md) — bare router.use(requireAuth) in a root-mounted feature router 401s unrelated endpoints; scope to a path prefix like router.use("/chat", requireAuth).
 - [SKK competency mapping](competency-mapping-reference.md) — ground AI unit mapping in the static SKK definition (LLM verdicts are advisory; omitted units = gap; clamp SKPK 0–25).
 - [Agentic Persona](agentic-persona.md) — specialist interviewers layered on shared Gustafta methodology; persona drives interview only (Exum stays neutral); confidence-gate jabker→persona auto-recommend.
-- [Monetization (Scalev freemium)](monetization-scalev.md) — Pro=30d plan; manual Scalev webhook (no connector, payload unconfirmed); reserve Exum quota atomically (FOR UPDATE) & webhook idempotency must be insert-first.
+- [Monetization (Scalev freemium)](monetization-scalev.md) — Pro=30d plan; manual Scalev webhook (no connector, payload unconfirmed); INSERT+credit-grant must be one transaction or a crash leaves credits lost; manual claim uses conditional UPDATE WHERE userId IS NULL.
 - [Rate limiter IPv6 validation](rate-limiter-ipv6.md) — express-rate-limit v8 throws ERR_ERL_KEY_GEN_IPV6 if keyGenerator uses req.ip directly; must use ipKeyGenerator(req) from the package for IP fallback.
 - [Expo push notifications](expo-push-notifications.md) — use Expo Push API (exp.host) from the server; store token in users.expoPushToken; SDK version: expo-notifications@~0.32.17 + expo-device@~8.0.10 for SDK 54.
 - [Voice notes transcription](voice-notes-transcription.md) — multer memory storage → OpenAI toFile() → whisper-1 with language:"id"; mobile uses standard fetch (not expo/fetch) for multipart; expo-av@~15.0.0 for recording in SDK 54.
