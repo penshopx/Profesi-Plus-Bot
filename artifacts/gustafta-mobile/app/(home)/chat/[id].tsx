@@ -589,6 +589,7 @@ export default function ChatScreen() {
         queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
         queryClient.invalidateQueries({ queryKey: ['conversations'] });
         queryClient.invalidateQueries({ queryKey: ['my-usage'] });
+        queryClient.invalidateQueries({ queryKey: ['my-plan'] });
         if (text !== AUTO_GREETING) {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         }

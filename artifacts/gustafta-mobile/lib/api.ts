@@ -12,6 +12,10 @@ export function setAuthTokenGetter(getter: () => Promise<string | null>) {
   _authTokenGetter = getter;
 }
 
+/** Scalev checkout URL for buying Exum credits (set via EXPO_PUBLIC_SCALEV_CHECKOUT_URL). */
+export const SCALEV_CHECKOUT_URL: string =
+  process.env.EXPO_PUBLIC_SCALEV_CHECKOUT_URL ?? '';
+
 function getBaseUrl(): string {
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
   return domain ? `https://${domain}` : '';

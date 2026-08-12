@@ -22,6 +22,7 @@ import {
   createConversation,
   deleteConversation,
   listJabkers,
+  getMyPlan,
   type Conversation,
 } from '@/lib/api';
 import VoiceNoteModal from '@/components/VoiceNoteModal';
@@ -471,6 +472,11 @@ export default function SessionsScreen() {
     queryFn: listConversations,
   });
 
+  const { data: planData } = useQuery({
+    queryKey: ['my-plan'],
+    queryFn: getMyPlan,
+  });
+
   const { mutate: doDelete } = useMutation({
     mutationFn: deleteConversation,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversations'] }),
@@ -527,6 +533,24 @@ export default function SessionsScreen() {
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>
           Sesi PKB
         </Text>
+        {planData && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.creditChip,
+              {
+                backgroundColor: colors.primary + '14',
+                borderColor: colors.primary + '30',
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+            onPress={() => router.push('/(home)/kredits')}
+          >
+            <Feather name="zap" size={13} color={colors.primary} />
+            <Text style={[styles.creditChipText, { color: colors.primary }]}>
+              {planData.exumCredits ?? 0} kredit
+            </Text>
+          </Pressable>
+        )}
         <Pressable
           style={({ pressed }) => [
             styles.addBtn,
@@ -669,6 +693,12 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontFamily: 'PlusJakartaSans_700Bold',
   },
+  creditChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    borderRadius: 999, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6,
+    marginRight: 10,
+  },
+  creditChipText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold' },
   addBtn: {
     width: 36,
     height: 36,

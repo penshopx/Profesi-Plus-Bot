@@ -8,7 +8,8 @@ import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { getMyPlan, getMyPayments, claimPayment, type PaymentRecord } from '@/lib/api';
+import * as WebBrowser from 'expo-web-browser';
+import { getMyPlan, getMyPayments, claimPayment, SCALEV_CHECKOUT_URL, type PaymentRecord } from '@/lib/api';
 
 // ─── Payment history row ──────────────────────────────────────────────────────
 
@@ -201,6 +202,25 @@ export default function KreditsScreen() {
           )}
         </View>
 
+        {/* Buy credits */}
+        {SCALEV_CHECKOUT_URL !== '' && (
+          <Pressable
+            style={({ pressed }) => [
+              sc.buyBtn,
+              { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+            ]}
+            onPress={async () => {
+              await WebBrowser.openBrowserAsync(SCALEV_CHECKOUT_URL);
+              // Refresh balance & history when the user returns from checkout —
+              // the Scalev webhook may already have granted credits.
+              invalidateCredits();
+            }}
+          >
+            <Feather name="shopping-bag" size={16} color="#fff" />
+            <Text style={sc.buyBtnText}>Beli Kredit Exum</Text>
+          </Pressable>
+        )}
+
         {/* Claim card */}
         <ClaimCard colors={colors} onSuccess={invalidateCredits} />
 
@@ -231,6 +251,11 @@ const sc = StyleSheet.create({
   balanceLabel: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium' },
   balanceValue: { fontSize: 52, fontFamily: 'PlusJakartaSans_700Bold', lineHeight: 60 },
   balanceSub: { fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular' },
+  buyBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, borderRadius: 14, paddingVertical: 13,
+  },
+  buyBtnText: { color: '#fff', fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold' },
   sectionTitle: {
     fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold',
     textTransform: 'uppercase', letterSpacing: 0.8,
