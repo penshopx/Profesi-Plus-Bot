@@ -267,7 +267,78 @@ router.delete("/kegiatan/:id/docs/:docId", requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
-// ─── POST /api/kegiatan/:id/ajukan — submit for ASKOM review ──────────────────
+// ─── POST /api/kegiatan/:id/suggest-skk — AI SKK mapping suggestion ───────────
+// Platform-side automatic SKK suggestion using LLM + SKK database.
+// Replaces the former "ASKOM manual review" flow per regulatory guidance:
+// ASKOM (Asesor BNSP) should only conduct formal competency assessments,
+// not validate PKB documentation records.
+
+router.post("/kegiatan/:id/suggest-skk", requireAuth, async (req, res) => {
+  const userId = await getUserId(req.auth!.userId);
+  if (!userId) return res.status(401).json({ error: "user not found" });
+
+  const id = parseInt(req.params.id, 10);
+  const [act] = await db.select().from(pkbActivities)
+    .where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
+  if (!act) return res.status(404).json({ error: "not found" });
+
+  const { SKK_DATA } = await import("../lib/skk-data");
+  const { getClientForModel, DEFAULT_MODEL } = await import("../lib/llm");
+
+  // Build condensed SKK index (code|name|jabker) — omit descriptions to save tokens.
+  // ~300+ units × ~60 chars ≈ 4 500 tokens, well within context.
+  const skkLines = SKK_DATA.flatMap((g) =>
+    g.units.map((u) => `${u.code}|${u.name}|${g.name}|${g.klasifikasi}`)
+  ).join("\n");
+
+  const activityDesc = [
+    `Nama Kegiatan: ${act.namaKegiatan}`,
+    act.namaMateri   && `Materi/Modul: ${act.namaMateri}`,
+    act.jenisPkb     && `Jenis PKB: ${act.jenisPkb}`,
+    act.penyelenggara && `Penyelenggara: ${act.penyelenggara}`,
+    act.uraianSingkat && `Uraian: ${act.uraianSingkat}`,
+  ].filter(Boolean).join("\n");
+
+  try {
+    const { client, model } = getClientForModel(DEFAULT_MODEL);
+    const completion = await client.chat.completions.create({
+      model,
+      messages: [
+        {
+          role: "system",
+          content: `Kamu adalah sistem pemetaan SKK konstruksi Indonesia (Standar Kompetensi Kerja BNSP/LPJK).
+Pilih 3-5 unit SKK yang paling relevan dengan kegiatan PKB yang diberikan.
+Format baris SKK: skkCode|skkName|jabkerName|klasifikasi
+Balas HANYA dengan JSON (tidak ada teks lain): {"suggestions":[{"skkCode":"...","skkName":"...","jabkerName":"..."}]}`,
+        },
+        {
+          role: "user",
+          content: `Kegiatan PKB:\n${activityDesc}\n\nDaftar seluruh unit SKK:\n${skkLines}`,
+        },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.2,
+      max_tokens: 512,
+    });
+
+    let suggestions: { skkCode: string; skkName: string; jabkerName: string }[] = [];
+    try {
+      const parsed = JSON.parse(completion.choices[0]?.message?.content ?? "{}");
+      suggestions = parsed.suggestions ?? parsed.result ?? [];
+    } catch {
+      suggestions = [];
+    }
+
+    res.json({ suggestions: suggestions.slice(0, 5) });
+  } catch (err) {
+    req.log?.error({ err }, "suggest-skk LLM failed");
+    res.status(502).json({ error: "Gagal mendapatkan saran SKK dari AI. Coba lagi." });
+  }
+});
+
+// ─── POST /api/kegiatan/:id/ajukan — submit for verifier review ───────────────
+// Used by the Asosiasi verification flow (Task #58).
+// The "ASKOM" label has been removed from this flow; submit now goes to Asosiasi.
 
 router.post("/kegiatan/:id/ajukan", requireAuth, async (req, res) => {
   const userId = await getUserId(req.auth!.userId);
@@ -278,10 +349,9 @@ router.post("/kegiatan/:id/ajukan", requireAuth, async (req, res) => {
     .where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
   if (!act) return res.status(404).json({ error: "not found" });
   if (act.status === "draft") return res.status(400).json({ error: "Lengkapi semua field wajib sebelum mengajukan" });
-  if (act.status === "diajukan") return res.status(400).json({ error: "Dokumentasi sudah dalam antrian verifikasi ASKOM" });
-  if (act.status === "diverifikasi") return res.status(400).json({ error: "Dokumentasi sudah diverifikasi oleh ASKOM" });
+  if (act.status === "diajukan") return res.status(400).json({ error: "Dokumentasi sudah dalam antrian verifikasi" });
+  if (act.status === "diverifikasi") return res.status(400).json({ error: "Dokumentasi sudah diverifikasi" });
 
-  // Allow re-submission after ASKOM rejection ("ditolak") by resetting the note
   await db.update(pkbActivities).set({
     status: "diajukan",
     askomNote: null,
@@ -291,7 +361,7 @@ router.post("/kegiatan/:id/ajukan", requireAuth, async (req, res) => {
   }).where(eq(pkbActivities.id, id));
   await addJourney(id, "diajukan", act.status === "ditolak"
     ? "Dokumentasi diajukan ulang setelah koreksi"
-    : "Dokumentasi diajukan ke asesor / ASKOM");
+    : "Dokumentasi diajukan untuk verifikasi");
   res.json({ success: true });
 });
 

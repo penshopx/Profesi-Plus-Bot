@@ -1,10 +1,13 @@
 /**
- * Panel Verifikasi ASKOM
+ * Panel Tim Verifikasi Internal
  *
- * ASKOM (Asesor Kompetensi) meninjau kesesuaian materi/modul kegiatan PKB
- * dengan SKK (jabatan kerja + jenjang) — bukan menilai kualitas konten.
+ * Digunakan oleh admin / tim internal Gustafta untuk meninjau kegiatan PKB
+ * yang sudah lengkap sebelum dilanjutkan ke verifikasi Asosiasi.
  *
- * Role yang bisa akses: "askom" | "admin"
+ * Catatan regulasi: ASKOM (Asesor BNSP) tidak boleh melakukan review PKB
+ * di luar skema uji kompetensi formal. Panel ini bersifat internal Gustafta.
+ *
+ * Role yang bisa akses: "askom" (internal reviewer) | "admin"
  */
 
 import { useState } from "react";
@@ -23,9 +26,9 @@ import {
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
-  diajukan:     { label: "Menunggu Verifikasi", cls: "bg-amber-100 text-amber-700 border-amber-200" },
-  diverifikasi: { label: "Disetujui ASKOM",     cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-  ditolak:      { label: "Ditolak ASKOM",       cls: "bg-rose-100 text-rose-700 border-rose-200" },
+  diajukan:     { label: "Menunggu Verifikasi",     cls: "bg-amber-100 text-amber-700 border-amber-200" },
+  diverifikasi: { label: "Disetujui Tim Verifikasi", cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+  ditolak:      { label: "Perlu Perbaikan",          cls: "bg-rose-100 text-rose-700 border-rose-200" },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -150,9 +153,9 @@ function VerifyPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-        {/* ASKOM scope reminder */}
+        {/* Scope reminder */}
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-800">
-          <p className="font-semibold mb-0.5">Tugas ASKOM</p>
+          <p className="font-semibold mb-0.5">Tim Verifikasi Internal</p>
           <p>Verifikasi <strong>kesesuaian materi/modul</strong> dengan SKK (jabatan kerja + jenjang). Bukan menilai kualitas konten atau profil peserta.</p>
         </div>
 
@@ -238,7 +241,7 @@ function VerifyPanel({
         {/* Existing ASKOM verdict */}
         {alreadyDecided && sub.askomNote && (
           <section className="space-y-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Catatan ASKOM</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Catatan Verifikasi</h3>
             <div className={`rounded-xl border p-4 text-sm ${sub.status === "diverifikasi" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-rose-50 border-rose-200 text-rose-800"}`}>
               {sub.askomNote}
             </div>
@@ -248,7 +251,7 @@ function VerifyPanel({
         {/* Verification form */}
         {!alreadyDecided && (
           <section className="space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Keputusan ASKOM</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Keputusan Tim Verifikasi</h3>
 
             <textarea
               value={note}
@@ -340,7 +343,7 @@ export default function AskomDashboard() {
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <p className="font-semibold text-sm text-foreground">Panel ASKOM</p>
+            <p className="font-semibold text-sm text-foreground">Tim Verifikasi Internal</p>
             <p className="text-[11px] text-muted-foreground">Verifikasi kesesuaian PKB dengan SKK</p>
           </div>
         </div>

@@ -18,7 +18,7 @@ import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import {
   listMyKegiatanPkb, createKegiatanPkb, updateKegiatanPkb, deleteKegiatanPkb,
-  updateKegiatanSkk, ajukanKegiatanPkb,
+  updateKegiatanSkk,
   type PkbActivity, type CreateKegiatanBody, type PkbSkkUnit,
 } from '@/lib/api';
 
@@ -32,7 +32,7 @@ const STATUS_META: Record<string, { label: string; bg: string; text: string }> =
   lengkap:      { label: 'Lengkap',        bg: '#ECFDF5', text: '#059669' },
   diajukan:     { label: 'Diajukan',       bg: '#EFF6FF', text: '#2563EB' },
   diverifikasi: { label: 'Terverifikasi',  bg: '#EDE9FE', text: '#7C3AED' },
-  ditolak:      { label: 'Ditolak ASKOM', bg: '#FEF2F2', text: '#DC2626' },
+  ditolak:      { label: 'Perlu Perbaikan', bg: '#FEF2F2', text: '#DC2626' },
 };
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -486,22 +486,7 @@ function ActivityDetail({
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['kegiatan'] }); onClose(); },
   });
 
-  async function handleSubmit() {
-    setSubmitting(true);
-    try {
-      await ajukanKegiatanPkb(activity.id);
-      qc.invalidateQueries({ queryKey: ['kegiatan'] });
-      Alert.alert('Berhasil', 'Dokumentasi berhasil diajukan ke ASKOM.');
-      onClose();
-    } catch (err) {
-      Alert.alert('Gagal', (err as Error).message);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   const canEdit = activity.status !== 'diverifikasi';
-  const canSubmit = activity.status === 'lengkap' || activity.status === 'ditolak';
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -533,7 +518,7 @@ function ActivityDetail({
           {activity.status === 'ditolak' && activity.askomNote && (
             <View style={[s.alertBox, { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' }]}>
               <Text style={{ fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold', color: '#DC2626', marginBottom: 4 }}>
-                Catatan ASKOM — Perbaiki lalu ajukan ulang
+                Catatan Verifikasi — Perbaiki lalu hubungi Asosiasi
               </Text>
               <Text style={{ fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular', color: '#B91C1C' }}>
                 {activity.askomNote}
@@ -543,7 +528,7 @@ function ActivityDetail({
           {activity.status === 'diverifikasi' && activity.askomNote && (
             <View style={[s.alertBox, { backgroundColor: '#ECFDF5', borderColor: '#6EE7B7' }]}>
               <Text style={{ fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold', color: '#059669', marginBottom: 4 }}>
-                Catatan ASKOM
+                Catatan Verifikasi
               </Text>
               <Text style={{ fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular', color: '#065F46' }}>
                 {activity.askomNote}
@@ -574,25 +559,12 @@ function ActivityDetail({
 
           {/* Actions */}
           <View style={{ gap: 10, marginTop: 16 }}>
-            {canSubmit && (
-              <Pressable
-                onPress={handleSubmit}
-                disabled={submitting}
-                style={({ pressed }) => [
-                  s.btn,
-                  {
-                    backgroundColor: activity.status === 'ditolak' ? '#D97706' : '#059669',
-                    opacity: pressed || submitting ? 0.7 : 1,
-                    justifyContent: 'center',
-                  },
-                ]}
-              >
-                {submitting
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={s.btnText}>
-                    {activity.status === 'ditolak' ? '🔄 Ajukan Ulang ke ASKOM' : '✅ Ajukan ke ASKOM'}
-                  </Text>}
-              </Pressable>
+            {activity.status === 'lengkap' && (
+              <View style={[s.alertBox, { backgroundColor: '#ECFDF5', borderColor: '#6EE7B7' }]}>
+                <Text style={{ fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium', color: '#065F46', textAlign: 'center' }}>
+                  ✅ Dokumentasi lengkap — siap diverifikasi Asosiasi
+                </Text>
+              </View>
             )}
             {canEdit && (
               <Pressable

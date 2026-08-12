@@ -21,7 +21,7 @@ import {
   ChevronLeft, Plus, FileText, Calendar, MapPin, BookOpen, Link2,
   Upload, Trash2, CheckCircle2, Clock, AlertCircle, ChevronRight,
   X, Tag, Camera, Users, ClipboardList, Pencil, ExternalLink,
-  Award, Building2, Eye, Send, Loader2, XCircle,
+  Award, Building2, Eye, Send, Loader2, XCircle, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,7 +82,7 @@ const STATUS_META: Record<string, { label: string; color: string; icon: typeof C
   lengkap:     { label: "Lengkap",      color: "bg-emerald-50 text-emerald-700 border-emerald-200",   icon: CheckCircle2 },
   diajukan:    { label: "Diajukan",     color: "bg-blue-50 text-blue-700 border-blue-200",             icon: Send },
   diverifikasi:{ label: "Terverifikasi",color: "bg-violet-50 text-violet-700 border-violet-200",       icon: Award },
-  ditolak:     { label: "Ditolak ASKOM",color: "bg-rose-50 text-rose-700 border-rose-200",             icon: XCircle },
+  ditolak:     { label: "Perlu Perbaikan",color: "bg-rose-50 text-rose-700 border-rose-200",           icon: XCircle },
 };
 
 const JENIS_PKB = ["Seminar","Webinar","Diklatkerja","Workshop","Kursus Online","Pelatihan Mandiri","Lainnya"];
@@ -529,17 +529,37 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
   const s = STATUS_META[full.status] ?? STATUS_META.draft;
   const SIcon = s.icon;
 
-  async function submit() {
-    setSubmitting(true);
+  const [suggestingSkk, setSuggestingSkk] = useState(false);
+  interface SkkSuggestion { skkCode: string; skkName: string; jabkerName?: string }
+  const [skkSuggestions, setSkkSuggestions] = useState<SkkSuggestion[]>([]);
+
+  async function suggestSkk() {
+    setSuggestingSkk(true);
+    setSkkSuggestions([]);
     try {
-      await apiFetch(`/kegiatan/${full.id}/ajukan`, { method: "POST" });
-      toast({ title: "Dokumentasi berhasil diajukan ke ASKOM" });
+      const result = await apiFetch<{ suggestions: SkkSuggestion[] }>(`/kegiatan/${full.id}/suggest-skk`, { method: "POST" });
+      setSkkSuggestions(result.suggestions ?? []);
+      if ((result.suggestions ?? []).length === 0) {
+        toast({ title: "Tidak ada saran SKK", description: "Lengkapi nama materi atau uraian kegiatan terlebih dahulu." });
+      }
+    } catch (err: unknown) {
+      toast({ title: "Gagal mendapatkan saran", description: String(err), variant: "destructive" });
+    } finally {
+      setSuggestingSkk(false);
+    }
+  }
+
+  async function addSuggestedSkk(s: SkkSuggestion) {
+    const existing: SkkUnit[] = full.skk ?? [];
+    if (existing.some(u => u.skkCode === s.skkCode)) return;
+    const updated = [...existing, { skkCode: s.skkCode, skkName: s.skkName, jabkerName: s.jabkerName }];
+    try {
+      await apiFetch(`/kegiatan/${full.id}/skk`, { method: "PUT", body: JSON.stringify({ skk: updated }) });
       queryClient.invalidateQueries({ queryKey: ["kegiatan"] });
       refetch();
+      setSkkSuggestions(prev => prev.filter(x => x.skkCode !== s.skkCode));
     } catch (err: unknown) {
-      toast({ title: "Gagal mengajukan", description: String(err), variant: "destructive" });
-    } finally {
-      setSubmitting(false);
+      toast({ title: "Gagal menambah SKK", description: String(err), variant: "destructive" });
     }
   }
 
@@ -594,21 +614,21 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           {tab === "info" && (
             <>
-              {/* ASKOM rejection notice */}
+              {/* Rejection notice (from Asosiasi / Tim Verifikasi) */}
               {full.status === "ditolak" && full.askomNote && (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 space-y-1">
                   <div className="flex items-center gap-2 text-xs font-semibold text-rose-700 uppercase tracking-wide">
-                    <XCircle className="w-3.5 h-3.5" /> Catatan ASKOM
+                    <XCircle className="w-3.5 h-3.5" /> Catatan Verifikasi
                   </div>
                   <p className="text-sm text-rose-800 leading-relaxed">{full.askomNote}</p>
-                  <p className="text-xs text-rose-600 mt-1">Perbaiki dokumentasi sesuai catatan di atas, lalu ajukan ulang.</p>
+                  <p className="text-xs text-rose-600 mt-1">Perbaiki dokumentasi sesuai catatan di atas.</p>
                 </div>
               )}
-              {/* ASKOM verified notice */}
+              {/* Verified notice */}
               {full.status === "diverifikasi" && full.askomNote && (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-1">
                   <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 uppercase tracking-wide">
-                    <Award className="w-3.5 h-3.5" /> Catatan ASKOM
+                    <Award className="w-3.5 h-3.5" /> Catatan Verifikasi
                   </div>
                   <p className="text-sm text-emerald-800 leading-relaxed">{full.askomNote}</p>
                 </div>
@@ -625,21 +645,64 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
                 </div>
               )}
 
-              {full.skk && full.skk.length > 0 && (
-                <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+              {/* SKK Mapping section — always shown so user can add/suggest */}
+              <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    <Tag className="w-3.5 h-3.5" /> Mapping SKK (5) — {full.skk.length} unit
+                    <Tag className="w-3.5 h-3.5" /> Mapping SKK (5) — {(full.skk ?? []).length} unit
                   </div>
+                  {full.status !== "diverifikasi" && (
+                    <button
+                      onClick={suggestSkk}
+                      disabled={suggestingSkk}
+                      className="flex items-center gap-1 text-[11px] font-semibold text-violet-600 hover:text-violet-700 disabled:opacity-50"
+                    >
+                      {suggestingSkk
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : <Sparkles className="w-3 h-3" />}
+                      Saran dari AI
+                    </button>
+                  )}
+                </div>
+
+                {(full.skk ?? []).length > 0 && (
                   <div className="space-y-1.5">
-                    {full.skk.map(s => (
+                    {(full.skk ?? []).map(s => (
                       <div key={s.skkCode} className="flex items-start gap-2 text-xs">
                         <span className="font-mono bg-primary/8 text-primary px-2 py-0.5 rounded-full shrink-0 text-[10px]">{s.skkCode.split(".").slice(0,4).join(".")}…</span>
                         <span className="text-muted-foreground">{s.skkName}</span>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+
+                {/* AI suggestions */}
+                {skkSuggestions.length > 0 && (
+                  <div className="space-y-2 pt-1 border-t border-dashed border-border">
+                    <p className="text-[10px] font-semibold text-violet-600 uppercase tracking-wide flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" /> Saran AI — klik untuk menambahkan
+                    </p>
+                    {skkSuggestions.map(s => (
+                      <button
+                        key={s.skkCode}
+                        onClick={() => addSuggestedSkk(s)}
+                        className="w-full text-left flex items-start gap-2 text-xs p-2 rounded-lg border border-violet-200 bg-violet-50 hover:bg-violet-100 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-violet-500 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-mono text-[10px] text-violet-600">{s.skkCode.split(".").slice(0,4).join(".")}…</span>
+                          <span className="ml-2 text-muted-foreground">{s.skkName}</span>
+                          {s.jabkerName && <span className="block text-[10px] text-violet-400 mt-0.5">{s.jabkerName}</span>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {(full.skk ?? []).length === 0 && skkSuggestions.length === 0 && (
+                  <p className="text-xs text-muted-foreground italic">Belum ada unit SKK. Klik "Saran dari AI" untuk pemetaan otomatis.</p>
+                )}
+              </div>
 
               {full.uraianSingkat && (
                 <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
@@ -691,12 +754,10 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
             <Trash2 className="w-3.5 h-3.5" /> Hapus
           </button>
           <div className="flex gap-2">
-            {(full.status === "lengkap" || full.status === "ditolak") && (
-              <Button size="sm" onClick={submit} disabled={submitting}
-                className={full.status === "ditolak" ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"}>
-                {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1.5" />}
-                {full.status === "ditolak" ? "Ajukan Ulang" : "Ajukan ke ASKOM"}
-              </Button>
+            {full.status === "lengkap" && (
+              <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5 font-medium flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Siap diverifikasi Asosiasi
+              </span>
             )}
           </div>
         </div>
@@ -859,7 +920,7 @@ export default function KegiatanPage() {
           <div className="mt-8 rounded-2xl border border-primary/20 bg-primary/5 p-4 flex gap-3">
             <AlertCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
             <div className="text-xs text-primary/80 leading-relaxed">
-              <strong className="text-primary">Tip:</strong> Setelah dokumentasi lengkap (status "Lengkap"), klik "Ajukan ke ASKOM" untuk verifikasi. Pak Budi juga dapat membaca daftar kegiatan Anda saat wawancara Exum untuk membantu menulis bukti PKB yang lebih kuat.
+              <strong className="text-primary">Tip:</strong> Gunakan tombol <strong>Saran dari AI</strong> di setiap kegiatan untuk pemetaan SKK otomatis. Setelah status "Lengkap", kegiatan siap untuk diverifikasi oleh Asosiasi. Pak Budi juga dapat membaca daftar kegiatan Anda saat wawancara Exum untuk membantu menulis bukti PKB yang lebih kuat.
             </div>
           </div>
         )}
