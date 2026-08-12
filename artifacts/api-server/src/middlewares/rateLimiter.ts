@@ -11,19 +11,25 @@
  *   Chat messages  : Free=30/hour,  Pro=120/hour
  *   Exum generate  : Free=5/day,    Pro=20/day   (extra guard on top of credit gating)
  *   Competency AI  : Free=5/day,    Pro=20/day
+ *
+ * Each public export is built from a factory function so tests can instantiate
+ * the real production configuration with a custom store or without the
+ * NODE_ENV=test skip guard.
  */
 
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import rateLimit, { ipKeyGenerator, type Options, type Store } from "express-rate-limit";
 import type { Request } from "express";
 
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
 /** Resolve rate-limit key: authenticated user ID takes priority over IP. */
-function userKey(req: Request): string {
+export function userKey(req: Request): string {
   const uid = (req as unknown as { dbUser?: { id: number } }).dbUser?.id;
   return uid !== undefined ? `user:${uid}` : ipKeyGenerator(req.ip ?? "");
 }
 
 /** Returns true when the authenticated user has an active Pro plan. */
-function isPro(req: Request): boolean {
+export function isPro(req: Request): boolean {
   const user = (req as unknown as { dbUser?: { plan?: string; planExpiresAt?: Date | null } }).dbUser;
   if (!user) return false;
   if (user.plan !== "pro") return false;
@@ -32,74 +38,122 @@ function isPro(req: Request): boolean {
   return true;
 }
 
-/**
- * Chat message rate limiter.
- * Free: 30 messages/hour | Pro: 120 messages/hour
- */
-export const chatMessageRateLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  limit: (req: Request) => (isPro(req) ? 120 : 30),
-  keyGenerator: userKey,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  message: {
-    error:
-      "Terlalu banyak pesan dalam satu jam. Upgrade ke Pro untuk batas lebih tinggi, atau tunggu sebentar.",
-    code: "rate_limit_chat",
-  },
-  skip: () => process.env.NODE_ENV === "test",
-});
+// ── Factory options type ──────────────────────────────────────────────────────
+
+/** Optional overrides accepted by every factory (used by tests). */
+export interface LimiterOverrides {
+  /** Supply a fresh MemoryStore to isolate test state. */
+  store?: Store;
+  /**
+   * Override the skip function.  Pass `undefined` explicitly (or omit) to keep
+   * the production default (`() => NODE_ENV === "test"`).  Pass `() => false`
+   * to disable the skip guard in integration tests.
+   */
+  skip?: Options["skip"];
+}
+
+// ── chatMessageRateLimiter ────────────────────────────────────────────────────
 
 /**
- * Exum generation rate limiter (supplemental guard — credit gating is the primary gate).
+ * Create a chat-message rate limiter.
+ * Free: 30 messages/hour | Pro: 120 messages/hour
+ *
+ * @param overrides - Optional store and skip overrides (for testing).
+ */
+export function createChatMessageRateLimiter(overrides: LimiterOverrides = {}) {
+  return rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    limit: (req: Request) => (isPro(req) ? 120 : 30),
+    keyGenerator: userKey,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: {
+      error:
+        "Terlalu banyak pesan dalam satu jam. Upgrade ke Pro untuk batas lebih tinggi, atau tunggu sebentar.",
+      code: "rate_limit_chat",
+    },
+    skip: overrides.skip ?? (() => process.env.NODE_ENV === "test"),
+    ...(overrides.store ? { store: overrides.store } : {}),
+  });
+}
+
+/** Production singleton. */
+export const chatMessageRateLimiter = createChatMessageRateLimiter();
+
+// ── exumRateLimiter ───────────────────────────────────────────────────────────
+
+/**
+ * Create an Exum-generation rate limiter (supplemental guard — credit gating is the primary gate).
  * Free: 5 Exum/day | Pro: 20 Exum/day
  */
-export const exumRateLimiter = rateLimit({
-  windowMs: 24 * 60 * 60 * 1000, // 24 hours
-  limit: (req: Request) => (isPro(req) ? 20 : 5),
-  keyGenerator: userKey,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  message: {
-    error: "Batas generate Exum hari ini sudah tercapai. Coba lagi besok atau upgrade ke Pro.",
-    code: "rate_limit_exum",
-  },
-  skip: () => process.env.NODE_ENV === "test",
-});
+export function createExumRateLimiter(overrides: LimiterOverrides = {}) {
+  return rateLimit({
+    windowMs: 24 * 60 * 60 * 1000, // 24 hours
+    limit: (req: Request) => (isPro(req) ? 20 : 5),
+    keyGenerator: userKey,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: {
+      error: "Batas generate Exum hari ini sudah tercapai. Coba lagi besok atau upgrade ke Pro.",
+      code: "rate_limit_exum",
+    },
+    skip: overrides.skip ?? (() => process.env.NODE_ENV === "test"),
+    ...(overrides.store ? { store: overrides.store } : {}),
+  });
+}
+
+/** Production singleton. */
+export const exumRateLimiter = createExumRateLimiter();
+
+// ── competencyRateLimiter ─────────────────────────────────────────────────────
 
 /**
- * Competency analysis rate limiter.
+ * Create a competency-analysis rate limiter.
  * Free: 5 analyses/day | Pro: 20 analyses/day
  */
-export const competencyRateLimiter = rateLimit({
-  windowMs: 24 * 60 * 60 * 1000, // 24 hours
-  limit: (req: Request) => (isPro(req) ? 20 : 5),
-  keyGenerator: userKey,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  message: {
-    error:
-      "Batas analisis kompetensi hari ini sudah tercapai. Coba lagi besok atau upgrade ke Pro.",
-    code: "rate_limit_competency",
-  },
-  skip: () => process.env.NODE_ENV === "test",
-});
+export function createCompetencyRateLimiter(overrides: LimiterOverrides = {}) {
+  return rateLimit({
+    windowMs: 24 * 60 * 60 * 1000, // 24 hours
+    limit: (req: Request) => (isPro(req) ? 20 : 5),
+    keyGenerator: userKey,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: {
+      error:
+        "Batas analisis kompetensi hari ini sudah tercapai. Coba lagi besok atau upgrade ke Pro.",
+      code: "rate_limit_competency",
+    },
+    skip: overrides.skip ?? (() => process.env.NODE_ENV === "test"),
+    ...(overrides.store ? { store: overrides.store } : {}),
+  });
+}
+
+/** Production singleton. */
+export const competencyRateLimiter = createCompetencyRateLimiter();
+
+// ── claimPaymentRateLimiter ───────────────────────────────────────────────────
 
 /**
- * Manual payment claim rate limiter.
+ * Create a manual-payment claim rate limiter.
  * Hard cap of 10 claim attempts per hour per account (regardless of plan) to
  * prevent brute-force probing of order IDs. Successful claims reduce the
  * remaining budget the same as failed ones.
  */
-export const claimPaymentRateLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  limit: 10,
-  keyGenerator: userKey,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  message: {
-    error: "Terlalu banyak percobaan klaim. Coba lagi dalam beberapa saat.",
-    code: "rate_limit_claim",
-  },
-  skip: () => process.env.NODE_ENV === "test",
-});
+export function createClaimPaymentRateLimiter(overrides: LimiterOverrides = {}) {
+  return rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    limit: 10,
+    keyGenerator: userKey,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: {
+      error: "Terlalu banyak percobaan klaim. Coba lagi dalam beberapa saat.",
+      code: "rate_limit_claim",
+    },
+    skip: overrides.skip ?? (() => process.env.NODE_ENV === "test"),
+    ...(overrides.store ? { store: overrides.store } : {}),
+  });
+}
+
+/** Production singleton. */
+export const claimPaymentRateLimiter = createClaimPaymentRateLimiter();
