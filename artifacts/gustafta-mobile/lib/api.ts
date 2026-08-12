@@ -1,0 +1,280 @@
+/**
+ * Thin API client for the Gustafta API server.
+ * Bearer-token auth: set a getter with setAuthTokenGetter() in the home layout.
+ * Base URL is built from EXPO_PUBLIC_DOMAIN env var.
+ */
+
+import { fetch as expoFetch } from 'expo/fetch';
+
+let _authTokenGetter: (() => Promise<string | null>) | null = null;
+
+export function setAuthTokenGetter(getter: () => Promise<string | null>) {
+  _authTokenGetter = getter;
+}
+
+function getBaseUrl(): string {
+  const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  return domain ? `https://${domain}` : '';
+}
+
+async function buildHeaders(
+  extra: Record<string, string> = {},
+): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...extra,
+  };
+  if (_authTokenGetter) {
+    const token = await _authTokenGetter();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+async function apiFetch(path: string, options: RequestInit = {}) {
+  const headers = await buildHeaders(
+    (options.headers as Record<string, string>) || {},
+  );
+  const url = `${getBaseUrl()}/api${path}`;
+  // expo/fetch doesn't accept null values; only pass defined properties.
+  const { body, signal, method } = options;
+  const response = await expoFetch(url, {
+    method,
+    headers,
+    ...(body != null ? { body } : {}),
+    ...(signal != null ? { signal } : {}),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => 'Unknown error');
+    throw new Error(`API ${response.status}: ${text}`);
+  }
+  return response;
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type Conversation = {
+  id: number;
+  title: string;
+  mode: string;
+  jabker?: string | null;
+  jenjang?: string | null;
+  phase: string;
+  createdAt: string;
+  exumContent?: string | null;
+};
+
+export type Message = {
+  id: number;
+  conversationId: number;
+  role: string;
+  content: string;
+  createdAt: string;
+};
+
+export type ConversationWithMessages = Conversation & { messages: Message[] };
+
+export type CompetencyUnitResult = {
+  code: string;
+  name: string;
+  status: 'covered' | 'partial' | 'gap';
+  rationale: string;
+  evidenceRef: string | null;
+};
+
+export type CompetencyAnalysisResult = {
+  summary: string;
+  estimatedSkpk: number;
+  readiness: string;
+  units: CompetencyUnitResult[];
+  gaps: string[];
+  recommendations: string[];
+};
+
+/** Summary fields returned by GET /competency-studio (list endpoint) */
+export type StudioAnalysis = {
+  id: number;
+  jabkerId?: string;
+  jabkerName: string;
+  jenjang?: string | null;
+  klasifikasi?: string | null;
+  estimatedSkpk: number;
+  readiness: string;
+  summary?: string | null;
+  model?: string | null;
+  createdAt: string;
+  /** Present only on POST /competency-studio/analyze (full row with result JSON) */
+  result?: CompetencyAnalysisResult | null;
+};
+
+export type UserProfile = {
+  id: number;
+  clerkUserId: string;
+  name: string;
+  email: string;
+  role: string;
+  createdAt: string;
+};
+
+export type UserPlan = {
+  plan: string;
+  expiresAt?: string | null;
+};
+
+// ─── Conversations ─────────────────────────────────────────────────────────────
+
+export async function listConversations(): Promise<Conversation[]> {
+  const res = await apiFetch('/chat/conversations');
+  return res.json();
+}
+
+export async function createConversation(data: {
+  title: string;
+  mode: string;
+  jabker?: string;
+  jenjang?: string;
+  model?: string;
+}): Promise<Conversation> {
+  const res = await apiFetch('/chat/conversations', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function getConversation(
+  id: number,
+): Promise<ConversationWithMessages> {
+  const res = await apiFetch(`/chat/conversations/${id}`);
+  return res.json();
+}
+
+export async function deleteConversation(id: number): Promise<void> {
+  await apiFetch(`/chat/conversations/${id}`, { method: 'DELETE' });
+}
+
+// ─── Streaming chat ────────────────────────────────────────────────────────────
+
+export async function streamMessage(
+  conversationId: number,
+  content: string,
+  onChunk: (text: string) => void,
+  onPhaseAdvance?: () => void,
+): Promise<void> {
+  const headers = await buildHeaders({ Accept: 'text/event-stream' });
+  const url = `${getBaseUrl()}/api/chat/conversations/${conversationId}/messages`;
+  const response = await expoFetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ content }),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => 'Error');
+    throw new Error(`API ${response.status}: ${text}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('No response body');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') continue;
+      if (data.includes('[[FASE_NAIK]]')) {
+        onPhaseAdvance?.();
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(data);
+        const chunk = parsed.content ?? parsed.text ?? parsed.delta;
+        if (chunk) onChunk(chunk);
+      } catch {
+        // Not JSON; treat as raw text if non-empty and not a marker
+        if (data && !data.startsWith('[')) onChunk(data);
+      }
+    }
+  }
+}
+
+export async function generateExum(
+  conversationId: number,
+): Promise<{ content: string }> {
+  const res = await apiFetch('/chat/generate-exum', {
+    method: 'POST',
+    body: JSON.stringify({ conversationId }),
+  });
+  return res.json();
+}
+
+export async function advancePhase(
+  conversationId: number,
+): Promise<{ phase: string }> {
+  const res = await apiFetch(
+    `/chat/conversations/${conversationId}/advance-phase`,
+    { method: 'POST' },
+  );
+  return res.json();
+}
+
+// ─── SKK / Jabker ─────────────────────────────────────────────────────────────
+
+export async function listJabkers(): Promise<string[]> {
+  const res = await apiFetch('/skk/jabkers');
+  const data = await res.json();
+  // Server returns { jabkers: string[] }
+  if (data && Array.isArray(data.jabkers)) return data.jabkers;
+  // Fallback: bare array
+  if (Array.isArray(data)) {
+    if (data.length === 0 || typeof data[0] === 'string') return data;
+    return data.map((d: Record<string, unknown>) =>
+      String(d.name ?? d.jabker ?? d.code ?? d),
+    );
+  }
+  return [];
+}
+
+// ─── Competency Studio ────────────────────────────────────────────────────────
+
+export async function listStudioAnalyses(): Promise<StudioAnalysis[]> {
+  const res = await apiFetch('/competency-studio');
+  return res.json();
+}
+
+export async function runStudioAnalysis(
+  jabker: string,
+  model?: string,
+): Promise<StudioAnalysis> {
+  const res = await apiFetch('/competency-studio/analyze', {
+    method: 'POST',
+    body: JSON.stringify({ jabker, ...(model ? { model } : {}) }),
+  });
+  return res.json();
+}
+
+// ─── Users / Profile ──────────────────────────────────────────────────────────
+
+export async function getMe(): Promise<UserProfile> {
+  const res = await apiFetch('/users/me');
+  return res.json();
+}
+
+export async function getMyPlan(): Promise<UserPlan> {
+  const res = await apiFetch('/users/me/plan');
+  return res.json();
+}
+
+// ─── Project Brain ────────────────────────────────────────────────────────────
+
+export async function listProjectBrain(): Promise<{ id: number }[]> {
+  const res = await apiFetch('/project-brain');
+  return res.json();
+}
