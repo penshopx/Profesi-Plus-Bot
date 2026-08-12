@@ -33,6 +33,10 @@ import { useToast } from "@/hooks/use-toast";
 interface SkkUnit { skkCode: string; skkName: string; jabkerId?: string; jabkerName?: string; }
 interface ActivityDoc { id: number; docType: string; filename: string; objectPath: string; mimeType?: string; caption?: string; uploadedAt: string; }
 interface JourneyEntry { id: number; event: string; label: string; metadata?: Record<string, unknown>; createdAt: string; }
+interface ChecklistRecord {
+  suratUndangan: boolean; daftarHadir: boolean; foto: boolean;
+  penyelenggaraValid: boolean; catatan?: string | null; checkedAt?: string | null;
+}
 interface Activity {
   id: number; namaKegiatan: string; tanggalMulai: string; tanggalSelesai?: string;
   tempatKegiatan?: string; modePelaksanaan?: string; namaMateri?: string;
@@ -40,7 +44,7 @@ interface Activity {
   linkRekaman?: string; status: string; jenisPkb?: string; jpPkb?: number;
   marketplaceId?: string; askomNote?: string | null; createdAt: string; updatedAt: string;
   skk: SkkUnit[]; docCount?: number; latestJourney?: JourneyEntry | null;
-  docs?: ActivityDoc[]; journey?: JourneyEntry[];
+  docs?: ActivityDoc[]; journey?: JourneyEntry[]; checklist?: ChecklistRecord | null;
 }
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -664,6 +668,52 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
                     <Award className="w-3.5 h-3.5" /> Catatan Verifikasi
                   </div>
                   <p className="text-sm text-emerald-800 leading-relaxed">{full.askomNote}</p>
+                </div>
+              )}
+
+              {/* Asosiasi checklist progress (read-only for the activity owner) */}
+              {["diajukan", "diverifikasi", "ditolak"].includes(full.status) && (
+                <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Checklist Asosiasi
+                    </div>
+                    {full.checklist && (() => {
+                      const cl = full.checklist;
+                      const done = [cl.suratUndangan, cl.daftarHadir, cl.foto, cl.penyelenggaraValid].filter(Boolean).length;
+                      return (
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                          done === 4
+                            ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                            : "bg-amber-100 text-amber-700 border-amber-200"
+                        }`}>{done}/4 item</span>
+                      );
+                    })()}
+                  </div>
+                  {full.checklist ? (
+                    <div className="space-y-1.5">
+                      {([
+                        { key: "suratUndangan" as const,      label: "Surat undangan" },
+                        { key: "daftarHadir" as const,        label: "Daftar hadir" },
+                        { key: "foto" as const,               label: "Foto dokumentasi" },
+                        { key: "penyelenggaraValid" as const, label: "Penyelenggara valid" },
+                      ] as const).map(({ key, label }) => (
+                        <div key={key} className="flex items-center gap-2 text-xs">
+                          {full.checklist![key]
+                            ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            : <XCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />}
+                          <span className={full.checklist![key] ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+                        </div>
+                      ))}
+                      {full.checklist.catatan && (
+                        <p className="text-xs text-muted-foreground italic border-t border-dashed border-border pt-2 mt-2">
+                          Catatan: {full.checklist.catatan}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">Menunggu pemeriksaan dokumen oleh Asosiasi…</p>
+                  )}
                 </div>
               )}
 

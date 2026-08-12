@@ -9,7 +9,7 @@ import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { db } from "@workspace/db";
 import {
-  pkbActivities, pkbActivitySkk, pkbActivityDocs, pkbActivityJourney, marketplaceWatches,
+  pkbActivities, pkbActivitySkk, pkbActivityDocs, pkbActivityJourney, pkbActivityChecklist, marketplaceWatches,
   KEGIATAN_STATUS, type KegiatanStatus, type JourneyEvent,
 } from "@workspace/db/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
@@ -96,13 +96,14 @@ router.get("/kegiatan/:id", requireAuth, async (req, res) => {
     .where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
   if (!act) return res.status(404).json({ error: "not found" });
 
-  const [skk, docs, journey] = await Promise.all([
+  const [skk, docs, journey, checklistRows] = await Promise.all([
     db.select().from(pkbActivitySkk).where(eq(pkbActivitySkk.activityId, id)),
     db.select().from(pkbActivityDocs).where(eq(pkbActivityDocs.activityId, id)),
     db.select().from(pkbActivityJourney).where(eq(pkbActivityJourney.activityId, id)).orderBy(pkbActivityJourney.createdAt),
+    db.select().from(pkbActivityChecklist).where(eq(pkbActivityChecklist.activityId, id)).limit(1),
   ]);
 
-  res.json({ ...act, skk, docs, journey });
+  res.json({ ...act, skk, docs, journey, checklist: checklistRows[0] ?? null });
 });
 
 // ─── POST /api/kegiatan — create ──────────────────────────────────────────────
