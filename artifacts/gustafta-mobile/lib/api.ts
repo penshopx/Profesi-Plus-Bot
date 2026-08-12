@@ -543,6 +543,63 @@ export interface PaymentRecord {
   createdAt: string;
 }
 
+// ─── APL Profile & Claims ─────────────────────────────────────────────────────
+
+export interface AplProfile {
+  id: number;
+  userId: number;
+  nik?: string | null;
+  tempatLahir?: string | null;
+  tanggalLahir?: string | null;
+  jenisKelamin?: string | null;
+  agama?: string | null;
+  alamat?: string | null;
+  rt?: string | null;
+  rw?: string | null;
+  kelurahan?: string | null;
+  kecamatan?: string | null;
+  kotaKabupaten?: string | null;
+  provinsi?: string | null;
+  kodePos?: string | null;
+  nomorHp?: string | null;
+  jenjangPendidikan?: string | null;
+  namaInstitusi?: string | null;
+  jurusan?: string | null;
+  tahunLulus?: number | null;
+  namaPerusahaan?: string | null;
+  alamatPerusahaan?: string | null;
+  jabatanSekarang?: string | null;
+  tahunMulaiBekerja?: number | null;
+  nomorSkk?: string | null;
+  masaBerlakuSkk?: string | null;
+  lembagaSertifikasi?: string | null;
+  isComplete: boolean;
+}
+
+export interface AplClaim {
+  id: number;
+  skkUnitCode: string;
+  skkUnitName: string;
+  jabker: string;
+  jenjang?: string | null;
+  pencapaian: string;
+  buktiUtama?: string | null;
+  jenisBukti?: string | null;
+  catatanTambahan?: string | null;
+}
+
+/** Returns (or creates) the authenticated user's APL 01 profile. */
+export async function getMyAplProfile(): Promise<AplProfile> {
+  const res = await apiFetch('/profiles/me');
+  return res.json();
+}
+
+/** Returns the user's APL 02 competency claims. */
+export async function getMyAplClaims(): Promise<AplClaim[]> {
+  const res = await apiFetch('/profiles/me/claims');
+  return res.json();
+}
+
 export async function getMyPayments(): Promise<PaymentRecord[]> {
   const res = await apiFetch('/users/me/payments');
   return res.json();

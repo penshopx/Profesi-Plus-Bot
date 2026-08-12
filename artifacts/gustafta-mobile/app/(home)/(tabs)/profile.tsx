@@ -14,7 +14,10 @@ import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { getMyPlan, listProjectBrain } from '@/lib/api';
+import { getMyPlan, listProjectBrain, getMyAplProfile, getMyAplClaims } from '@/lib/api';
+import { buildAplHtml } from '@/lib/apl-html';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 function Initials({ name, email }: { name?: string; email?: string }) {
   const colors = useColors();
@@ -93,6 +96,7 @@ export default function ProfileScreen() {
   const { signOut } = useClerk();
   const router = useRouter();
   const isWeb = Platform.OS === 'web';
+  const [printingApl, setPrintingApl] = React.useState(false);
 
   const topPad = isWeb ? 67 : insets.top;
   const bottomPad = isWeb ? 34 + 84 : 84 + insets.bottom;
@@ -109,9 +113,49 @@ export default function ProfileScreen() {
     retry: 1,
   });
 
+  const { data: aplProfile } = useQuery({
+    queryKey: ['apl-profile'],
+    queryFn: getMyAplProfile,
+    retry: 1,
+  });
+
+  const { data: aplClaims = [] } = useQuery({
+    queryKey: ['apl-claims'],
+    queryFn: getMyAplClaims,
+    retry: 1,
+  });
+
   const handleSignOut = async () => {
     await signOut();
     router.replace('/(auth)/sign-in');
+  };
+
+  const handlePrintApl = async () => {
+    if (!aplProfile) return;
+    setPrintingApl(true);
+    try {
+      const userName =
+        user?.fullName ||
+        [user?.firstName, user?.lastName].filter(Boolean).join(' ') ||
+        user?.primaryEmailAddress?.emailAddress ||
+        '';
+      const email = user?.primaryEmailAddress?.emailAddress ?? '';
+      const html = buildAplHtml(aplProfile, aplClaims, userName, email);
+      const { uri } = await Print.printToFileAsync({ html });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Simpan atau Bagikan APL',
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        await Print.printAsync({ uri });
+      }
+    } catch (err) {
+      console.error('APL print error:', err);
+    } finally {
+      setPrintingApl(false);
+    }
   };
 
   const fullName =
@@ -212,6 +256,28 @@ export default function ProfileScreen() {
           label="Dokumentasi Kegiatan PKB"
           value="Buka →"
           colors={colors}
+        />
+      </Pressable>
+
+      {/* APL form print */}
+      <Pressable
+        onPress={handlePrintApl}
+        disabled={printingApl}
+        style={({ pressed }) => [
+          styles.infoCard,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            opacity: pressed || printingApl ? 0.6 : 1,
+          },
+        ]}
+      >
+        <InfoRow
+          icon="printer"
+          label={printingApl ? 'Membuat PDF…' : 'Cetak Formulir APL 01 & 02'}
+          value={aplProfile ? 'Simpan / Bagikan PDF →' : 'Memuat profil…'}
+          colors={colors}
+          chevron
         />
       </Pressable>
 

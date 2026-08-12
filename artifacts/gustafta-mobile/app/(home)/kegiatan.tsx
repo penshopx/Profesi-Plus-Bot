@@ -488,7 +488,6 @@ function ActivityDetail({
 
   const canEdit = activity.status !== 'diverifikasi';
   const canSubmit = activity.status === 'lengkap' || activity.status === 'ditolak';
-  const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit() {
     setSubmitting(true);

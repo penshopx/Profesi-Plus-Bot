@@ -149,8 +149,30 @@ ${claims.length === 0 ? "<p><em>Belum ada unit kompetensi yang diklaim.</em></p>
   <tbody>${claimRows}</tbody>
 </table>`}
 
+<h2>Tanda Tangan &amp; Pernyataan</h2>
+<p style="font-size:10pt;margin-bottom:16pt;">
+  Saya menyatakan bahwa data yang saya berikan dalam formulir APL 01 dan APL 02 ini adalah benar
+  dan dapat dipertanggungjawabkan.
+</p>
+<table style="width:100%;border:none;border-collapse:collapse;margin-top:4pt;">
+  <tr>
+    <td style="border:none;width:50%;padding:0 20pt 0 0;vertical-align:top;">
+      <p style="font-weight:bold;margin:0 0 4pt;">Pemohon,</p>
+      <p style="margin:0 0 4pt;font-size:9pt;color:#555;">${profile.kotaKabupaten ?? "____________"}, _______________ ${new Date().getFullYear()}</p>
+      <div style="border:1pt dashed #bbb;height:72pt;margin:8pt 0 4pt;text-align:center;padding-top:28pt;font-size:8pt;color:#bbb;">[Tanda Tangan]</div>
+      <p style="border-top:1pt solid #444;padding-top:4pt;font-size:9pt;text-align:center;margin:0;">(${userName})</p>
+    </td>
+    <td style="border:none;width:50%;padding:0 0 0 20pt;vertical-align:top;">
+      <p style="font-weight:bold;margin:0 0 4pt;">Mengetahui, Lembaga Sertifikasi (LSP),</p>
+      <p style="margin:0 0 4pt;font-size:9pt;color:#555;">${profile.kotaKabupaten ?? "____________"}, _______________ ${new Date().getFullYear()}</p>
+      <div style="border:1pt dashed #bbb;height:72pt;margin:8pt 0 4pt;text-align:center;padding-top:18pt;font-size:8pt;color:#bbb;">[Tanda Tangan &amp; Stempel]</div>
+      <p style="border-top:1pt solid #444;padding-top:4pt;font-size:9pt;text-align:center;margin:0;">(${profile.lembagaSertifikasi ?? "____________________________"})</p>
+    </td>
+  </tr>
+</table>
+
 <div class="footer">
-  <p>Dokumen ini digenerate dari Gustafta PKB. Untuk pengajuan resmi, harap dilengkapi tanda tangan dan stempel.</p>
+  <p>Dokumen ini digenerate dari sistem Gustafta PKB. Harap diperiksa kembali sebelum diserahkan ke LSP.</p>
 </div>
 </body></html>`;
 }
