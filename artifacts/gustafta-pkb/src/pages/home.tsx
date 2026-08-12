@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, MessageSquare, Trash2, BookOpen, Briefcase, Layers, ChevronRight, FileText, Award, AlertCircle, CheckCircle2, Package, Search, X, Cpu, Sparkles, HardHat, DraftingCompass, Building2, ShieldCheck, Cog, Droplets, ClipboardList, Users, type LucideIcon } from "lucide-react";
 import { listConversations, createConversation, deleteConversation, fetchJabkerList, listModels, listPersonas, recommendPersona, type Conversation } from "@/lib/api";
-import { getMyProfile } from "@/lib/api-profile";
+import { getMyProfile, getMyPlan } from "@/lib/api-profile";
 
 const PERSONA_ICONS: Record<string, LucideIcon> = {
   HardHat, DraftingCompass, Building2, ShieldCheck, Cog, Droplets, ClipboardList,
@@ -127,6 +127,13 @@ export default function Home() {
     retry: false,
   });
 
+  const { data: myPlan } = useQuery({
+    queryKey: ["my-plan"],
+    queryFn: getMyPlan,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
   const createMut = useMutation({
     mutationFn: () =>
       createConversation({
@@ -205,6 +212,29 @@ export default function Home() {
             </a>
           </div>
         </div>
+
+        {/* Credit balance */}
+        {myPlan && (
+          <div className="px-4 pb-2">
+            <div className={`flex items-center justify-between rounded-xl px-3 py-2 text-xs ${
+              myPlan.canGenerate
+                ? "bg-sidebar-accent/40 text-sidebar-foreground"
+                : "bg-amber-500/10 text-amber-600 border border-amber-400/30"
+            }`}>
+              <span className="flex items-center gap-1.5">
+                <FileText className="w-3 h-3 shrink-0" />
+                Kredit Exum
+              </span>
+              <span className="font-semibold tabular-nums">
+                {!myPlan.freeExumUsed
+                  ? "Gratis ✓"
+                  : myPlan.exumCredits > 0
+                  ? `${myPlan.exumCredits} kredit`
+                  : "Habis"}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Search + filter */}
         <div className="px-3 pb-2 space-y-2">

@@ -1,6 +1,6 @@
-import { db, conversations, evidenceItems, competencyAnalysis, quizAttempts, quizzes } from "@workspace/db";
+import { db, conversations, evidenceItems, competencyAnalysis, quizAttempts, quizzes, profiles, competencyClaims } from "@workspace/db";
 import type { CompetencyAnalysisResult } from "@workspace/db";
-import { and, eq, isNotNull, ne, desc, sql } from "drizzle-orm";
+import { and, eq, isNotNull, ne, desc, asc, sql } from "drizzle-orm";
 
 // Token-budget constants — keep prompt injection bounded
 const MAX_PAST_EXUMS = 3;
@@ -13,6 +13,58 @@ const MAX_TOTAL_CHARS = 3200;
 const MAX_COMPETENCY_ANALYSES = 3;  // most recent analyses per user
 const MAX_GAPS = 5;                  // cap listed gaps per analysis
 const MAX_RECS = 3;                  // cap recommendations per analysis
+
+/**
+ * Builds a context block from the user's APL 01 profile and APL 02 competency claims.
+ *
+ * Gives the AI the user's real name, job title, company, education, and SKK so it
+ * references them by fact rather than falling back to generic placeholders.
+ */
+export async function buildProfileContext(userId: number): Promise<string> {
+  const [profileRow, claims] = await Promise.all([
+    db.select().from(profiles).where(eq(profiles.userId, userId)).then((r) => r[0] ?? null),
+    db.select().from(competencyClaims).where(eq(competencyClaims.userId, userId)).orderBy(asc(competencyClaims.createdAt)),
+  ]);
+
+  if (!profileRow) return "";
+
+  const lines: string[] = [
+    "\n\n=== PROFIL APL 01 TKK ===",
+    "Data identitas resmi TKK. WAJIB pakai nama dan jabatan nyata — DILARANG sapa dengan nama/jabatan generik:",
+  ];
+
+  if (profileRow.jabatanSekarang) lines.push(`👷 Jabatan: ${profileRow.jabatanSekarang}`);
+  if (profileRow.namaPerusahaan) lines.push(`🏢 Perusahaan: ${profileRow.namaPerusahaan}`);
+  if (profileRow.tahunMulaiBekerja) {
+    const yoe = new Date().getFullYear() - profileRow.tahunMulaiBekerja;
+    lines.push(`📅 Pengalaman kerja: ≈${yoe} tahun (mulai ${profileRow.tahunMulaiBekerja})`);
+  }
+  if (profileRow.jenjangPendidikan) {
+    const edu = [profileRow.jenjangPendidikan, profileRow.jurusan, profileRow.namaInstitusi].filter(Boolean).join(" — ");
+    lines.push(`🎓 Pendidikan: ${edu}`);
+  }
+  if (profileRow.nomorSkk) {
+    const skk = [profileRow.nomorSkk, profileRow.lembagaSertifikasi].filter(Boolean).join(" / ");
+    lines.push(`📜 SKK: ${skk}`);
+  }
+  if (profileRow.kotaKabupaten) {
+    lines.push(`📍 Lokasi: ${[profileRow.kotaKabupaten, profileRow.provinsi].filter(Boolean).join(", ")}`);
+  }
+
+  if (claims.length > 0) {
+    const statusMap: Record<string, string> = { kompeten: "✅", dalam_proses: "⏳", belum_kompeten: "❌" };
+    lines.push(`\n📋 Unit diklaim di APL 02 (${claims.length} unit):`);
+    for (const c of claims.slice(0, 8)) {
+      lines.push(`   ${statusMap[c.pencapaian] ?? "⏳"} [${c.skkUnitCode}] ${c.skkUnitName}`);
+    }
+    if (claims.length > 8) lines.push(`   …dan ${claims.length - 8} unit lainnya.`);
+  }
+
+  lines.push("\nGunakan data di atas. Panggil TKK dengan nama sebenarnya. Sebut jabatan & perusahaan saat relevan.");
+
+  const combined = lines.join("\n");
+  return combined.length > 1600 ? combined.slice(0, 1600) + "\n…[profil dipotong]" : combined;
+}
 
 /**
  * Builds a context block from the user's quiz attempt history.

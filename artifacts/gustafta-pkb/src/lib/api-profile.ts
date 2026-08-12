@@ -4,6 +4,30 @@
 
 const BASE = "/api";
 
+// ─── Plan & usage ─────────────────────────────────────────────────────────────
+
+export interface PlanInfo {
+  exumCredits: number;
+  freeExumUsed: boolean;
+  freeExumRemaining: number;
+  canGenerate: boolean;
+}
+
+export interface UsageInfo {
+  used: number;
+  limit: number;
+  remaining: number;
+  windowMs: number;
+}
+
+export async function getMyPlan(): Promise<PlanInfo> {
+  return f("/api/users/me/plan");
+}
+
+export async function getMyUsage(): Promise<UsageInfo> {
+  return f("/api/users/me/usage");
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface Profile {

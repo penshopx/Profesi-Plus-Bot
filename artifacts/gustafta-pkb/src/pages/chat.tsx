@@ -15,6 +15,7 @@ import {
   type Message, type EvidenceItem, type SkkUnit, type SocratiDialog,
 } from "@/lib/api";
 import { ExumOutlineEditor } from "@/components/ExumOutlineEditor";
+import { getMyUsage, getMyPlan } from "@/lib/api-profile";
 
 // ─── Markdown → HTML helpers (module-level, used by print & HTML export) ──────
 function mdEsc(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -1181,6 +1182,20 @@ export default function ChatPage() {
   });
   const activePersona = personaData?.personas.find((p) => p.id === conv?.personaId);
 
+  // Message usage — refreshed after each send so the indicator stays current
+  const { data: usage } = useQuery({
+    queryKey: ["my-usage"],
+    queryFn: getMyUsage,
+    staleTime: 60 * 1000,         // 1-minute cache
+    refetchInterval: 5 * 60 * 1000, // background refresh every 5 min
+  });
+
+  const { data: plan } = useQuery({
+    queryKey: ["my-plan"],
+    queryFn: getMyPlan,
+    staleTime: 5 * 60 * 1000,
+  });
+
   useEffect(() => {
     if (conv?.phase) setCurrentPhase(conv.phase);
   }, [conv?.phase]);
@@ -1808,7 +1823,31 @@ export default function ChatPage() {
             {streaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
           </button>
         </div>
-        <p className="text-center text-[11px] text-muted-foreground mt-2">
+        {/* Usage + credit indicators */}
+        <div className="flex items-center justify-between mt-2 px-0.5">
+          {usage ? (() => {
+            const pct = usage.remaining / usage.limit;
+            const low = usage.remaining <= 5;
+            const veryLow = usage.remaining <= 2;
+            return (
+              <span className={`text-[11px] tabular-nums ${veryLow ? "text-red-500 font-medium" : low ? "text-amber-500" : "text-muted-foreground"}`}>
+                {veryLow ? "⚠ " : low ? "⚠ " : ""}
+                {usage.remaining}/{usage.limit} pesan/jam
+              </span>
+            );
+          })() : <span />}
+          {plan && !plan.canGenerate && (
+            <span className="text-[11px] text-amber-500">Kredit Exum habis</span>
+          )}
+          {plan && plan.canGenerate && (
+            <span className="text-[11px] text-muted-foreground">
+              {plan.freeExumUsed
+                ? `Kredit Exum: ${plan.exumCredits}`
+                : `Exum gratis tersedia`}
+            </span>
+          )}
+        </div>
+        <p className="text-center text-[11px] text-muted-foreground mt-1">
           Dijawab oleh AI · Periksa kembali sebelum digunakan · Nilai Exum: maks. 25 SKPK
         </p>
       </div>

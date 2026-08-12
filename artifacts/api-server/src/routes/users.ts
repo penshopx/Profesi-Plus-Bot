@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, users, usageEvents } from "@workspace/db";
+import { db, users, usageEvents, messages, conversations } from "@workspace/db";
 import { eq, and, count, gte } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { FREE_EXUM_LIFETIME } from "../lib/plans";
@@ -20,6 +20,41 @@ router.get("/users/me/plan", requireAuth, async (req, res) => {
     freeExumRemaining,
     canGenerate: u.exumCredits > 0 || freeExumRemaining > 0,
   });
+});
+
+/**
+ * Returns how many chat messages the user has sent in the last hour,
+ * plus the limit for their plan, so the frontend can show a usage indicator.
+ *
+ * Note: counts outbound user messages in the DB (role='user'), which is a faithful
+ * proxy for rate-limiter hits. The in-memory limiter resets independently but the
+ * delta is negligible for a progress indicator.
+ */
+router.get("/users/me/usage", requireAuth, async (req, res) => {
+  const uid = req.dbUser!.id;
+  const isPro = req.dbUser!.plan === "pro" &&
+    (!req.dbUser!.planExpiresAt || new Date(req.dbUser!.planExpiresAt) > new Date());
+  const limit = isPro ? 120 : 30;
+
+  const windowStart = new Date(Date.now() - 60 * 60 * 1000); // last 1 hour
+
+  // Count user-role messages in conversations owned by this user in the last hour
+  const result = await db
+    .select({ cnt: count() })
+    .from(messages)
+    .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+    .where(
+      and(
+        eq(conversations.userId, uid),
+        eq(messages.role, "user"),
+        gte(messages.createdAt, windowStart),
+      ),
+    );
+
+  const used = Number(result[0]?.cnt ?? 0);
+  const remaining = Math.max(0, limit - used);
+
+  res.json({ used, limit, remaining, windowMs: 60 * 60 * 1000 });
 });
 
 router.patch("/users/me/role", requireAuth, async (req, res) => {

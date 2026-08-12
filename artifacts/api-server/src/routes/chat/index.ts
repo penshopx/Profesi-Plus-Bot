@@ -6,7 +6,7 @@ import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL, callWithFal
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
 import { buildKnowledgeContext } from "../../lib/knowledge-base";
 import { buildProjectBrainContext } from "../../lib/project-brain";
-import { buildHistoricalPKBContext, buildCompetencyAnalysisContext, buildQuizContext } from "../../lib/historical-pkb";
+import { buildHistoricalPKBContext, buildCompetencyAnalysisContext, buildQuizContext, buildProfileContext } from "../../lib/historical-pkb";
 import { recommendPersona, isKnownPersona, isConfidentJabkerMatch, DEFAULT_PERSONA_ID } from "../../lib/personas";
 import { findJabkerGroup } from "../../lib/skk-data";
 import { requireAuth } from "../../middlewares/auth";
@@ -242,16 +242,17 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     .orderBy(asc(evidenceItems.createdAt));
 
   const lastUserMsg = [...existingMsgs].reverse().find((m: { role: string; content: string }) => m.role === "user")?.content ?? null;
-  const [knowledgeContext, projectBrainContext, historicalPKBContext, competencyContext, quizContext] = await Promise.all([
+  const [knowledgeContext, projectBrainContext, historicalPKBContext, competencyContext, quizContext, profileContext] = await Promise.all([
     buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: lastUserMsg }),
     buildProjectBrainContext(req.dbUser!.id),
     buildHistoricalPKBContext(req.dbUser!.id, convId),
     buildCompetencyAnalysisContext(req.dbUser!.id),
     buildQuizContext(req.dbUser!.id),
+    buildProfileContext(req.dbUser!.id),
   ]);
   const systemPrompt = buildSystemPrompt(
     conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence,
-    knowledgeContext + projectBrainContext + historicalPKBContext + competencyContext + quizContext,
+    knowledgeContext + projectBrainContext + historicalPKBContext + competencyContext + quizContext + profileContext,
     conv.personaId,
     req.dbUser!.name,
   );
@@ -422,12 +423,13 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       .map((m) => `${m.role === "user" ? "TKK" : "Pak Budi"}: ${m.content}`)
       .join("\n\n");
 
-    const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency, exumQuiz, approvedOutlineRow] = await Promise.all([
+    const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency, exumQuiz, exumProfile, approvedOutlineRow] = await Promise.all([
       buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: conv.jabker }),
       buildProjectBrainContext(req.dbUser!.id),
       buildHistoricalPKBContext(req.dbUser!.id, conversationId),
       buildCompetencyAnalysisContext(req.dbUser!.id),
       buildQuizContext(req.dbUser!.id),
+      buildProfileContext(req.dbUser!.id),
       db.select().from(exumOutlines)
         .where(and(eq(exumOutlines.conversationId, convId), eq(exumOutlines.isApproved, true)))
         .then((rows) => rows[0] ?? null),
@@ -447,7 +449,7 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
 
     const exumPrompt = buildExumPrompt(
       conv.mode, conv.jabker, conv.jenjang, transcript, evidence,
-      exumKnowledge + exumProjectBrain + exumHistorical + exumCompetency + exumQuiz + outlineContext,
+      exumKnowledge + exumProjectBrain + exumHistorical + exumCompetency + exumQuiz + exumProfile + outlineContext,
       req.dbUser!.name,
     );
 
