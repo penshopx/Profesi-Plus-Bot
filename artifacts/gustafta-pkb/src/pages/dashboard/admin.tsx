@@ -5,7 +5,7 @@ import { useState } from "react";
 import {
   LayoutDashboard, LogOut, Users, Video, MessageSquare,
   CheckCircle2, ChevronDown, Search, BookOpen, Plus, Pencil, Trash2, X, Sparkles, Award,
-  ClipboardList, ChevronUp, ToggleLeft, ToggleRight, AlertCircle,
+  ClipboardList, ChevronUp, ToggleLeft, ToggleRight, AlertCircle, BarChart2, Loader2,
 } from "lucide-react";
 import {
   listAllUsers, updateUserRole, listVideos, type VideoItem, type DbUser,
@@ -14,7 +14,8 @@ import {
 } from "@/lib/api";
 import {
   listAdminQuizzes, adminCreateQuiz, adminUpdateQuiz, adminDeleteQuiz, adminGenerateQuestions,
-  type QuizFullAdmin, type QuizQuestionAdmin, type QuizCreateInput,
+  getAdminQuizStats,
+  type QuizFullAdmin, type QuizQuestionAdmin, type QuizCreateInput, type QuizStats,
 } from "@/lib/api-profile";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -53,6 +54,7 @@ export default function DashboardAdmin() {
   const [kbEditing, setKbEditing] = useState<KbEntry | null>(null);
   const [quizModalOpen, setQuizModalOpen] = useState(false);
   const [quizEditing, setQuizEditing] = useState<QuizFullAdmin | null>(null);
+  const [quizStatsId, setQuizStatsId] = useState<number | null>(null);
 
   const { data: users = [], isLoading: usersLoading } = useQuery({
     queryKey: ["admin-users"],
@@ -364,6 +366,12 @@ export default function DashboardAdmin() {
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button
+                        onClick={() => setQuizStatsId(q.id)}
+                        className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" title="Statistik"
+                      >
+                        <BarChart2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
                         onClick={() => quizToggleMut.mutate({ id: q.id, isActive: !q.isActive })}
                         disabled={quizToggleMut.isPending}
                         className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
@@ -415,6 +423,131 @@ export default function DashboardAdmin() {
           onSaved={() => { invalidateQuiz(); setQuizModalOpen(false); setQuizEditing(null); }}
         />
       )}
+
+      {quizStatsId !== null && (
+        <QuizStatsModal quizId={quizStatsId} onClose={() => setQuizStatsId(null)} />
+      )}
+    </div>
+  );
+}
+
+// ─── Quiz Stats Modal ─────────────────────────────────────────────────────────
+
+function QuizStatsModal({ quizId, onClose }: { quizId: number; onClose: () => void }) {
+  const { data: stats, isLoading, error } = useQuery<QuizStats>({
+    queryKey: ["admin-quiz-stats", quizId],
+    queryFn: () => getAdminQuizStats(quizId),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-2xl my-8 shadow-xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <BarChart2 className="w-4 h-4 text-indigo-500" />
+            <h2 className="text-sm font-semibold text-foreground">
+              {stats?.title ?? "Statistik Quiz"}
+            </h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          {isLoading && (
+            <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" /> Memuat statistik…
+            </div>
+          )}
+
+          {error && (
+            <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3">
+              Gagal memuat statistik.
+            </div>
+          )}
+
+          {stats && (
+            <>
+              {/* Summary row */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: "Total Percobaan", value: stats.totalAttempts },
+                  { label: "Lulus", value: stats.passCount, cls: "text-emerald-600" },
+                  { label: "Pass Rate", value: `${stats.passRate}%`, cls: stats.passRate >= 70 ? "text-emerald-600" : stats.passRate >= 40 ? "text-amber-600" : "text-rose-600" },
+                ].map((s) => (
+                  <div key={s.label} className="bg-muted/40 rounded-xl p-3 text-center">
+                    <p className={`text-xl font-bold ${s.cls ?? "text-foreground"}`}>{s.value}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {stats.totalAttempts === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Belum ada peserta yang mengerjakan quiz ini.
+                </p>
+              )}
+
+              {/* Per-question breakdown */}
+              {stats.totalAttempts > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Soal — Diurutkan dari yang paling banyak salah
+                  </h3>
+                  {stats.questions.map((q, idx) => {
+                    const total = stats.totalAttempts;
+                    return (
+                      <div key={q.id} className="border border-border rounded-xl p-4 space-y-3">
+                        <div className="flex items-start gap-2">
+                          <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            q.failRate >= 60 ? "bg-rose-100 text-rose-600"
+                            : q.failRate >= 30 ? "bg-amber-100 text-amber-700"
+                            : "bg-emerald-100 text-emerald-700"
+                          }`}>
+                            {q.failRate}% salah
+                          </span>
+                          <p className="text-sm text-foreground leading-snug">
+                            {idx + 1}. {q.text}
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          {q.options.map((opt) => {
+                            const count = q.optionCounts[opt.id] ?? 0;
+                            const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                            const isCorrect = opt.id === q.correctId;
+                            return (
+                              <div key={opt.id} className="flex items-center gap-2">
+                                <span className={`text-[10px] font-mono w-5 shrink-0 ${isCorrect ? "text-emerald-600 font-bold" : "text-muted-foreground"}`}>
+                                  {opt.id.toUpperCase()}
+                                </span>
+                                <div className="flex-1 relative h-5 rounded-md bg-muted overflow-hidden">
+                                  <div
+                                    className={`absolute inset-y-0 left-0 rounded-md transition-all ${isCorrect ? "bg-emerald-400/60" : "bg-rose-300/50"}`}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                  <span className="absolute inset-y-0 left-2 flex items-center text-[11px] text-foreground/80 truncate pr-2">
+                                    {opt.text}
+                                  </span>
+                                </div>
+                                <span className="text-[11px] text-muted-foreground w-12 text-right shrink-0">
+                                  {count}× ({pct}%)
+                                </span>
+                                {isCorrect && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -260,6 +260,35 @@ export async function adminGenerateQuestions(params: {
   return (await f("/quizzes/generate", { method: "POST", body: JSON.stringify(params) })).json();
 }
 
+export interface QuizOptionStat {
+  id: string;
+  text: string;
+}
+
+export interface QuizQuestionStat {
+  id: string;
+  text: string;
+  options: QuizOptionStat[];
+  correctId: string;
+  optionCounts: Record<string, number>;
+  failRate: number;
+}
+
+export interface QuizStats {
+  quizId: number;
+  title: string;
+  totalAttempts: number;
+  passCount: number;
+  passRate: number;
+  questions: QuizQuestionStat[];
+}
+
+export async function getAdminQuizStats(quizId: number): Promise<QuizStats> {
+  const res = await f(`/quizzes/admin/stats/${quizId}`);
+  if (!res.ok) throw new Error("Gagal memuat statistik quiz");
+  return res.json();
+}
+
 // ─── Exum Outline ─────────────────────────────────────────────────────────────
 
 export async function getExumOutline(conversationId: number): Promise<ExumOutline> {

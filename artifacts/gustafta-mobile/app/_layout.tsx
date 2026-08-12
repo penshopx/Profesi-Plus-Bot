@@ -184,6 +184,24 @@ function RootLayoutNav() {
     }
   }, [isSignedIn, getToken]);
 
+  // Re-register silently whenever the device push token changes (OS upgrade,
+  // device reset, app reinstall) so the server always holds a valid token.
+  useEffect(() => {
+    if (!isSignedIn) return;
+    const subscription = Notifications.addPushTokenListener(async ({ data: newToken }) => {
+      try {
+        const authToken = await getToken();
+        if (authToken && newToken) {
+          await registerPushToken(newToken, authToken);
+          if (__DEV__) console.log('[push] Token refreshed silently:', newToken);
+        }
+      } catch (err) {
+        if (__DEV__) console.warn('[push] Silent token refresh failed:', err);
+      }
+    });
+    return () => subscription.remove();
+  }, [isSignedIn, getToken]);
+
   // Handle notification taps: deep-link to the chat screen and open the Exum modal.
   useEffect(() => {
     // ── Cold-start case ──────────────────────────────────────────────────────

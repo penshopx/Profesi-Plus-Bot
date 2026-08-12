@@ -603,6 +603,39 @@ export async function deleteCompetencyAnalysis(id: number): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete analysis");
 }
 
+// ─── Quiz ─────────────────────────────────────────────────────────────────────
+
+export interface QuizSummary {
+  id: number;
+  title: string;
+  jabker: string | null;
+  skkUnitCode: string | null;
+  quizType: string;
+  passingScore: number;
+}
+
+export interface QuizAttemptSummary {
+  quizId: number;
+  attemptType: string;
+  scorePercent: number;
+  passed: boolean;
+  completedAt: string;
+}
+
+/** List active quizzes for a specific jabker ID. */
+export async function listQuizzesByJabker(jabker: string): Promise<QuizSummary[]> {
+  const res = await f(`/quizzes?jabker=${encodeURIComponent(jabker)}`);
+  if (!res.ok) throw new Error("Failed to fetch quizzes");
+  return res.json();
+}
+
+/** User's own quiz attempt history (all quizzes). */
+export async function getMyQuizAttempts(): Promise<QuizAttemptSummary[]> {
+  const res = await f("/quizzes/my-attempts");
+  if (!res.ok) throw new Error("Failed to fetch quiz attempts");
+  return res.json();
+}
+
 // ─── Videos ───────────────────────────────────────────────────────────────────
 
 export interface VideoUploader {

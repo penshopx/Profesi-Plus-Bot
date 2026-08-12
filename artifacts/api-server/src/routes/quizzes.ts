@@ -161,6 +161,55 @@ router.delete("/quizzes/:id", requireAuth, requireRole("admin"), async (req, res
   res.json({ ok: true });
 });
 
+/** Quiz performance statistics — aggregates all attempts to show per-question failure rates */
+router.get("/quizzes/admin/stats/:id", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
+  const quizId = Number(req.params.id);
+  const [quiz] = await db.select().from(quizzes).where(eq(quizzes.id, quizId));
+  if (!quiz) { res.status(404).json({ error: "Quiz tidak ditemukan" }); return; }
+
+  const attempts = await db.select().from(quizAttempts).where(eq(quizAttempts.quizId, quizId));
+  const questions = quiz.questions as QuizQuestion[];
+
+  const totalAttempts = attempts.length;
+  const passCount = attempts.filter((a) => a.passed).length;
+
+  const questionStats = questions.map((q) => {
+    // Initialize counts for every option
+    const optionCounts: Record<string, number> = {};
+    q.options.forEach((o) => { optionCounts[o.id] = 0; });
+
+    let incorrectCount = 0;
+    for (const attempt of attempts) {
+      const selected = (attempt.answers as Record<string, string>)?.[q.id];
+      if (selected !== undefined && optionCounts[selected] !== undefined) {
+        optionCounts[selected]++;
+      }
+      if (selected !== q.correctId) incorrectCount++;
+    }
+
+    return {
+      id: q.id,
+      text: q.text,
+      options: q.options,
+      correctId: q.correctId,
+      optionCounts,
+      failRate: totalAttempts > 0 ? Math.round((incorrectCount / totalAttempts) * 100) : 0,
+    };
+  });
+
+  // Sort by failure rate descending so problem questions surface first
+  questionStats.sort((a, b) => b.failRate - a.failRate);
+
+  res.json({
+    quizId,
+    title: quiz.title,
+    totalAttempts,
+    passCount,
+    passRate: totalAttempts > 0 ? Math.round((passCount / totalAttempts) * 100) : 0,
+    questions: questionStats,
+  });
+});
+
 /**
  * AI-generate quiz questions for a given jabker + SKK unit.
  * Returns 10 questions (5 for short quizzes) without saving — admin reviews before saving.

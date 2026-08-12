@@ -10,12 +10,14 @@ import {
   getCompetencyAnalysis,
   analyzeCompetency,
   deleteCompetencyAnalysis,
+  listQuizzesByJabker,
+  getMyQuizAttempts,
   type CompetencyAnalysisFull,
   type CompetencyUnitStatus,
 } from "@/lib/api";
 import {
   Target, ArrowLeft, Sparkles, Brain, CheckCircle2, AlertTriangle,
-  XCircle, Trash2, Loader2, Lightbulb, TrendingUp, ChevronDown, History,
+  XCircle, Trash2, Loader2, Lightbulb, TrendingUp, ChevronDown, History, BookOpen,
 } from "lucide-react";
 
 const STATUS_META: Record<CompetencyUnitStatus, { label: string; icon: typeof CheckCircle2; cls: string; dot: string }> = {
@@ -53,6 +55,18 @@ export default function StudioPage() {
   const { data: modelData } = useQuery({ queryKey: ["models"], queryFn: listModels });
   const { data: brain = [] } = useQuery({ queryKey: ["project-brain"], queryFn: listProjectBrain });
   const { data: history = [], fetchStatus } = useQuery({ queryKey: ["competency-analyses"], queryFn: listCompetencyAnalyses });
+  const { data: jabkerQuizzes = [] } = useQuery({
+    queryKey: ["quizzes-by-jabker", jabker],
+    queryFn: () => listQuizzesByJabker(jabker),
+    enabled: !!jabker,
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: myAttempts = [] } = useQuery({
+    queryKey: ["my-quiz-attempts"],
+    queryFn: getMyQuizAttempts,
+    enabled: !!jabker,
+    staleTime: 2 * 60 * 1000,
+  });
 
   // True when the list is showing stale/cached data because the network is unavailable
   const showingCached = !isOnline && history.length > 0;
@@ -87,6 +101,20 @@ export default function StudioPage() {
       setError("Gagal memuat analisis.");
     }
   }
+
+  // Quiz coverage: quizzes for this jabker whose SKK unit has no passing attempt,
+  // AND that unit is not already fully covered in the active analysis.
+  const quizGaps = useMemo(() => {
+    if (!jabkerQuizzes.length) return [];
+    const passedQuizIds = new Set(myAttempts.filter((a) => a.passed).map((a) => a.quizId));
+    const coveredSkk = new Set(
+      (active?.result.units ?? []).filter((u) => u.status === "covered").map((u) => u.code)
+    );
+    return jabkerQuizzes.filter((q) =>
+      !passedQuizIds.has(q.id) &&
+      !(q.skkUnitCode && coveredSkk.has(q.skkUnitCode))
+    );
+  }, [jabkerQuizzes, myAttempts, active]);
 
   const counts = useMemo(() => {
     const u = active?.result.units ?? [];
@@ -240,6 +268,38 @@ export default function StudioPage() {
                 <span className="text-white/60">dari {counts.total} unit SKK</span>
               </div>
             </div>
+
+            {/* Quiz evidence nudge — shown when passing quizzes exist for uncovered SKK units */}
+            {quizGaps.length > 0 && (
+              <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                <BookOpen className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-rose-800">
+                    {quizGaps.length} unit SKK belum ada bukti kuis
+                  </p>
+                  <p className="text-xs text-rose-700 mt-1 leading-relaxed">
+                    Kerjakan kuis berikut agar Pak Budi punya bukti nyata saat menyusun Exum Anda:
+                  </p>
+                  <ul className="mt-2 space-y-0.5">
+                    {quizGaps.slice(0, 5).map((q) => (
+                      <li key={q.id} className="text-xs text-rose-700 flex gap-1.5 items-baseline">
+                        <span className="shrink-0 text-rose-400">•</span>
+                        <span>{q.title}{q.skkUnitCode ? <span className="font-mono text-[10px] ml-1 opacity-60">{q.skkUnitCode}</span> : null}</span>
+                      </li>
+                    ))}
+                    {quizGaps.length > 5 && (
+                      <li className="text-[11px] text-rose-500 ml-3">… dan {quizGaps.length - 5} kuis lainnya</li>
+                    )}
+                  </ul>
+                </div>
+                <a
+                  href="/quiz"
+                  className="shrink-0 text-xs font-semibold bg-rose-500 text-white px-3 py-2 rounded-xl hover:bg-rose-600 transition-colors"
+                >
+                  Buka Kuis
+                </a>
+              </div>
+            )}
 
             {/* Gaps + recommendations */}
             <div className="grid md:grid-cols-2 gap-4">
