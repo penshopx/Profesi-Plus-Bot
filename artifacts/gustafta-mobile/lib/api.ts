@@ -213,6 +213,9 @@ export async function streamMessage(
 
 export interface UsageInfo {
   resetAt: string | null;
+  /** Server wall-clock at response time. Use to compute accurate countdown
+   *  independent of device clock skew. */
+  serverNow: string;
   used: number;
   limit: number;
   remaining: number;

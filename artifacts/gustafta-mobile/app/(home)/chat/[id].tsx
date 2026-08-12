@@ -436,6 +436,27 @@ export default function ChatScreen() {
     refetchInterval: 5 * 60 * 1000,
   });
 
+  // Countdown timer — uses serverNow so it's accurate even when device clock differs (#91 + #92)
+  const [countdown, setCountdown] = useState<string | null>(null);
+  const usageFetchedAt = useRef<number>(0);
+  useEffect(() => {
+    if (!usageInfo?.resetAt || !usageInfo.serverNow) { setCountdown(null); return; }
+    usageFetchedAt.current = Date.now();
+    const resetDelay =
+      new Date(usageInfo.resetAt).getTime() - new Date(usageInfo.serverNow).getTime();
+    const tick = () => {
+      const msLeft = Math.max(0, resetDelay - (Date.now() - usageFetchedAt.current));
+      if (msLeft <= 0) { setCountdown(null); return; }
+      const totalSec = Math.ceil(msLeft / 1000);
+      const mm = Math.floor(totalSec / 60).toString().padStart(2, '0');
+      const ss = (totalSec % 60).toString().padStart(2, '0');
+      setCountdown(`${mm}:${ss}`);
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [usageInfo?.resetAt, usageInfo?.serverNow]);
+
   const recordingRef = useRef<Audio.Recording | null>(null);
   const { getToken } = useAuth();
 
@@ -1030,12 +1051,16 @@ export default function ChatScreen() {
                 ]}
               >
                 {usageInfo.remaining}/{usageInfo.limit} pesan/jam
-                {usageInfo.resetAt ? (() => {
-                  const d = new Date(usageInfo.resetAt);
-                  const hh = d.getHours().toString().padStart(2, '0');
-                  const mm = d.getMinutes().toString().padStart(2, '0');
-                  return ` · reset ${hh}:${mm}`;
-                })() : null}
+                {usageInfo.remaining <= 0 && countdown
+                  ? ` · reset dalam ${countdown}`
+                  : usageInfo.resetAt
+                    ? (() => {
+                        const d = new Date(usageInfo.resetAt);
+                        const hh = d.getHours().toString().padStart(2, '0');
+                        const mm = d.getMinutes().toString().padStart(2, '0');
+                        return ` · reset ${hh}:${mm}`;
+                      })()
+                    : null}
               </Text>
             </View>
           )}

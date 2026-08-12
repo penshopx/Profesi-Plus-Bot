@@ -18,6 +18,11 @@ export interface UsageInfo {
   limit: number;
   remaining: number;
   windowMs: number;
+  /** ISO timestamp of when the oldest in-window message expires — i.e. when the limit resets. */
+  resetAt: string | null;
+  /** Server wall-clock at the moment of the response. Use to compute an accurate countdown
+   *  that is independent of the client's device clock. */
+  serverNow: string;
 }
 
 export async function getMyPlan(): Promise<PlanInfo> {

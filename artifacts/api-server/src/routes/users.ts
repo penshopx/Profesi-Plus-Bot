@@ -52,7 +52,9 @@ router.get("/users/me/usage", requireAuth, async (req, res) => {
   // resetTime is the moment the current window expires and the counter resets.
   const resetAt   = storeInfo?.resetTime?.toISOString() ?? null;
 
-  res.json({ used, limit, remaining, resetAt });
+  // serverNow lets clients compute an accurate countdown regardless of device clock skew.
+  const serverNow = new Date().toISOString();
+  res.json({ used, limit, remaining, resetAt, serverNow });
 });
 
 // Credit balance + purchase history for the authenticated user.

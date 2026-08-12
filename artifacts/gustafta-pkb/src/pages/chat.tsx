@@ -1203,6 +1203,27 @@ export default function ChatPage() {
     refetchInterval: 5 * 60 * 1000, // background refresh every 5 min
   });
 
+  // ── Countdown timer for when messages are exhausted (#91 + #92) ──────────
+  // Uses serverNow (not device clock) so the countdown is accurate even when
+  // the user's device clock differs from the server (#92).
+  const [countdown, setCountdown] = useState<string | null>(null);
+  const usageFetchedAt = useRef<number>(0);
+  useEffect(() => {
+    if (!usage?.resetAt || !usage.serverNow) { setCountdown(null); return; }
+    usageFetchedAt.current = Date.now();
+    const resetDelay = new Date(usage.resetAt).getTime() - new Date(usage.serverNow).getTime();
+    const tick = () => {
+      const msLeft = Math.max(0, resetDelay - (Date.now() - usageFetchedAt.current));
+      const totalSec = Math.ceil(msLeft / 1000);
+      const mm = Math.floor(totalSec / 60).toString().padStart(2, "0");
+      const ss = (totalSec % 60).toString().padStart(2, "0");
+      setCountdown(msLeft <= 0 ? null : `${mm}:${ss}`);
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [usage?.resetAt, usage?.serverNow]);
+
   const { data: plan } = useQuery({
     queryKey: ["my-plan"],
     queryFn: getMyPlan,
@@ -1951,7 +1972,11 @@ export default function ChatPage() {
               {exhausted && (
                 <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium border bg-red-50 border-red-200 text-red-700">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>Batas pesan tercapai. Limit reset pukul {resetStr}.</span>
+                  <span>
+                    {countdown
+                      ? <>Batas pesan tercapai. Reset dalam <span className="font-mono tabular-nums">{countdown}</span>.</>
+                      : <>Batas pesan tercapai. Limit reset pukul {resetStr}.</>}
+                  </span>
                   {usage.limit <= 30 && (
                     <a href="/kredits" className="ml-auto shrink-0 underline underline-offset-2 hover:opacity-80">Upgrade Pro →</a>
                   )}
