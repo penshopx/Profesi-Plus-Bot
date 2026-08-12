@@ -16,6 +16,7 @@ import {
   Youtube, Video, Monitor, BookOpen, X, ExternalLink, CheckCircle2,
   Filter, Tag, Zap, TrendingUp, Gift, ChevronRight, Play,
   Bot, UserCheck, MessageSquare, ThumbsUp, AlertCircle, Sparkles,
+  Share2, Copy, Check, Mail, Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -818,6 +819,193 @@ function StarRow({ rating, count }: { rating: number; count: number }) {
   );
 }
 
+// ─── Share helpers ────────────────────────────────────────────────────────────
+
+function buildShareText(course: Course, mode: "full" | "short" = "full"): string {
+  const price = course.price === "gratis" ? "✅ GRATIS" : `💰 ${fmtRp(course.priceIdr!)}`;
+  const jabkerStr = course.jabker.map((j) => JABKER_LABELS[j] ?? j).join(", ");
+  const skkStr = course.skkTags.slice(0, 3).map((t) => `• ${t.code} — ${t.name}`).join("\n");
+  const reviews = COURSE_REVIEWS[course.id];
+  const askomStr = reviews?.askomReview
+    ? reviews.askomReview.recommendation === "direkomendasikan"
+      ? "✅ Direkomendasikan ASKOM BNSP"
+      : reviews.askomReview.recommendation === "direkomendasikan_dengan_catatan"
+      ? "⚠️ Direkomendasikan ASKOM (dengan catatan)"
+      : ""
+    : "";
+
+  if (mode === "short") {
+    return `🎓 *${course.title}*\n${course.provider} · ${fmt(course.durationMinutes)} · ${price}\n\n${course.url}`;
+  }
+
+  return [
+    `🎓 *${course.title}*`,
+    ``,
+    `📋 Provider: ${course.providerLogo ?? ""} ${course.provider}`,
+    `⏱ ${fmt(course.durationMinutes)} | ${course.videoCount} video${course.quizCount > 0 ? ` | ${course.quizCount} kuis` : ""}${course.hasCertificate ? " | 🏅 Sertifikat" : ""}`,
+    price,
+    ``,
+    `📌 Unit SKK yang dicakup:`,
+    skkStr,
+    ``,
+    `👷 Cocok untuk: ${jabkerStr}`,
+    askomStr ? `\n${askomStr}` : "",
+    ``,
+    `Tonton, lalu ceritakan ke Pak Budi (asisten PKB Gustafta) untuk dijadikan bukti PKB resmi! 📝`,
+    ``,
+    `🔗 ${course.url}`,
+  ].filter((l) => l !== undefined).join("\n");
+}
+
+interface SharePlatform {
+  id: string;
+  label: string;
+  icon: string;        // emoji / SVG path
+  color: string;
+  build: (text: string, url: string) => string | null;
+}
+
+const SHARE_PLATFORMS: SharePlatform[] = [
+  {
+    id: "whatsapp", label: "WhatsApp", icon: "💬", color: "bg-[#25D366] hover:bg-[#20bd5a] text-white",
+    build: (text) => `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`,
+  },
+  {
+    id: "telegram", label: "Telegram", icon: "✈️", color: "bg-[#229ED9] hover:bg-[#1a8fbf] text-white",
+    build: (text, url) => `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
+  },
+  {
+    id: "twitter", label: "X / Twitter", icon: "𝕏", color: "bg-black hover:bg-zinc-800 text-white",
+    build: (_, url) => `https://twitter.com/intent/tweet?text=${encodeURIComponent("Rekomendasi modul PKB untuk TKK konstruksi 👷")}&url=${encodeURIComponent(url)}`,
+  },
+  {
+    id: "linkedin", label: "LinkedIn", icon: "in", color: "bg-[#0A66C2] hover:bg-[#095baa] text-white",
+    build: (_, url) => `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
+  },
+  {
+    id: "email", label: "Email", icon: "✉️", color: "bg-muted hover:bg-muted/80 text-foreground border border-border",
+    build: (text, url) => `mailto:?subject=${encodeURIComponent("Rekomendasi Modul PKB Konstruksi")}&body=${encodeURIComponent(text + "\n\n" + url)}`,
+  },
+];
+
+function ShareModal({ course, onClose }: { course: Course; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const [format, setFormat] = useState<"full" | "short">("full");
+  const shareText = buildShareText(course, format);
+  const canNativeShare = typeof navigator !== "undefined" && !!navigator.share;
+
+  async function copyText() {
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // fallback: select all in textarea
+    }
+  }
+
+  async function nativeShare() {
+    try {
+      await navigator.share({ title: course.title, text: shareText, url: course.url });
+    } catch {/* user cancelled */}
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-150 p-4">
+      <div className="w-full max-w-md bg-background rounded-2xl shadow-2xl border border-border flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden">
+        {/* Modal header */}
+        <div className={`bg-gradient-to-br ${course.thumbnail} px-5 py-4 text-white flex items-start justify-between`}>
+          <div>
+            <div className="text-xs text-white/70 mb-0.5">{course.provider}</div>
+            <h3 className="font-bold text-sm leading-snug line-clamp-2">{course.title}</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 bg-black/25 rounded-full flex items-center justify-center hover:bg-black/40 ml-3 shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Format toggle */}
+          <div className="flex gap-1 bg-muted/40 rounded-xl p-1 text-xs">
+            {(["full", "short"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFormat(f)}
+                className={`flex-1 py-1.5 rounded-lg font-medium transition-colors ${format === f ? "bg-background shadow text-foreground" : "text-muted-foreground"}`}
+              >
+                {f === "full" ? "Pesan lengkap" : "Pesan singkat"}
+              </button>
+            ))}
+          </div>
+
+          {/* Preview */}
+          <div className="relative">
+            <textarea
+              readOnly
+              value={shareText}
+              rows={format === "full" ? 10 : 4}
+              className="w-full rounded-xl border border-border bg-muted/30 text-xs leading-relaxed p-3 resize-none font-mono focus:outline-none"
+            />
+            <button
+              onClick={copyText}
+              className={`absolute top-2 right-2 flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg transition-colors ${
+                copied ? "bg-emerald-100 text-emerald-700" : "bg-background border border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {copied ? <><Check className="w-3 h-3" /> Tersalin!</> : <><Copy className="w-3 h-3" /> Salin</>}
+            </button>
+          </div>
+
+          {/* Platform buttons */}
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-2">Bagikan ke</p>
+            <div className="grid grid-cols-3 gap-2">
+              {SHARE_PLATFORMS.map((p) => {
+                const href = p.build(shareText, course.url);
+                return (
+                  <a
+                    key={p.id}
+                    href={href ?? "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`flex flex-col items-center gap-1.5 py-3 rounded-xl text-xs font-semibold transition-all hover:scale-105 active:scale-95 ${p.color}`}
+                  >
+                    <span className="text-lg leading-none">{p.icon}</span>
+                    {p.label}
+                  </a>
+                );
+              })}
+
+              {/* Copy link */}
+              <button
+                onClick={copyText}
+                className="flex flex-col items-center gap-1.5 py-3 rounded-xl text-xs font-semibold bg-muted hover:bg-muted/80 border border-border transition-all hover:scale-105 active:scale-95"
+              >
+                {copied ? <Check className="w-5 h-5 text-emerald-600" /> : <Copy className="w-5 h-5" />}
+                {copied ? "Tersalin!" : "Salin Teks"}
+              </button>
+
+              {/* Web Share API — mobile native */}
+              {canNativeShare && (
+                <button
+                  onClick={nativeShare}
+                  className="flex flex-col items-center gap-1.5 py-3 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all hover:scale-105 active:scale-95 col-span-3"
+                >
+                  <Send className="w-5 h-5" />
+                  Bagikan via... (aplikasi lain)
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Review helpers ───────────────────────────────────────────────────────────
 
 const REC_META: Record<AskomRecommendation, { label: string; color: string; icon: React.ElementType }> = {
@@ -1020,125 +1208,134 @@ function ReviewsSection({ reviews }: { reviews: CourseReviews }) {
 function CourseCard({ course, onClick }: { course: Course; onClick: () => void }) {
   const T = TYPE_META[course.type];
   const TIcon = T.icon;
+  const [shareOpen, setShareOpen] = useState(false);
 
   return (
-    <button
-      onClick={onClick}
-      className="group text-left rounded-2xl border border-border bg-card hover:border-primary/40 hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col"
-    >
-      {/* Thumbnail */}
-      <div className={`relative h-36 bg-gradient-to-br ${course.thumbnail} p-4 flex flex-col justify-between`}>
-        <div className="flex items-start justify-between">
-          <span className="flex items-center gap-1.5 bg-black/25 backdrop-blur-sm text-white text-[10px] font-semibold px-2 py-1 rounded-full">
-            <TIcon className="w-3 h-3" />
-            {T.label}
-          </span>
-          <div className="flex flex-col gap-1 items-end">
-            {course.isBestSeller && (
-              <span className="bg-amber-400 text-amber-900 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
-                ⭐ Best Seller
-              </span>
-            )}
-            {course.isNew && (
-              <span className="bg-green-400 text-green-900 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
-                Baru
-              </span>
-            )}
+    <div className="relative group">
+      {shareOpen && <ShareModal course={course} onClose={() => setShareOpen(false)} />}
+
+      {/* Share button — floats over card, visible on hover, NOT nested inside the card button */}
+      <button
+        onClick={() => setShareOpen(true)}
+        title="Bagikan modul"
+        className="absolute bottom-[50px] right-3 z-10 p-1.5 rounded-lg bg-background/90 border border-border text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:text-foreground shadow-sm"
+      >
+        <Share2 className="w-3.5 h-3.5" />
+      </button>
+
+      {/* Card — full clickable area */}
+      <button
+        onClick={onClick}
+        className="w-full text-left rounded-2xl border border-border bg-card group-hover:border-primary/40 group-hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col"
+      >
+        {/* Thumbnail */}
+        <div className={`relative h-36 bg-gradient-to-br ${course.thumbnail} p-4 flex flex-col justify-between`}>
+          <div className="flex items-start justify-between">
+            <span className="flex items-center gap-1.5 bg-black/25 backdrop-blur-sm text-white text-[10px] font-semibold px-2 py-1 rounded-full">
+              <TIcon className="w-3 h-3" />
+              {T.label}
+            </span>
+            <div className="flex flex-col gap-1 items-end">
+              {course.isBestSeller && (
+                <span className="bg-amber-400 text-amber-900 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+                  ⭐ Best Seller
+                </span>
+              )}
+              {course.isNew && (
+                <span className="bg-green-400 text-green-900 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+                  Baru
+                </span>
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="text-white/80 text-[10px]">{course.provider}</p>
+            <p className="text-white font-bold text-sm leading-tight line-clamp-2 drop-shadow">{course.title}</p>
           </div>
         </div>
-        <div>
-          <p className="text-white/80 text-[10px]">{course.provider}</p>
-          <p className="text-white font-bold text-sm leading-tight line-clamp-2 drop-shadow">{course.title}</p>
-        </div>
-      </div>
 
-      {/* Body */}
-      <div className="flex flex-col flex-1 p-3.5 gap-2.5">
-        {/* Rating */}
-        <StarRow rating={course.rating} count={course.ratingCount} />
+        {/* Body */}
+        <div className="flex flex-col flex-1 p-3.5 gap-2.5">
+          <StarRow rating={course.rating} count={course.ratingCount} />
 
-        {/* Stats */}
-        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{fmt(course.durationMinutes)}</span>
-          {course.videoCount > 0 && <span className="flex items-center gap-1"><PlayCircle className="w-3 h-3" />{course.videoCount} video</span>}
-          {course.quizCount > 0 && <span className="flex items-center gap-1"><FileCheck className="w-3 h-3" />{course.quizCount} kuis</span>}
-          {course.hasCertificate && <span className="flex items-center gap-1"><Award className="w-3 h-3 text-amber-500" />Sertifikat</span>}
-        </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{fmt(course.durationMinutes)}</span>
+            {course.videoCount > 0 && <span className="flex items-center gap-1"><PlayCircle className="w-3 h-3" />{course.videoCount} video</span>}
+            {course.quizCount > 0 && <span className="flex items-center gap-1"><FileCheck className="w-3 h-3" />{course.quizCount} kuis</span>}
+            {course.hasCertificate && <span className="flex items-center gap-1"><Award className="w-3 h-3 text-amber-500" />Sertifikat</span>}
+          </div>
 
-        {/* SKK tags */}
-        <div className="flex gap-1 flex-wrap">
-          {course.skkTags.slice(0, 2).map((t) => (
-            <span key={t.code} className="text-[10px] bg-primary/8 text-primary px-2 py-0.5 rounded-full border border-primary/20">
-              {t.code.split(".").slice(0, 4).join(".")}…
-            </span>
-          ))}
-          {course.skkTags.length > 2 && (
-            <span className="text-[10px] text-muted-foreground px-1">+{course.skkTags.length - 2} unit</span>
-          )}
-        </div>
-
-        {/* Jabker pills */}
-        <div className="flex gap-1 flex-wrap">
-          {course.jabker.slice(0, 2).map((j) => (
-            <span key={j} className={`text-[10px] px-2 py-0.5 rounded-full border ${JABKER_COLOR[j] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
-              {JABKER_LABELS[j] ?? j}
-            </span>
-          ))}
-        </div>
-
-        {/* ASKOM + AI review badges */}
-        {(() => {
-          const r = COURSE_REVIEWS[course.id];
-          if (!r) return null;
-          const avgR = avgAiRating(r.aiReviews);
-          const hasAskom = !!r.askomReview;
-          const rec = r.askomReview?.recommendation;
-          return (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="flex items-center gap-1 text-[10px] bg-muted border border-border text-muted-foreground px-2 py-0.5 rounded-full">
-                <Bot className="w-2.5 h-2.5" />
-                AI {avgR.toFixed(1)}★
+          <div className="flex gap-1 flex-wrap">
+            {course.skkTags.slice(0, 2).map((t) => (
+              <span key={t.code} className="text-[10px] bg-primary/8 text-primary px-2 py-0.5 rounded-full border border-primary/20">
+                {t.code.split(".").slice(0, 4).join(".")}…
               </span>
-              {hasAskom && (
-                <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium ${
-                  rec === "direkomendasikan" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                  rec === "direkomendasikan_dengan_catatan" ? "bg-amber-50 text-amber-700 border-amber-200" :
-                  "bg-red-50 text-red-700 border-red-200"
-                }`}>
-                  <UserCheck className="w-2.5 h-2.5" />
-                  {rec === "direkomendasikan" ? "ASKOM ✓" :
-                   rec === "direkomendasikan_dengan_catatan" ? "ASKOM ⚠" : "ASKOM ✗"}
-                </span>
-              )}
-            </div>
-          );
-        })()}
+            ))}
+            {course.skkTags.length > 2 && (
+              <span className="text-[10px] text-muted-foreground px-1">+{course.skkTags.length - 2} unit</span>
+            )}
+          </div>
 
-        {/* Price */}
-        <div className="mt-auto pt-1 flex items-center justify-between">
-          {course.price === "gratis" ? (
-            <span className="flex items-center gap-1 text-sm font-bold text-emerald-600">
-              <Gift className="w-3.5 h-3.5" /> Gratis
-            </span>
-          ) : (
-            <div>
-              <span className="text-sm font-bold text-foreground">{fmtRp(course.priceIdr!)}</span>
-              {course.priceOriginalIdr && (
-                <span className="ml-1.5 text-[11px] text-muted-foreground line-through">{fmtRp(course.priceOriginalIdr)}</span>
-              )}
-              {course.priceOriginalIdr && (
-                <span className="ml-1.5 text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
-                  {Math.round((1 - course.priceIdr! / course.priceOriginalIdr) * 100)}%
+          <div className="flex gap-1 flex-wrap">
+            {course.jabker.slice(0, 2).map((j) => (
+              <span key={j} className={`text-[10px] px-2 py-0.5 rounded-full border ${JABKER_COLOR[j] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
+                {JABKER_LABELS[j] ?? j}
+              </span>
+            ))}
+          </div>
+
+          {/* ASKOM + AI review badges */}
+          {(() => {
+            const r = COURSE_REVIEWS[course.id];
+            if (!r) return null;
+            const avgR = avgAiRating(r.aiReviews);
+            const rec = r.askomReview?.recommendation;
+            return (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="flex items-center gap-1 text-[10px] bg-muted border border-border text-muted-foreground px-2 py-0.5 rounded-full">
+                  <Bot className="w-2.5 h-2.5" /> AI {avgR.toFixed(1)}★
                 </span>
-              )}
-            </div>
-          )}
-          <span className="text-[11px] text-primary font-medium group-hover:underline flex items-center gap-0.5">
-            Detail <ChevronRight className="w-3 h-3" />
-          </span>
+                {rec && (
+                  <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium ${
+                    rec === "direkomendasikan" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                    rec === "direkomendasikan_dengan_catatan" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                    "bg-red-50 text-red-700 border-red-200"
+                  }`}>
+                    <UserCheck className="w-2.5 h-2.5" />
+                    {rec === "direkomendasikan" ? "ASKOM ✓" :
+                     rec === "direkomendasikan_dengan_catatan" ? "ASKOM ⚠" : "ASKOM ✗"}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Price + "Detail" */}
+          <div className="mt-auto pt-1 flex items-center justify-between">
+            {course.price === "gratis" ? (
+              <span className="flex items-center gap-1 text-sm font-bold text-emerald-600">
+                <Gift className="w-3.5 h-3.5" /> Gratis
+              </span>
+            ) : (
+              <div>
+                <span className="text-sm font-bold text-foreground">{fmtRp(course.priceIdr!)}</span>
+                {course.priceOriginalIdr && (
+                  <span className="ml-1.5 text-[11px] text-muted-foreground line-through">{fmtRp(course.priceOriginalIdr)}</span>
+                )}
+                {course.priceOriginalIdr && (
+                  <span className="ml-1.5 text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
+                    {Math.round((1 - course.priceIdr! / course.priceOriginalIdr) * 100)}%
+                  </span>
+                )}
+              </div>
+            )}
+            <span className="text-[11px] text-primary font-medium group-hover:underline flex items-center gap-0.5">
+              Detail <ChevronRight className="w-3 h-3" />
+            </span>
+          </div>
         </div>
-      </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -1151,8 +1348,11 @@ function DetailPanel({ course, onClose }: { course: Course; onClose: () => void 
     ? Math.round((1 - course.priceIdr! / course.priceOriginalIdr) * 100)
     : null;
   const reviews = COURSE_REVIEWS[course.id];
+  const [shareOpen, setShareOpen] = useState(false);
 
   return (
+    <>
+    {shareOpen && <ShareModal course={course} onClose={() => setShareOpen(false)} />}
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
       {/* Backdrop */}
       <div className="flex-1" onClick={onClose} />
@@ -1166,12 +1366,21 @@ function DetailPanel({ course, onClose }: { course: Course; onClose: () => void 
               <TIcon className="w-3.5 h-3.5" />
               {T.label}
             </span>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 bg-black/25 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/40 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShareOpen(true)}
+                className="w-8 h-8 bg-black/25 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/40 transition-colors"
+                title="Bagikan modul"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={onClose}
+                className="w-8 h-8 bg-black/25 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-black/40 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 mb-2">
@@ -1323,6 +1532,7 @@ function DetailPanel({ course, onClose }: { course: Course; onClose: () => void 
         </div>
       </div>
     </div>
+    </>
   );
 }
 
