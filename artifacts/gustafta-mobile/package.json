@@ -65,6 +65,7 @@
     "@tanstack/react-query-persist-client": "^5.101.4",
     "expo-av": "^16.0.8",
     "expo-device": "~8.0.10",
+    "expo-document-picker": "^14.0.8",
     "expo-network": "^8.0.8",
     "expo-notifications": "~0.32.17",
     "expo-print": "~15.0.8",

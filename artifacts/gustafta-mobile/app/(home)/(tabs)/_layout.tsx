@@ -88,6 +88,18 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="kegiatan"
+        options={{
+          title: 'PKB',
+          tabBarIcon: ({ color, size }) =>
+            isIOS ? (
+              <SymbolView name="doc.badge.plus" tintColor={color} size={size} />
+            ) : (
+              <Feather name="file-plus" size={size} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profil',

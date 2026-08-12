@@ -232,9 +232,12 @@ router.post("/kegiatan/:id/docs", requireAuth, async (req, res) => {
   if (!userId) return res.status(401).json({ error: "user not found" });
 
   const id = parseInt(req.params.id, 10);
-  const [existing] = await db.select({ id: pkbActivities.id })
+  const [existing] = await db.select({ id: pkbActivities.id, status: pkbActivities.status })
     .from(pkbActivities).where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
   if (!existing) return res.status(404).json({ error: "not found" });
+  if (existing.status === "diverifikasi") {
+    return res.status(403).json({ error: "Kegiatan sudah diverifikasi — bukti tidak dapat diubah" });
+  }
 
   const { docType, filename, objectPath, mimeType, sizeBytes, caption } = req.body;
   if (!docType || !filename || !objectPath) {
@@ -281,9 +284,12 @@ router.delete("/kegiatan/:id/docs/:docId", requireAuth, async (req, res) => {
   const id    = parseInt(req.params.id, 10);
   const docId = parseInt(req.params.docId, 10);
 
-  const [existing] = await db.select({ id: pkbActivities.id })
+  const [existing] = await db.select({ id: pkbActivities.id, status: pkbActivities.status })
     .from(pkbActivities).where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
   if (!existing) return res.status(404).json({ error: "not found" });
+  if (existing.status === "diverifikasi") {
+    return res.status(403).json({ error: "Kegiatan sudah diverifikasi — bukti tidak dapat diubah" });
+  }
 
   await db.delete(pkbActivityDocs).where(
     and(eq(pkbActivityDocs.id, docId), eq(pkbActivityDocs.activityId, id))

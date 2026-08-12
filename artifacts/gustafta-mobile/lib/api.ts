@@ -483,6 +483,12 @@ export interface CreateKegiatanBody {
   linkRekaman?: string;
   jenisPkb?: string;
   jpPkb?: number;
+  /** Marketplace link — auto-marks course as watched server-side when present */
+  marketplaceId?: string;
+  courseTitle?: string;
+  courseProvider?: string;
+  courseJabkerList?: string[];
+  courseSkkTagsList?: string[];
 }
 
 export async function createKegiatanPkb(body: CreateKegiatanBody): Promise<PkbActivity> {
@@ -533,6 +539,72 @@ export async function ajukanKegiatanPkb(id: number): Promise<{ success: boolean 
     throw new Error((err as { error?: string }).error ?? 'Gagal mengajukan kegiatan');
   }
   return res.json();
+}
+
+export interface PkbActivityDoc {
+  id: number;
+  activityId: number;
+  docType: string;
+  filename: string;
+  objectPath: string;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  caption?: string | null;
+  uploadedAt: string;
+}
+
+export interface PkbJourneyEntry {
+  id: number;
+  activityId: number;
+  event: string;
+  label: string;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface PkbActivityDetail extends PkbActivity {
+  docs: PkbActivityDoc[];
+  journey: PkbJourneyEntry[];
+}
+
+export async function getKegiatanDetail(id: number): Promise<PkbActivityDetail> {
+  const res = await apiFetch(`/kegiatan/${id}`);
+  return res.json();
+}
+
+export async function requestUploadUrl(
+  name: string,
+  size: number,
+  contentType: string,
+): Promise<{ uploadURL: string; objectPath: string }> {
+  const res = await apiFetch('/storage/uploads/request-url', {
+    method: 'POST',
+    body: JSON.stringify({ name, size, contentType }),
+  });
+  return res.json();
+}
+
+export async function registerKegiatanDoc(
+  activityId: number,
+  docType: string,
+  filename: string,
+  objectPath: string,
+  mimeType: string,
+  sizeBytes?: number,
+): Promise<PkbActivityDoc> {
+  const res = await apiFetch(`/kegiatan/${activityId}/docs`, {
+    method: 'POST',
+    body: JSON.stringify({ docType, filename, objectPath, mimeType, sizeBytes }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? 'Gagal mendaftarkan dokumen');
+  }
+  return res.json();
+}
+
+export async function deleteKegiatanDoc(activityId: number, docId: number): Promise<void> {
+  await apiFetch(`/kegiatan/${activityId}/docs/${docId}`, { method: 'DELETE' });
 }
 
 // ─── Marketplace ──────────────────────────────────────────────────────────────
