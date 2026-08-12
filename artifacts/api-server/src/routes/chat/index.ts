@@ -216,7 +216,7 @@ router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> =
 });
 
 router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (req, res): Promise<void> => {
-  const convId = parseInt(req.params.id, 10);
+  const convId = parseInt(String(req.params.id), 10);
   const { content } = req.body;
 
   if (!content || typeof content !== "string") {

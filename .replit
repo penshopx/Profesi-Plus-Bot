@@ -37,4 +37,4 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-VITE_SCALEV_CHECKOUT_URL = "https://gustafta.my.id/api/webhooks/scalev"
+VITE_SCALEV_CHECKOUT_URL = "https://bayar.dokumenproyek.com"

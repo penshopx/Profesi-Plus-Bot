@@ -19,7 +19,7 @@ import type { Request } from "express";
 /** Resolve rate-limit key: authenticated user ID takes priority over IP. */
 function userKey(req: Request): string {
   const uid = (req as unknown as { dbUser?: { id: number } }).dbUser?.id;
-  return uid !== undefined ? `user:${uid}` : ipKeyGenerator(req);
+  return uid !== undefined ? `user:${uid}` : ipKeyGenerator(req.ip ?? "");
 }
 
 /** 60 chat messages per hour per user. */

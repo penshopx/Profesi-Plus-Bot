@@ -504,6 +504,11 @@ export default function ChatScreen() {
     if (text) doSend(text);
   }, [inputText, doSend]);
 
+  // Phase logic — mirrors web client (must be declared before callbacks that reference isDone)
+  const isDone = phase === 'done';
+  const canGenerate = phase === 'synthesis' || phase === 'done';
+  const canAdvance = !isDone && !canGenerate && messages.length > 0;
+
   /**
    * Tap mic to start recording; tap again to stop → transcribe → fill input.
    */
@@ -581,11 +586,6 @@ export default function ChatScreen() {
   }, [conversationId, isAdvancing, isStreaming, queryClient]);
 
   const reversed = useMemo(() => [...messages].reverse(), [messages]);
-
-  // Phase logic — mirrors web client
-  const isDone = phase === 'done';
-  const canGenerate = phase === 'synthesis' || phase === 'done';
-  const canAdvance = !isDone && !canGenerate && messages.length > 0;
 
   const phaseColor = PHASE_COLORS[phase] ?? '#6B7488';
   const phaseLabel = PHASE_LABELS[phase] ?? phase;
