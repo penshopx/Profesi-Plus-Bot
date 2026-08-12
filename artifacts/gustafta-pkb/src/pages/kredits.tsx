@@ -103,7 +103,7 @@ function PaymentRow({ payment }: { payment: PaymentRecord }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-foreground">
-          {payment.creditsGranted} kredit Exum
+          {payment.creditsGranted || 1} kredit Exum
         </p>
         <p className="text-xs text-muted-foreground mt-0.5">
           {formatDate(payment.createdAt)}
