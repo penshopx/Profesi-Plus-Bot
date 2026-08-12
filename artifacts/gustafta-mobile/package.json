@@ -61,8 +61,11 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "@tanstack/query-async-storage-persister": "^5.101.4",
+    "@tanstack/react-query-persist-client": "^5.101.4",
     "expo-av": "^16.0.8",
     "expo-device": "~8.0.10",
+    "expo-network": "^57.0.1",
     "expo-notifications": "~0.32.17"
   }
 }

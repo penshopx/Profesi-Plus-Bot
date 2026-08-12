@@ -25,6 +25,8 @@ import {
   type Conversation,
 } from '@/lib/api';
 import VoiceNoteModal from '@/components/VoiceNoteModal';
+import { OfflineBanner } from '@/components/OfflineBanner';
+import { useNetworkState } from '@/hooks/useNetworkState';
 
 // ─── Phase badge ─────────────────────────────────────────────────────────────
 
@@ -83,10 +85,12 @@ function SessionCard({
   item,
   onPress,
   onDelete,
+  deleteDisabled,
 }: {
   item: Conversation;
   onPress: () => void;
   onDelete: () => void;
+  deleteDisabled?: boolean;
 }) {
   const colors = useColors();
   const date = new Date(item.createdAt).toLocaleDateString('id-ID', {
@@ -114,8 +118,12 @@ function SessionCard({
         >
           {item.title}
         </Text>
-        <Pressable onPress={onDelete} hitSlop={8}>
-          <Feather name="trash-2" size={16} color={colors.mutedForeground} />
+        <Pressable onPress={deleteDisabled ? undefined : onDelete} hitSlop={8} disabled={deleteDisabled}>
+          <Feather
+            name="trash-2"
+            size={16}
+            color={deleteDisabled ? colors.border : colors.mutedForeground}
+          />
         </Pressable>
       </View>
       <View style={cardStyle.row}>
@@ -442,6 +450,7 @@ export default function SessionsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const isWeb = Platform.OS === 'web';
+  const { isOnline } = useNetworkState();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [voiceModalVisible, setVoiceModalVisible] = useState(false);
@@ -469,6 +478,10 @@ export default function SessionsScreen() {
 
   const handleDelete = useCallback(
     (id: number) => {
+      if (!isOnline) {
+        Alert.alert('Offline', 'Tidak dapat menghapus sesi saat offline.');
+        return;
+      }
       Alert.alert('Hapus sesi?', 'Sesi ini akan dihapus permanen.', [
         { text: 'Batal', style: 'cancel' },
         {
@@ -478,13 +491,17 @@ export default function SessionsScreen() {
         },
       ]);
     },
-    [doDelete],
+    [doDelete, isOnline],
   );
 
   const handleNewSession = useCallback(() => {
+    if (!isOnline) {
+      Alert.alert('Offline', 'Tidak dapat membuat sesi baru saat offline.');
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setModalVisible(true);
-  }, []);
+  }, [isOnline]);
 
   const topPad = isWeb ? 67 : insets.top;
   const bottomPad = isWeb ? 34 + 84 : 84 + insets.bottom;
@@ -513,20 +530,26 @@ export default function SessionsScreen() {
         <Pressable
           style={({ pressed }) => [
             styles.addBtn,
-            { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+            {
+              backgroundColor: isOnline ? colors.primary : colors.muted,
+              opacity: pressed ? 0.85 : 1,
+            },
           ]}
           onPress={handleNewSession}
         >
-          <Feather name="plus" size={20} color="#fff" />
+          <Feather name="plus" size={20} color={isOnline ? '#fff' : colors.mutedForeground} />
         </Pressable>
       </View>
 
+      {/* Offline banner */}
+      {!isOnline && <OfflineBanner />}
+
       {/* List */}
-      {isLoading ? (
+      {isLoading && conversations.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : isError ? (
+      ) : isError && conversations.length === 0 ? (
         <View style={styles.center}>
           <Feather name="alert-circle" size={40} color={colors.destructive} />
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
@@ -547,6 +570,7 @@ export default function SessionsScreen() {
               item={item}
               onPress={() => router.push(`/(home)/chat/${item.id}`)}
               onDelete={() => handleDelete(item.id)}
+              deleteDisabled={!isOnline}
             />
           )}
           contentContainerStyle={[
@@ -558,6 +582,7 @@ export default function SessionsScreen() {
               refreshing={isRefetching}
               onRefresh={refetch}
               tintColor={colors.primary}
+              enabled={isOnline}
             />
           }
           ListEmptyComponent={
@@ -569,12 +594,14 @@ export default function SessionsScreen() {
               <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>
                 Mulai wawancara Gustafta pertama Anda
               </Text>
-              <Pressable
-                style={[styles.emptyBtn, { backgroundColor: colors.primary }]}
-                onPress={handleNewSession}
-              >
-                <Text style={styles.emptyBtnText}>Mulai Sesi Baru</Text>
-              </Pressable>
+              {isOnline && (
+                <Pressable
+                  style={[styles.emptyBtn, { backgroundColor: colors.primary }]}
+                  onPress={handleNewSession}
+                >
+                  <Text style={styles.emptyBtnText}>Mulai Sesi Baru</Text>
+                </Pressable>
+              )}
             </View>
           }
         />
@@ -601,14 +628,14 @@ export default function SessionsScreen() {
           style={[
             styles.fab,
             {
-              backgroundColor: colors.primary,
+              backgroundColor: isOnline ? colors.primary : colors.muted,
               bottom: bottomPad - 20,
               right: 20,
             },
           ]}
           onPress={handleNewSession}
         >
-          <Feather name="plus" size={24} color="#fff" />
+          <Feather name="plus" size={24} color={isOnline ? '#fff' : colors.mutedForeground} />
         </Pressable>
       )}
 
