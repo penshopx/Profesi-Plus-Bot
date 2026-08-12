@@ -28,7 +28,9 @@ import {
   transcribeAudio,
   getMyUsage,
   checkCompetencyAnalysisForJabker,
+  getQuizCoverage,
   type Message,
+  type QuizCoverageGap,
 } from '@/lib/api';
 import { Audio } from 'expo-av';
 import { useAuth } from '@clerk/expo';
@@ -242,6 +244,26 @@ const mb = StyleSheet.create({
 
 // ─── Executive Summary modal ──────────────────────────────────────────────────
 
+/**
+ * ExumModal phases:
+ *   checking_coverage — fetching quiz gap data (spinner shown, no generation yet)
+ *   gap_warning       — gaps found; user must confirm before generation starts
+ *   coverage_error    — gap fetch failed; user chooses to proceed or cancel
+ *   generating        — generateExum in flight
+ *   done              — content ready (gap banner shown informatively inline)
+ *   gen_error         — generateExum failed
+ *
+ * For an already-generated Exum (existingContent set), we skip the gate and
+ * jump straight to 'done', then load gaps informatively in the background.
+ */
+type ExumPhase =
+  | 'checking_coverage'
+  | 'gap_warning'
+  | 'coverage_error'
+  | 'generating'
+  | 'done'
+  | 'gen_error';
+
 function ExumModal({
   visible,
   conversationId,
@@ -259,29 +281,129 @@ function ExumModal({
 }) {
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
-  const [content, setContent] = useState(existingContent || '');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState('');
 
+  const [phase, setPhase] = useState<ExumPhase>('checking_coverage');
+  const [content, setContent] = useState(existingContent || '');
+  const [genError, setGenError] = useState('');
+  const [coverageGaps, setCoverageGaps] = useState<QuizCoverageGap[]>([]);
+  const [gapsExpanded, setGapsExpanded] = useState(false);
+  /** True while the background coverage check for an already-generated Exum is in flight.
+   * Refresh is disabled until this resolves so the gap gate cannot be bypassed. */
+  const [coverageLoading, setCoverageLoading] = useState(false);
+
+  // ── Core generation call (called only after user has seen/acknowledged gaps)
   const doGenerate = useCallback(async () => {
     try {
-      setIsGenerating(true);
-      setError('');
+      setPhase('generating');
+      setGenError('');
       const result = await generateExum(conversationId);
       setContent(result.content);
       onGenerated?.(result.content);
+      setPhase('done');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setIsGenerating(false);
+      setGenError((e as Error).message);
+      setPhase('gen_error');
     }
   }, [conversationId, onGenerated]);
 
+  // ── Coverage gate: fetch gaps, then decide next phase
+  const checkCoverage = useCallback(async () => {
+    setPhase('checking_coverage');
+    try {
+      const result = await getQuizCoverage();
+      setCoverageGaps(result.gaps);
+      if (result.gaps.length > 0) {
+        setPhase('gap_warning');
+      } else {
+        // No gaps — proceed straight to generation
+        await doGenerate();
+      }
+    } catch {
+      setPhase('coverage_error');
+    }
+  }, [doGenerate]);
+
+  // ── Refresh: if gaps are known, confirm before regenerating
+  const handleRefresh = useCallback(() => {
+    if (coverageGaps.length > 0) {
+      Alert.alert(
+        'Unit tanpa bukti kuis',
+        `${coverageGaps.length} unit yang diklaim belum punya percobaan kuis yang lulus. Ringkasan akan tetap dibuat, namun bukti untuk unit-unit tersebut mungkin lebih tipis.\n\nLanjutkan?`,
+        [
+          { text: 'Batalkan', style: 'cancel' },
+          { text: 'Buat ulang', style: 'destructive', onPress: doGenerate },
+        ],
+      );
+    } else {
+      doGenerate();
+    }
+  }, [coverageGaps, doGenerate]);
+
+  // ── On open: if content already exists, jump to done + load gaps informatively
+  //            otherwise start the coverage gate
   useEffect(() => {
-    if (visible && !content && !isGenerating) doGenerate();
-    if (visible && existingContent && !content) setContent(existingContent);
-  }, [visible]);
+    if (!visible) return;
+    if (existingContent) {
+      setContent(existingContent);
+      setPhase('done');
+      // Load gaps in background for the informational banner.
+      // Refresh is blocked (coverageLoading=true) until this settles so the
+      // gap gate cannot be bypassed by tapping refresh before data arrives.
+      setCoverageLoading(true);
+      getQuizCoverage()
+        .then((r) => setCoverageGaps(r.gaps))
+        .catch(() => {/* informational only — ignore */})
+        .finally(() => setCoverageLoading(false));
+    } else {
+      setContent('');
+      setCoverageGaps([]);
+      setGapsExpanded(false);
+      checkCoverage();
+    }
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Gap list sub-component (reused in gap_warning + done phases)
+  const GapList = () => (
+    <View style={[em.gapBanner, { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' }]}>
+      <Pressable
+        onPress={() => setGapsExpanded((v) => !v)}
+        style={em.gapBannerHeader}
+        accessibilityRole="button"
+        accessibilityLabel="Tampilkan unit tanpa bukti kuis"
+      >
+        <Feather name="alert-triangle" size={16} color="#92400E" />
+        <Text style={em.gapBannerTitle}>
+          {coverageGaps.length} unit tanpa bukti kuis
+        </Text>
+        <Feather
+          name={gapsExpanded ? 'chevron-up' : 'chevron-down'}
+          size={16}
+          color="#92400E"
+        />
+      </Pressable>
+      {gapsExpanded && (
+        <View style={em.gapList}>
+          <Text style={em.gapHint}>
+            Unit berikut diklaim di APL 02 tetapi belum ada percobaan kuis yang lulus.
+            Ikuti kuis yang relevan agar bukti kompetensimu lebih kuat.
+          </Text>
+          {coverageGaps.map((gap) => (
+            <View key={gap.skkUnitCode} style={em.gapRow}>
+              <Feather name="circle" size={6} color="#92400E" style={{ marginTop: 6 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={em.gapCode}>{gap.skkUnitCode}</Text>
+                <Text style={em.gapName}>{gap.skkUnitName}</Text>
+                {gap.quizTitle && (
+                  <Text style={em.gapQuizHint}>Kuis tersedia: {gap.quizTitle}</Text>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -300,30 +422,118 @@ function ExumModal({
             <Feather name="x" size={22} color={colors.foreground} />
           </Pressable>
           <Text style={[em.headerTitle, { color: colors.foreground }]}>Ringkasan PKB (Exum)</Text>
-          <Pressable onPress={doGenerate} style={em.refreshBtn} disabled={isGenerating}>
-            <Feather name="refresh-cw" size={18} color={colors.primary} />
-          </Pressable>
+          {/* Refresh only visible on done/gen_error phases.
+              Disabled while coverageLoading so the gap gate cannot be
+              bypassed by tapping refresh before gap data arrives. */}
+          {(phase === 'done' || phase === 'gen_error') ? (
+            coverageLoading ? (
+              <View style={em.refreshBtn}>
+                <ActivityIndicator size="small" color={colors.mutedForeground} />
+              </View>
+            ) : (
+              <Pressable onPress={handleRefresh} style={em.refreshBtn}>
+                <Feather name="refresh-cw" size={18} color={colors.primary} />
+              </Pressable>
+            )
+          ) : (
+            <View style={em.refreshBtn} />
+          )}
         </View>
 
-        {isGenerating ? (
+        {/* ── Checking coverage ───────────────────────────────────────── */}
+        {phase === 'checking_coverage' && (
+          <View style={em.center}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[em.loadingText, { color: colors.mutedForeground }]}>
+              Memeriksa kelengkapan bukti kuis…
+            </Text>
+          </View>
+        )}
+
+        {/* ── Gap warning — user must acknowledge before generation ─────── */}
+        {phase === 'gap_warning' && (
+          <ScrollView contentContainerStyle={em.scrollContent}>
+            <View style={em.center}>
+              <Feather name="alert-triangle" size={44} color="#D97706" />
+              <Text style={[em.gapWarningTitle, { color: colors.foreground }]}>
+                Ada unit tanpa bukti kuis
+              </Text>
+              <Text style={[em.gapWarningBody, { color: colors.mutedForeground }]}>
+                {coverageGaps.length} unit yang kamu klaim di APL 02 belum punya percobaan kuis yang lulus.
+                Exum akan tetap dibuat, namun bagian-bagian tersebut mungkin kurang kuat secara bukti.
+              </Text>
+            </View>
+            <GapList />
+            <View style={em.gapActions}>
+              <Pressable
+                onPress={doGenerate}
+                style={[em.gapActionBtn, { backgroundColor: colors.primary }]}
+              >
+                <Text style={[em.gapActionBtnText, { color: colors.primaryForeground }]}>
+                  Buat Exum tetap
+                </Text>
+              </Pressable>
+              <Pressable onPress={onClose} style={em.gapCancelBtn}>
+                <Text style={[em.gapCancelText, { color: colors.mutedForeground }]}>
+                  Kembali — ikuti kuis dulu
+                </Text>
+              </Pressable>
+            </View>
+          </ScrollView>
+        )}
+
+        {/* ── Coverage fetch error — explicit choice ───────────────────── */}
+        {phase === 'coverage_error' && (
+          <View style={em.center}>
+            <Feather name="wifi-off" size={40} color={colors.mutedForeground} />
+            <Text style={[em.errText, { color: colors.foreground }]}>
+              Tidak bisa memeriksa kelengkapan bukti kuis
+            </Text>
+            <Text style={[em.loadingText, { color: colors.mutedForeground, textAlign: 'center' }]}>
+              Terjadi kesalahan saat mengambil data kuis. Kamu bisa tetap membuat Exum atau coba lagi.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+              <Pressable onPress={checkCoverage}>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'PlusJakartaSans_500Medium' }}>
+                  Coba lagi
+                </Text>
+              </Pressable>
+              <Pressable onPress={doGenerate} style={[em.gapActionBtn, { backgroundColor: colors.primary, paddingVertical: 8 }]}>
+                <Text style={[em.gapActionBtnText, { color: colors.primaryForeground }]}>
+                  Buat Exum tetap
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {/* ── Generating ───────────────────────────────────────────────── */}
+        {phase === 'generating' && (
           <View style={em.center}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={[em.loadingText, { color: colors.mutedForeground }]}>
               Membuat ringkasan PKB…
             </Text>
           </View>
-        ) : error ? (
+        )}
+
+        {/* ── Generation failed ────────────────────────────────────────── */}
+        {phase === 'gen_error' && (
           <View style={em.center}>
             <Feather name="alert-circle" size={40} color={colors.destructive} />
-            <Text style={[em.errText, { color: colors.destructive }]}>{error}</Text>
+            <Text style={[em.errText, { color: colors.destructive }]}>{genError}</Text>
             <Pressable onPress={doGenerate}>
               <Text style={{ color: colors.primary, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 12 }}>
                 Coba lagi
               </Text>
             </Pressable>
           </View>
-        ) : (
+        )}
+
+        {/* ── Done — content with optional informational gap banner ────── */}
+        {phase === 'done' && (
           <ScrollView contentContainerStyle={em.scrollContent}>
+            {coverageGaps.length > 0 && <GapList />}
             <Text style={[em.exumText, { color: colors.foreground }]}>
               {content || 'Tidak ada konten.'}
             </Text>
@@ -351,6 +561,96 @@ const em = StyleSheet.create({
   errText: { fontSize: 14, fontFamily: 'PlusJakartaSans_400Regular', textAlign: 'center' },
   scrollContent: { padding: 20 },
   exumText: { fontSize: 15, fontFamily: 'PlusJakartaSans_400Regular', lineHeight: 26 },
+  // ── Gap banner ──────────────────────────────────────────────────────────────
+  gapBanner: {
+    borderWidth: 1,
+    borderRadius: 10,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  gapBannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+  },
+  gapBannerTitle: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: '#92400E',
+  },
+  gapList: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    gap: 8,
+  },
+  gapHint: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    color: '#92400E',
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+  gapRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'flex-start',
+  },
+  gapCode: {
+    fontSize: 11,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: '#92400E',
+  },
+  gapName: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    color: '#92400E',
+    lineHeight: 18,
+  },
+  gapQuizHint: {
+    fontSize: 11,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    color: '#B45309',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  // ── Gap warning phase (full-screen confirmation before generation) ────────────
+  gapWarningTitle: {
+    fontSize: 18,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  gapWarningBody: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  gapActions: {
+    gap: 10,
+    marginTop: 4,
+  },
+  gapActionBtn: {
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  gapActionBtnText: {
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+  },
+  gapCancelBtn: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  gapCancelText: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_400Regular',
+  },
 });
 
 // ─── Phase stepper (mini) ─────────────────────────────────────────────────────

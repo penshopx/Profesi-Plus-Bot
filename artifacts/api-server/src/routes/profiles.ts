@@ -10,8 +10,8 @@
  */
 
 import { Router } from "express";
-import { eq, and } from "drizzle-orm";
-import { db, profiles, competencyClaims } from "@workspace/db";
+import { eq, and, isNotNull } from "drizzle-orm";
+import { db, profiles, competencyClaims, quizzes, quizAttempts } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
@@ -122,6 +122,68 @@ router.delete("/profiles/me/claims/:id", requireAuth, async (req, res): Promise<
 
   if (!deleted) { res.status(404).json({ error: "Tidak ditemukan" }); return; }
   res.json({ ok: true });
+});
+
+// ─── Quiz coverage gap check ──────────────────────────────────────────────────
+// GET /profiles/me/quiz-coverage
+// Cross-references the user's APL 02 competency claims against their passing
+// quiz attempts. Returns an array of "gap" entries — claimed units with no
+// passing quiz attempt on record. Also indicates whether a quiz exists for that
+// unit so the UI can link the user directly to it.
+
+router.get("/profiles/me/quiz-coverage", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.dbUser!.id;
+
+  // 1. All APL 02 competency claims for this user
+  const claims = await db
+    .select()
+    .from(competencyClaims)
+    .where(eq(competencyClaims.userId, userId));
+
+  if (claims.length === 0) {
+    res.json({ gaps: [] });
+    return;
+  }
+
+  // 2. All active quizzes that target a specific SKK unit
+  const unitQuizzes = await db
+    .select({ id: quizzes.id, title: quizzes.title, skkUnitCode: quizzes.skkUnitCode })
+    .from(quizzes)
+    .where(and(eq(quizzes.isActive, true), isNotNull(quizzes.skkUnitCode)));
+
+  // 3. SKK unit codes where the user has at least one passing attempt
+  const passingRows = await db
+    .select({ skkUnitCode: quizzes.skkUnitCode })
+    .from(quizAttempts)
+    .innerJoin(quizzes, eq(quizAttempts.quizId, quizzes.id))
+    .where(and(eq(quizAttempts.userId, userId), eq(quizAttempts.passed, true)));
+
+  const passedCodes = new Set(
+    passingRows.map((r) => r.skkUnitCode).filter(Boolean) as string[]
+  );
+
+  // Build a lookup from unit code → first available quiz
+  const quizByCode = new Map<string, { id: number; title: string }>();
+  for (const q of unitQuizzes) {
+    if (q.skkUnitCode && !quizByCode.has(q.skkUnitCode)) {
+      quizByCode.set(q.skkUnitCode, { id: q.id, title: q.title });
+    }
+  }
+
+  // 4. Claims with no passing attempt = gaps
+  const gaps = claims
+    .filter((c) => !passedCodes.has(c.skkUnitCode))
+    .map((c) => {
+      const quiz = quizByCode.get(c.skkUnitCode) ?? null;
+      return {
+        skkUnitCode: c.skkUnitCode,
+        skkUnitName: c.skkUnitName,
+        quizId: quiz?.id ?? null,
+        quizTitle: quiz?.title ?? null,
+      };
+    });
+
+  res.json({ gaps });
 });
 
 export default router;

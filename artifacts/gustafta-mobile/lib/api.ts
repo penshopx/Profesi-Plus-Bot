@@ -792,6 +792,27 @@ export async function getMyAplClaims(): Promise<AplClaim[]> {
   return res.json();
 }
 
+export interface QuizCoverageGap {
+  skkUnitCode: string;
+  skkUnitName: string;
+  /** Non-null when there is at least one active quiz for this unit. */
+  quizId: number | null;
+  quizTitle: string | null;
+}
+
+export interface QuizCoverageResult {
+  gaps: QuizCoverageGap[];
+}
+
+/**
+ * Cross-references the user's competency claims against their passing quiz
+ * attempts. Returns units that are claimed but have no passing quiz evidence.
+ */
+export async function getQuizCoverage(): Promise<QuizCoverageResult> {
+  const res = await apiFetch('/profiles/me/quiz-coverage');
+  return res.json();
+}
+
 export async function getMyPayments(): Promise<PaymentRecord[]> {
   const res = await apiFetch('/users/me/payments');
   return res.json();
