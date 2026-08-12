@@ -58,3 +58,4 @@ channel = "stable-25_05"
 
 [userenv.shared]
 VITE_SCALEV_CHECKOUT_URL = "https://bayar.dokumenproyek.com"
+RESEND_FROM = "Gustafta <no-reply@dokumenproyek.com"

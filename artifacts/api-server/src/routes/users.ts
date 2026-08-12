@@ -4,6 +4,7 @@ import { eq, and, count, gte, desc, isNull, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { claimPaymentRateLimiter } from "../middlewares/rateLimiter";
 import { FREE_EXUM_LIFETIME } from "../lib/plans";
+import { sendCreditClaimEmail } from "../lib/email.js";
 
 const router = Router();
 
@@ -177,6 +178,28 @@ router.post("/users/me/claim-payment", requireAuth, claimPaymentRateLimiter, asy
   }
 
   req.log.info({ uid, orderId: trimmedId, creditsGranted }, "Manual payment claim succeeded");
+
+  // Non-blocking confirmation email to the claimant.
+  // Fetch the post-transaction balance from the DB so the receipt is always
+  // accurate even if concurrent credit grants happened in the same window.
+  const userEmail = req.dbUser!.email;
+  if (userEmail) {
+    db.select({ exumCredits: users.exumCredits })
+      .from(users)
+      .where(eq(users.id, uid))
+      .limit(1)
+      .then(([row]) => {
+        sendCreditClaimEmail({
+          to: userEmail,
+          orderId: trimmedId,
+          creditsGranted,
+          newBalance: row?.exumCredits ?? 0,
+        });
+      })
+      .catch((err) =>
+        req.log.warn({ err, uid, orderId: trimmedId }, "Failed to fetch post-claim balance for email")
+      );
+  }
 
   // Non-blocking push notification to the claimant's device
   const pushToken = req.dbUser!.expoPushToken;

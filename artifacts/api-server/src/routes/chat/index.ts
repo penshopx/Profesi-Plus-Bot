@@ -6,13 +6,12 @@ import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL, callWithFal
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
 import { buildKnowledgeContext } from "../../lib/knowledge-base";
 import { buildProjectBrainContext } from "../../lib/project-brain";
-import { buildHistoricalPKBContext, buildCompetencyAnalysisContext, buildQuizContext, buildProfileContext, buildKegiatanContext, buildWatchedCoursesContext } from "../../lib/historical-pkb";
+import { buildHistoricalPKBContext, buildCompetencyAnalysisContext, buildQuizContext, buildProfileContext, buildKegiatanContext, buildWatchedModulesContext } from "../../lib/historical-pkb";
 import { recommendPersona, isKnownPersona, isConfidentJabkerMatch, DEFAULT_PERSONA_ID } from "../../lib/personas";
 import { findJabkerGroup } from "../../lib/skk-data";
 import { requireAuth } from "../../middlewares/auth";
 import { chatMessageRateLimiter, exumRateLimiter } from "../../middlewares/rateLimiter";
 import { applySharedContextBudget } from "../../lib/context-budget";
-import { buildHistoricalPKBContext, buildCompetencyAnalysisContext, buildQuizContext, buildProfileContext, buildKegiatanContext, buildWatchedModulesContext } from "../../lib/historical-pkb";
 
 const router: IRouter = Router();
 
@@ -213,19 +212,19 @@ router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> =
 // ─── Messages / Chat ──────────────────────────────────────────────────────────
 
 router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
-  const owned = await loadOwnedConversation(req, res, id);
+  const convId = parseInt(req.params.id, 10);
+  const owned = await loadOwnedConversation(req, res, convId);
   if (!owned) return;
-    const msgs = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.conversationId, convId))
-      .orderBy(asc(messages.createdAt));
+  const msgs = await db
+    .select()
+    .from(messages)
+    .where(eq(messages.conversationId, convId))
+    .orderBy(asc(messages.createdAt));
   res.json(msgs);
 });
 
 router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (req, res): Promise<void> => {
-  const convId = parseInt(String(conversationId), 10);
+  const convId = parseInt(req.params.id, 10);
   const { content } = req.body;
 
   if (!content || typeof content !== "string") {
