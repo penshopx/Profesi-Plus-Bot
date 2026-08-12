@@ -17,8 +17,8 @@ import {
 } from "@/lib/api";
 import {
   listAdminQuizzes, adminCreateQuiz, adminUpdateQuiz, adminDeleteQuiz, adminGenerateQuestions,
-  getAdminQuizStats,
-  type QuizFullAdmin, type QuizQuestionAdmin, type QuizCreateInput, type QuizStats,
+  getAdminQuizStats, getAdminQuizAllStats,
+  type QuizFullAdmin, type QuizQuestionAdmin, type QuizCreateInput, type QuizStats, type QuizBulkStat,
 } from "@/lib/api-profile";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -85,8 +85,18 @@ export default function DashboardAdmin() {
     enabled: activeTab === "quiz",
   });
 
+  const { data: quizBulkStats = [] } = useQuery<QuizBulkStat[]>({
+    queryKey: ["admin-quiz-all-stats"],
+    queryFn: getAdminQuizAllStats,
+    enabled: activeTab === "quiz",
+  });
+  const quizStatsMap = Object.fromEntries(quizBulkStats.map((s) => [s.quizId, s]));
+
   const invalidateKb = () => queryClient.invalidateQueries({ queryKey: ["knowledge-base"] });
-  const invalidateQuiz = () => queryClient.invalidateQueries({ queryKey: ["admin-quizzes"] });
+  const invalidateQuiz = () => {
+    queryClient.invalidateQueries({ queryKey: ["admin-quizzes"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-quiz-all-stats"] });
+  };
 
   const { data: marketplaceCourses = [], isLoading: marketplaceLoading } = useQuery<AdminCourse[]>({
     queryKey: ["admin-marketplace-courses"],
@@ -388,6 +398,16 @@ export default function DashboardAdmin() {
                         <span className="text-[11px] text-muted-foreground/60">
                           • {(q.questions as any[])?.length ?? 0} soal • passing {q.passingScore}%
                         </span>
+                        {(() => {
+                          const s = quizStatsMap[q.id];
+                          if (!s) return null;
+                          return (
+                            <span className="text-[11px] text-muted-foreground/60">
+                              • {s.totalAttempts} percobaan
+                              {s.totalAttempts > 0 && <> • rata-rata {s.avgScore}% • lulus {s.passRate}%</>}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -732,11 +752,12 @@ function QuizStatsModal({ quizId, onClose }: { quizId: number; onClose: () => vo
           {stats && (
             <>
               {/* Summary row */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 {[
                   { label: "Total Percobaan", value: stats.totalAttempts },
                   { label: "Lulus", value: stats.passCount, cls: "text-emerald-600" },
                   { label: "Pass Rate", value: `${stats.passRate}%`, cls: stats.passRate >= 70 ? "text-emerald-600" : stats.passRate >= 40 ? "text-amber-600" : "text-rose-600" },
+                  { label: "Rata-rata Skor", value: `${stats.avgScore}%`, cls: stats.avgScore >= 70 ? "text-emerald-600" : stats.avgScore >= 40 ? "text-amber-600" : "text-rose-600" },
                 ].map((s) => (
                   <div key={s.label} className="bg-muted/40 rounded-xl p-3 text-center">
                     <p className={`text-xl font-bold ${s.cls ?? "text-foreground"}`}>{s.value}</p>

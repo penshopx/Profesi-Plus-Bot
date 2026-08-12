@@ -15,7 +15,7 @@
  */
 
 import { Router } from "express";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, count, sql } from "drizzle-orm";
 import { db, quizzes, quizAttempts, competencyClaims } from "@workspace/db";
 import { requireAuth, requireRole } from "../middlewares/auth";
 import { getClientForModel, DEFAULT_MODEL } from "../lib/llm";
@@ -244,6 +244,34 @@ router.delete("/quizzes/:id", requireAuth, requireRole("admin"), async (req, res
   res.json({ ok: true });
 });
 
+/** Bulk aggregate stats for ALL quizzes — used to show inline counts on the quiz list.
+ *  Uses a LEFT JOIN so quizzes with zero attempts still appear (with zeros). */
+router.get("/quizzes/admin/all-stats", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      quizId: quizzes.id,
+      totalAttempts: count(quizAttempts.id),
+      avgScore: sql<number>`COALESCE(ROUND(AVG(${quizAttempts.scorePercent})), 0)`,
+      passCount: sql<number>`COALESCE(SUM(CASE WHEN ${quizAttempts.passed} THEN 1 ELSE 0 END), 0)`,
+    })
+    .from(quizzes)
+    .leftJoin(quizAttempts, eq(quizAttempts.quizId, quizzes.id))
+    .groupBy(quizzes.id);
+
+  const result = rows.map((r) => {
+    const total = Number(r.totalAttempts);
+    const passes = Number(r.passCount);
+    return {
+      quizId: r.quizId,
+      totalAttempts: total,
+      avgScore: Number(r.avgScore),
+      passRate: total > 0 ? Math.round((passes / total) * 100) : 0,
+    };
+  });
+
+  res.json(result);
+});
+
 /** Quiz performance statistics — aggregates all attempts to show per-question failure rates */
 router.get("/quizzes/admin/stats/:id", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
   const quizId = Number(req.params.id);
@@ -255,6 +283,9 @@ router.get("/quizzes/admin/stats/:id", requireAuth, requireRole("admin"), async 
 
   const totalAttempts = attempts.length;
   const passCount = attempts.filter((a) => a.passed).length;
+  const avgScore = totalAttempts > 0
+    ? Math.round(attempts.reduce((sum, a) => sum + (a.scorePercent ?? 0), 0) / totalAttempts)
+    : 0;
 
   const questionStats = questions.map((q) => {
     // Initialize counts for every option
@@ -289,6 +320,7 @@ router.get("/quizzes/admin/stats/:id", requireAuth, requireRole("admin"), async 
     totalAttempts,
     passCount,
     passRate: totalAttempts > 0 ? Math.round((passCount / totalAttempts) * 100) : 0,
+    avgScore,
     questions: questionStats,
   });
 });

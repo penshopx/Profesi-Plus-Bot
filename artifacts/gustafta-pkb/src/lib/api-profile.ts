@@ -285,11 +285,25 @@ export interface QuizStats {
   totalAttempts: number;
   passCount: number;
   passRate: number;
+  avgScore: number;
   questions: QuizQuestionStat[];
+}
+
+export interface QuizBulkStat {
+  quizId: number;
+  totalAttempts: number;
+  passRate: number;
+  avgScore: number;
 }
 
 export async function getAdminQuizStats(quizId: number): Promise<QuizStats> {
   const res = await f(`/quizzes/admin/stats/${quizId}`);
+  if (!res.ok) throw new Error("Gagal memuat statistik quiz");
+  return res.json();
+}
+
+export async function getAdminQuizAllStats(): Promise<QuizBulkStat[]> {
+  const res = await f(`/quizzes/admin/all-stats`);
   if (!res.ok) throw new Error("Gagal memuat statistik quiz");
   return res.json();
 }
