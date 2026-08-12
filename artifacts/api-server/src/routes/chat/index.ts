@@ -533,20 +533,51 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
     // Audit log of a successfully delivered Exum (source: paid credit or free trial).
     await db.insert(usageEvents).values({ userId: req.dbUser!.id, kind: `exum_${creditSource}` });
 
-    // Non-blocking push notification to the user's device
+    // Non-blocking push notification to the user's device.
+    // Expo's /push/send response wraps tickets in a `data` array (one per message).
+    // If a ticket reports DeviceNotRegistered the token is expired or the app was
+    // uninstalled. We clear it from the DB so future sends don't keep hitting a dead
+    // endpoint. The WHERE clause includes the exact token so we don't accidentally
+    // wipe a replacement token that the device may have registered between the time
+    // we captured pushToken and the time we handle the error response.
     const pushToken = req.dbUser!.expoPushToken;
+    const pushUserId = req.dbUser!.id;
     if (pushToken) {
-      fetch("https://exp.host/--/api/v2/push/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip, deflate" },
-        body: JSON.stringify({
-          to: pushToken,
-          title: "Exum Anda Siap! 🎉",
-          body: "Executive Summary PKB telah selesai dibuat. Ketuk untuk melihat.",
-          data: { conversationId: String(conversationId) },
-          channelId: "exum",
-        }),
-      }).catch((err) => req.log.warn({ err }, "Failed to send Expo push"));
+      (async () => {
+        try {
+          const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip, deflate" },
+            body: JSON.stringify({
+              to: pushToken,
+              title: "Exum Anda Siap! 🎉",
+              body: "Executive Summary PKB telah selesai dibuat. Ketuk untuk melihat.",
+              data: { conversationId: String(conversationId) },
+              channelId: "exum",
+            }),
+          });
+          if (!pushRes.ok) {
+            req.log.warn({ status: pushRes.status }, "Expo push HTTP error");
+            return;
+          }
+          // Expo always returns `data` as an array of push tickets, one per recipient.
+          const pushBody = await pushRes.json() as { data?: Array<{ status?: string; details?: { error?: string } }> };
+          const tickets = pushBody?.data ?? [];
+          const isDeviceNotRegistered = tickets.some(
+            (t) => t.status === "error" && t.details?.error === "DeviceNotRegistered",
+          );
+          if (isDeviceNotRegistered) {
+            req.log.warn({ pushToken }, "Expo token DeviceNotRegistered — clearing from DB");
+            // Only clear if the stored token still matches the one we sent to,
+            // guarding against a race where a new token was registered in the interim.
+            await db.update(users)
+              .set({ expoPushToken: null })
+              .where(and(eq(users.id, pushUserId), eq(users.expoPushToken, pushToken)));
+          }
+        } catch (err) {
+          req.log.warn({ err }, "Failed to send Expo push");
+        }
+      })();
     }
 
     res.json({ content, conversationId });
