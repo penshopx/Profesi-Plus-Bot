@@ -145,6 +145,12 @@ async function registerForPushNotifications(getToken: () => Promise<string | nul
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#1AA890',
     });
+    await Notifications.setNotificationChannelAsync('kegiatan', {
+      name: 'Update Kegiatan PKB',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#7C3AED',
+    });
   }
 
   // Prefer the EAS project ID baked into the app config (set via `eas init` or
@@ -213,8 +219,12 @@ function RootLayoutNav() {
       if (!response) return;
       const data = response.notification.request.content.data as Record<string, unknown>;
       const conversationId = data?.conversationId;
+      const activityId = data?.activityId;
       if (conversationId) {
         router.push(`/(home)/chat/${conversationId}?openExum=true` as never);
+      } else if (activityId) {
+        // Deep-link to the kegiatan tab, which will open the activity detail.
+        router.push(`/(home)/kegiatan?openActivityId=${activityId}` as never);
       }
     });
 
@@ -227,9 +237,13 @@ function RootLayoutNav() {
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as Record<string, unknown>;
       const conversationId = data?.conversationId;
+      const activityId = data?.activityId;
       if (conversationId) {
         // Navigate to the chat and signal that the Exum modal should open.
         router.push(`/(home)/chat/${conversationId}?openExum=true` as never);
+      } else if (activityId) {
+        // Navigate to kegiatan tab and signal which activity to open.
+        router.push(`/(home)/kegiatan?openActivityId=${activityId}` as never);
       }
     });
 

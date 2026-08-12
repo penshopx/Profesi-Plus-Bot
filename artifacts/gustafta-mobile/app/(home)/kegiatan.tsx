@@ -941,12 +941,16 @@ export default function KegiatanScreen({ isTab = false }: KegiatanScreenProps) {
   const params = useLocalSearchParams<{
     marketplaceId?: string; courseTitle?: string; courseProvider?: string;
     courseJabkerList?: string; courseSkkTagsList?: string;
+    openActivityId?: string;
   }>();
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const [showCreate, setShowCreate] = useState(false);
   const [marketplacePrefill, setMarketplacePrefill] = useState<MarketplacePrefill | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<PkbActivity | null>(null);
+  // Track the last activityId handled via deep-link so repeated re-renders don't re-open,
+  // but a new distinct notification tap (different id) still works while the screen is mounted.
+  const lastHandledDeepLinkId = React.useRef<string | null>(null);
 
   useEffect(() => {
     if (params.marketplaceId && params.courseTitle) {
@@ -967,6 +971,20 @@ export default function KegiatanScreen({ isTab = false }: KegiatanScreenProps) {
     queryFn: listMyKegiatanPkb,
     staleTime: 30 * 1000,
   });
+
+  // Deep-link from push notification: open a specific activity once the list loads.
+  // Use lastHandledDeepLinkId so each distinct activityId tap opens its activity,
+  // but the same id doesn't re-open on incidental re-renders.
+  useEffect(() => {
+    if (!params.openActivityId || isLoading || activities.length === 0) return;
+    if (lastHandledDeepLinkId.current === params.openActivityId) return;
+    const targetId = parseInt(params.openActivityId, 10);
+    const match = activities.find((a) => a.id === targetId);
+    if (match) {
+      lastHandledDeepLinkId.current = params.openActivityId;
+      setSelectedActivity(match);
+    }
+  }, [params.openActivityId, activities, isLoading]);
 
   const counts = {
     draft: activities.filter((a) => a.status === 'draft' || a.status === 'lengkap').length,

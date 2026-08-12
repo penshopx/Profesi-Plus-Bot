@@ -11,12 +11,49 @@
  */
 
 import { Router } from "express";
-import { eq, inArray, desc } from "drizzle-orm";
+import { eq, inArray, desc, and } from "drizzle-orm";
 import {
   db, users,
   pkbActivities, pkbActivitySkk, pkbActivityDocs, pkbActivityJourney,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
+
+// ─── Push notification helper ─────────────────────────────────────────────────
+
+async function sendPushNotification(
+  log: import("pino").Logger,
+  userId: number,
+  pushToken: string,
+  title: string,
+  body: string,
+  data?: Record<string, string>,
+): Promise<void> {
+  try {
+    const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip, deflate" },
+      body: JSON.stringify({ to: pushToken, title, body, data: data ?? {}, channelId: "kegiatan" }),
+    });
+    if (!pushRes.ok) {
+      log.warn({ status: pushRes.status }, "Expo push HTTP error (askom)");
+      return;
+    }
+    const pushBody = await pushRes.json() as { data?: Array<{ status?: string; details?: { error?: string } }> };
+    const tickets = pushBody?.data ?? [];
+    const isDeviceNotRegistered = tickets.some(
+      (t) => t.status === "error" && t.details?.error === "DeviceNotRegistered",
+    );
+    if (isDeviceNotRegistered) {
+      // Log a fingerprint (last 8 chars) instead of the full token — tokens are bearer credentials.
+      log.warn({ tokenSuffix: pushToken.slice(-8), userId }, "Expo token DeviceNotRegistered (askom) — clearing from DB");
+      await db.update(users)
+        .set({ expoPushToken: null })
+        .where(and(eq(users.id, userId), eq(users.expoPushToken, pushToken)));
+    }
+  } catch (err) {
+    log.warn({ err }, "Failed to send Expo push (askom)");
+  }
+}
 
 const router = Router();
 
@@ -135,7 +172,12 @@ router.post("/askom/submissions/:id/verify", requireAuth, requireAskom, async (r
   const { note } = req.body as { note?: string };
 
   const [act] = await db
-    .select({ id: pkbActivities.id, status: pkbActivities.status })
+    .select({
+      id:          pkbActivities.id,
+      userId:      pkbActivities.userId,
+      namaKegiatan: pkbActivities.namaKegiatan,
+      status:      pkbActivities.status,
+    })
     .from(pkbActivities)
     .where(eq(pkbActivities.id, id))
     .limit(1);
@@ -159,11 +201,31 @@ router.post("/askom/submissions/:id/verify", requireAuth, requireAskom, async (r
   await db.insert(pkbActivityJourney).values({
     activityId: id,
     event: "diverifikasi",
-    label: "ASKOM: SKK sesuai — kegiatan diverifikasi",
+    label: "Tim verifikasi: kegiatan diverifikasi",
     metadata: { askomNote: note ?? null, verifiedBy: req.dbUser!.id },
   });
 
   req.log.info({ askomId: req.dbUser!.id, activityId: id }, "ASKOM verified kegiatan");
+
+  // Non-blocking push notification to activity owner
+  const [owner] = await db
+    .select({ id: users.id, expoPushToken: users.expoPushToken })
+    .from(users)
+    .where(eq(users.id, act.userId))
+    .limit(1);
+  if (owner?.expoPushToken) {
+    (async () => {
+      await sendPushNotification(
+        req.log,
+        owner.id,
+        owner.expoPushToken!,
+        "Kegiatan PKB Diverifikasi ✅",
+        `"${act.namaKegiatan}" telah diverifikasi oleh tim Gustafta. Ketuk untuk melihat detail.`,
+        { activityId: String(id) },
+      );
+    })();
+  }
+
   res.json({ ok: true, status: "diverifikasi" });
 });
 
@@ -179,7 +241,12 @@ router.post("/askom/submissions/:id/reject", requireAuth, requireAskom, async (r
   }
 
   const [act] = await db
-    .select({ id: pkbActivities.id, status: pkbActivities.status })
+    .select({
+      id:           pkbActivities.id,
+      userId:       pkbActivities.userId,
+      namaKegiatan: pkbActivities.namaKegiatan,
+      status:       pkbActivities.status,
+    })
     .from(pkbActivities)
     .where(eq(pkbActivities.id, id))
     .limit(1);
@@ -202,11 +269,31 @@ router.post("/askom/submissions/:id/reject", requireAuth, requireAskom, async (r
   await db.insert(pkbActivityJourney).values({
     activityId: id,
     event: "ditolak",
-    label: `ASKOM: Ditolak — ${note.slice(0, 80)}`,
+    label: `Tim verifikasi: Ditolak — ${note.slice(0, 80)}`,
     metadata: { rejected: true, askomNote: note, verifiedBy: req.dbUser!.id },
   });
 
   req.log.info({ askomId: req.dbUser!.id, activityId: id }, "ASKOM rejected kegiatan");
+
+  // Non-blocking push notification to activity owner
+  const [owner] = await db
+    .select({ id: users.id, expoPushToken: users.expoPushToken })
+    .from(users)
+    .where(eq(users.id, act.userId))
+    .limit(1);
+  if (owner?.expoPushToken) {
+    (async () => {
+      await sendPushNotification(
+        req.log,
+        owner.id,
+        owner.expoPushToken!,
+        "Kegiatan PKB Perlu Diperbaiki ⚠️",
+        `"${act.namaKegiatan}" dikembalikan untuk perbaikan. Buka aplikasi untuk melihat catatan tim verifikasi.`,
+        { activityId: String(id) },
+      );
+    })();
+  }
+
   res.json({ ok: true, status: "ditolak" });
 });
 
