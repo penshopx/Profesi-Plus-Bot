@@ -84,3 +84,22 @@ export const competencyRateLimiter = rateLimit({
   },
   skip: () => process.env.NODE_ENV === "test",
 });
+
+/**
+ * Manual payment claim rate limiter.
+ * Hard cap of 10 claim attempts per hour per account (regardless of plan) to
+ * prevent brute-force probing of order IDs. Successful claims reduce the
+ * remaining budget the same as failed ones.
+ */
+export const claimPaymentRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  limit: 10,
+  keyGenerator: userKey,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: {
+    error: "Terlalu banyak percobaan klaim. Coba lagi dalam beberapa saat.",
+    code: "rate_limit_claim",
+  },
+  skip: () => process.env.NODE_ENV === "test",
+});

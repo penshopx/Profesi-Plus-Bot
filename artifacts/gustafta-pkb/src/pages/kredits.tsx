@@ -2,13 +2,15 @@
  * Halaman Kredit Exum — saldo kredit dan riwayat pembelian
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "wouter";
-import { getMyPlan, getMyPayments, type PaymentRecord } from "@/lib/api";
+import { getMyPlan, getMyPayments, claimPayment, type PaymentRecord } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, CreditCard, Zap, ShoppingBag, RefreshCw } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ChevronLeft, CreditCard, Zap, ShoppingBag, RefreshCw, Search, CheckCircle2, AlertCircle } from "lucide-react";
 import { SCALEV_CHECKOUT_URL } from "@/lib/api";
 
 function formatIDR(amount: number): string {
@@ -120,7 +122,106 @@ function PaymentRow({ payment }: { payment: PaymentRecord }) {
   );
 }
 
+function ClaimOrderCard({ onSuccess }: { onSuccess: () => void }) {
+  const [orderId, setOrderId] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [result, setResult] = useState<{ ok: boolean; creditsGranted: number; alreadyClaimed?: boolean } | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => claimPayment(orderId.trim(), customerEmail.trim()),
+    onSuccess: (data) => {
+      setResult(data);
+      setErrorMsg(null);
+      setOrderId("");
+      setCustomerEmail("");
+      onSuccess();
+    },
+    onError: (err: Error & { body?: { error?: string } }) => {
+      setErrorMsg(err.message || "Gagal mengklaim pesanan. Periksa ID pesanan dan email, lalu coba lagi.");
+      setResult(null);
+    },
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!orderId.trim() || !customerEmail.trim()) return;
+    setResult(null);
+    setErrorMsg(null);
+    mutation.mutate();
+  }
+
+  const canSubmit = orderId.trim().length > 0 && customerEmail.trim().length > 0 && !mutation.isPending;
+
+  return (
+    <Card className="border-blue-200 bg-blue-50/40">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Search className="h-4 w-4 text-blue-600" />
+          Klaim Pesanan Manual
+        </CardTitle>
+        <CardDescription>
+          Bayar dengan email berbeda? Masukkan ID pesanan dan email yang digunakan saat pembelian.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-2">
+          <Input
+            value={orderId}
+            onChange={(e) => setOrderId(e.target.value)}
+            placeholder="ID pesanan, contoh: INV-20240812-001"
+            className="bg-white"
+            disabled={mutation.isPending}
+            autoComplete="off"
+          />
+          <Input
+            type="email"
+            value={customerEmail}
+            onChange={(e) => setCustomerEmail(e.target.value)}
+            placeholder="Email yang digunakan saat checkout"
+            className="bg-white"
+            disabled={mutation.isPending}
+            autoComplete="email"
+          />
+          <Button type="submit" disabled={!canSubmit} className="w-full">
+            {mutation.isPending ? "Memproses…" : "Klaim Kredit"}
+          </Button>
+        </form>
+
+        {result && !result.alreadyClaimed && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-green-700 bg-green-100 rounded-lg px-3 py-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>
+              Berhasil! <strong>{result.creditsGranted} kredit Exum</strong> ditambahkan ke akun Anda.
+            </span>
+          </div>
+        )}
+
+        {result?.alreadyClaimed && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-blue-700 bg-blue-100 rounded-lg px-3 py-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>Pesanan ini sudah dikreditkan ke akun Anda sebelumnya.</span>
+          </div>
+        )}
+
+        {errorMsg && (
+          <div className="mt-3 flex items-center gap-2 text-sm text-red-700 bg-red-100 rounded-lg px-3 py-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        <p className="text-xs text-muted-foreground mt-3">
+          ID pesanan dan email tertera di email konfirmasi pembayaran dari Scalev.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function KreditsPage() {
+  const queryClient = useQueryClient();
+
   const { data: plan, isLoading: planLoading, refetch: refetchPlan } = useQuery({
     queryKey: ["my-plan"],
     queryFn: getMyPlan,
@@ -138,6 +239,11 @@ export default function KreditsPage() {
   function handleRefresh() {
     refetchPlan();
     refetchPayments();
+  }
+
+  function handleClaimSuccess() {
+    queryClient.invalidateQueries({ queryKey: ["my-plan"] });
+    queryClient.invalidateQueries({ queryKey: ["my-payments"] });
   }
 
   return (
@@ -170,6 +276,9 @@ export default function KreditsPage() {
         ) : plan ? (
           <CreditBalanceCard {...plan} />
         ) : null}
+
+        {/* Manual claim card */}
+        <ClaimOrderCard onSuccess={handleClaimSuccess} />
 
         {/* Purchase history */}
         <Card>
@@ -209,7 +318,7 @@ export default function KreditsPage() {
 
         {/* Help text */}
         <p className="text-xs text-muted-foreground text-center">
-          Kredit dikirimkan otomatis setelah pembayaran dikonfirmasi. Jika kredit belum muncul dalam beberapa menit, coba refresh halaman ini.
+          Kredit dikirimkan otomatis setelah pembayaran dikonfirmasi. Jika kredit belum muncul dalam beberapa menit, gunakan fitur "Klaim Pesanan Manual" di atas dengan memasukkan ID pesanan dari email konfirmasi Scalev.
         </p>
       </div>
     </div>

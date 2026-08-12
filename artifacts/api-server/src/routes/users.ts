@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db, users, usageEvents, messages, conversations, payments } from "@workspace/db";
-import { eq, and, count, gte, desc } from "drizzle-orm";
+import { eq, and, count, gte, desc, isNull, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
+import { claimPaymentRateLimiter } from "../middlewares/rateLimiter";
 import { FREE_EXUM_LIFETIME } from "../lib/plans";
 
 const router = Router();
@@ -76,6 +77,111 @@ router.get("/users/me/payments", requireAuth, async (req, res) => {
     .orderBy(desc(payments.createdAt))
     .limit(50);
   res.json(history);
+});
+
+const CLAIM_PAID_STATUSES = new Set([
+  "paid", "settlement", "settled", "success", "successful",
+  "completed", "complete", "capture", "lunas",
+]);
+
+/**
+ * POST /users/me/claim-payment
+ * Lets a user manually claim a Scalev order whose email didn't match their account.
+ *
+ * Security controls:
+ * 1. claimPaymentRateLimiter — 10 attempts/hour/account prevents brute-force
+ *    enumeration of order IDs.
+ * 2. customerEmail verification — the caller must supply the email address that
+ *    appears on the order record. Only the buyer (who received the Scalev
+ *    confirmation email) knows both the orderId AND the exact email used at
+ *    checkout. This provides non-enumerable purchaser proof without requiring a
+ *    signed receipt.
+ * 3. Atomic transaction — the payment userId assignment and the credit increment
+ *    happen in a single serializable transaction with a conditional WHERE clause,
+ *    so a race between two concurrent claims cannot double-grant or leave the
+ *    payment in an inconsistent "assigned but no credits" state.
+ */
+router.post("/users/me/claim-payment", requireAuth, claimPaymentRateLimiter, async (req, res) => {
+  const { orderId, customerEmail } = req.body as { orderId?: string; customerEmail?: string };
+
+  if (!orderId || typeof orderId !== "string" || !orderId.trim()) {
+    res.status(400).json({ error: "orderId diperlukan" });
+    return;
+  }
+  if (!customerEmail || typeof customerEmail !== "string" || !customerEmail.trim()) {
+    res.status(400).json({ error: "customerEmail diperlukan" });
+    return;
+  }
+
+  const uid = req.dbUser!.id;
+  const trimmedId = orderId.trim();
+  const normalizedEmail = customerEmail.trim().toLowerCase();
+
+  // Find the payment by external ID
+  const [payment] = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.externalId, trimmedId))
+    .limit(1);
+
+  // Return the same 404 whether the order doesn't exist OR the email doesn't
+  // match — this prevents confirming that a given order ID exists.
+  if (!payment || payment.customerEmail.toLowerCase() !== normalizedEmail) {
+    res.status(404).json({ error: "Pesanan tidak ditemukan. Pastikan ID pesanan dan email pembelian benar." });
+    return;
+  }
+
+  // If already assigned to this user, treat as success (idempotent)
+  if (payment.userId === uid) {
+    res.status(200).json({ ok: true, creditsGranted: 0, alreadyClaimed: true });
+    return;
+  }
+
+  // Already claimed by another user
+  if (payment.userId !== null) {
+    res.status(409).json({ error: "Pesanan ini sudah dikaitkan ke akun lain. Hubungi dukungan jika ini adalah kesalahan." });
+    return;
+  }
+
+  if (!CLAIM_PAID_STATUSES.has(payment.status.toLowerCase())) {
+    res.status(400).json({ error: "Pembayaran belum dikonfirmasi. Coba beberapa menit lagi." });
+    return;
+  }
+
+  // Atomic transaction: assign payment ownership + grant credits in one shot.
+  // The WHERE isNull(payments.userId) inside the transaction is the final guard
+  // against concurrent claims slipping through after the check above.
+  let creditsGranted: number;
+  try {
+    creditsGranted = await db.transaction(async (tx) => {
+      const updated = await tx
+        .update(payments)
+        .set({ userId: uid })
+        .where(and(eq(payments.externalId, trimmedId), isNull(payments.userId)))
+        .returning({ creditsGranted: payments.creditsGranted });
+
+      if (updated.length === 0) {
+        // Concurrent claim won the race — roll back
+        tx.rollback();
+        return -1; // unreachable; rollback throws
+      }
+
+      const credits = updated[0].creditsGranted;
+      await tx
+        .update(users)
+        .set({ exumCredits: sql`${users.exumCredits} + ${credits}` })
+        .where(eq(users.id, uid));
+
+      return credits;
+    });
+  } catch {
+    // rollback() throws to abort — treat as a concurrent claim
+    res.status(409).json({ error: "Pesanan ini baru saja diklaim. Refresh halaman untuk melihat saldo terbaru." });
+    return;
+  }
+
+  req.log.info({ uid, orderId: trimmedId, creditsGranted }, "Manual payment claim succeeded");
+  res.json({ ok: true, creditsGranted });
 });
 
 router.patch("/users/me/role", requireAuth, async (req, res) => {

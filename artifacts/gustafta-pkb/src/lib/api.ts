@@ -367,6 +367,25 @@ export async function getMyPayments(): Promise<PaymentRecord[]> {
   return res.json();
 }
 
+/**
+ * Manually claim a Scalev order by its order ID + the purchase email.
+ * Both values must match the payment record — only the buyer who received
+ * the Scalev confirmation email knows both, providing purchaser verification.
+ */
+export async function claimPayment(orderId: string, customerEmail: string): Promise<{ ok: boolean; creditsGranted: number; alreadyClaimed?: boolean }> {
+  const res = await fetch(`${BASE}/users/me/claim-payment`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ orderId, customerEmail }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw Object.assign(new Error((body as { error?: string }).error ?? "Gagal klaim pesanan"), { status: res.status, body });
+  }
+  return res.json();
+}
+
 export async function listAllUsers(): Promise<DbUser[]> {
   const res = await fetch(`${BASE}/users`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch users");
