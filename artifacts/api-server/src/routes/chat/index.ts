@@ -2,11 +2,11 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and, asc, count, gte, inArray, sql } from "drizzle-orm";
 import { db, conversations, messages, evidenceItems, usageEvents, users, exumOutlines, type Conversation } from "@workspace/db";
 import { logger } from "../../lib/logger";
-import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL } from "../../lib/llm";
+import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL, callWithFallback } from "../../lib/llm";
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
 import { buildKnowledgeContext } from "../../lib/knowledge-base";
 import { buildProjectBrainContext } from "../../lib/project-brain";
-import { buildHistoricalPKBContext, buildCompetencyAnalysisContext } from "../../lib/historical-pkb";
+import { buildHistoricalPKBContext, buildCompetencyAnalysisContext, buildQuizContext } from "../../lib/historical-pkb";
 import { recommendPersona, isKnownPersona, isConfidentJabkerMatch, DEFAULT_PERSONA_ID } from "../../lib/personas";
 import { findJabkerGroup } from "../../lib/skk-data";
 import { requireAuth } from "../../middlewares/auth";
@@ -227,14 +227,6 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
   const conv = await loadOwnedConversation(req, res, convId);
   if (!conv) return;
 
-  let llm: ReturnType<typeof getClientForModel>;
-  try {
-    llm = getClientForModel(conv.model ?? DEFAULT_MODEL);
-  } catch (err) {
-    res.status(400).json({ error: (err as Error).message });
-    return;
-  }
-
   await db.insert(messages).values({ conversationId: convId, role: "user", content });
 
   const existingMsgs = await db
@@ -250,15 +242,16 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     .orderBy(asc(evidenceItems.createdAt));
 
   const lastUserMsg = [...existingMsgs].reverse().find((m: { role: string; content: string }) => m.role === "user")?.content ?? null;
-  const [knowledgeContext, projectBrainContext, historicalPKBContext, competencyContext] = await Promise.all([
+  const [knowledgeContext, projectBrainContext, historicalPKBContext, competencyContext, quizContext] = await Promise.all([
     buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: lastUserMsg }),
     buildProjectBrainContext(req.dbUser!.id),
     buildHistoricalPKBContext(req.dbUser!.id, convId),
     buildCompetencyAnalysisContext(req.dbUser!.id),
+    buildQuizContext(req.dbUser!.id),
   ]);
   const systemPrompt = buildSystemPrompt(
     conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence,
-    knowledgeContext + projectBrainContext + historicalPKBContext + competencyContext,
+    knowledgeContext + projectBrainContext + historicalPKBContext + competencyContext + quizContext,
     conv.personaId,
     req.dbUser!.name,
   );
@@ -269,24 +262,45 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     content: m.content,
   }));
 
+  const primaryModel = conv.model ?? DEFAULT_MODEL;
+
+  // Obtain a working stream BEFORE setting SSE headers so we can still fall back
+  // to a different provider if the primary model's request fails on connection.
+  let activeStream: AsyncIterable<import("openai/resources/chat/completions").ChatCompletionChunk>;
+  let modelUsed = primaryModel;
+  try {
+    const { result: stream, modelUsed: mu } = await callWithFallback(
+      primaryModel,
+      (llm) => llm.client.chat.completions.create({
+        model: llm.model,
+        max_tokens: 8192,
+        stream: true,
+        messages: [
+          { role: "system", content: systemPrompt + "\n\n" + phaseInstruction },
+          ...chatMessages,
+        ],
+      }),
+      (msg) => req.log.warn({ msg }, "LLM fallback"),
+    );
+    activeStream = stream;
+    modelUsed = mu;
+  } catch (err) {
+    req.log.error({ err }, "All LLM providers failed for stream");
+    res.status(503).json({ error: "Semua layanan AI sedang tidak tersedia. Coba lagi dalam beberapa menit." });
+    return;
+  }
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  if (modelUsed !== primaryModel) {
+    res.setHeader("X-Model-Fallback", modelUsed);
+  }
 
   let fullResponse = "";
 
   try {
-    const stream = await llm.client.chat.completions.create({
-      model: llm.model,
-      max_tokens: 8192,
-      stream: true,
-      messages: [
-        { role: "system", content: systemPrompt + "\n\n" + phaseInstruction },
-        ...chatMessages,
-      ],
-    });
-
-    for await (const chunk of stream) {
+    for await (const chunk of activeStream) {
       const delta = chunk.choices[0]?.delta?.content;
       if (delta) {
         fullResponse += delta;
@@ -313,8 +327,8 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     res.write(`data: ${JSON.stringify({ done: true, phase: nextPhase })}\n\n`);
     res.end();
   } catch (err) {
-    req.log.error({ err }, "OpenAI stream error");
-    res.write(`data: ${JSON.stringify({ error: "AI error occurred" })}\n\n`);
+    req.log.error({ err }, "LLM stream error mid-stream");
+    res.write(`data: ${JSON.stringify({ error: "Koneksi AI terputus. Coba kirim ulang pesan Anda." })}\n\n`);
     res.end();
   }
 });
@@ -408,11 +422,12 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       .map((m) => `${m.role === "user" ? "TKK" : "Pak Budi"}: ${m.content}`)
       .join("\n\n");
 
-    const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency, approvedOutlineRow] = await Promise.all([
+    const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency, exumQuiz, approvedOutlineRow] = await Promise.all([
       buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: conv.jabker }),
       buildProjectBrainContext(req.dbUser!.id),
       buildHistoricalPKBContext(req.dbUser!.id, conversationId),
       buildCompetencyAnalysisContext(req.dbUser!.id),
+      buildQuizContext(req.dbUser!.id),
       db.select().from(exumOutlines)
         .where(and(eq(exumOutlines.conversationId, convId), eq(exumOutlines.isApproved, true)))
         .then((rows) => rows[0] ?? null),
@@ -432,26 +447,32 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
 
     const exumPrompt = buildExumPrompt(
       conv.mode, conv.jabker, conv.jenjang, transcript, evidence,
-      exumKnowledge + exumProjectBrain + exumHistorical + exumCompetency + outlineContext,
+      exumKnowledge + exumProjectBrain + exumHistorical + exumCompetency + exumQuiz + outlineContext,
       req.dbUser!.name,
     );
 
-    let llm: ReturnType<typeof getClientForModel>;
+    let exumResponse: string;
     try {
-      llm = getClientForModel(conv.model ?? DEFAULT_MODEL);
+      const { result } = await callWithFallback(
+        conv.model ?? DEFAULT_MODEL,
+        (llm) => llm.client.chat.completions.create({
+          model: llm.model,
+          max_tokens: 8192,
+          messages: [{ role: "user", content: exumPrompt }],
+        }),
+        (msg) => req.log.warn({ msg }, "Exum LLM fallback"),
+      );
+      exumResponse = result.choices[0]?.message?.content ?? "";
     } catch (err) {
       await refundReservation();
-      res.status(400).json({ error: (err as Error).message });
+      req.log.error({ err }, "All LLM providers failed for Exum generation");
+      res.status(503).json({
+        error: "Semua layanan AI sedang tidak tersedia. Kredit tidak dikurangi. Coba lagi dalam beberapa menit.",
+      });
       return;
     }
 
-    const response = await llm.client.chat.completions.create({
-      model: llm.model,
-      max_tokens: 8192,
-      messages: [{ role: "user", content: exumPrompt }],
-    });
-
-    const content = response.choices[0]?.message?.content ?? "";
+    const content = exumResponse;
     await db.update(conversations)
       .set({ phase: "done", exumContent: content })
       .where(eq(conversations.id, conversationId));

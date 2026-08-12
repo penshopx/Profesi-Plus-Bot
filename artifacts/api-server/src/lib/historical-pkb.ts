@@ -1,6 +1,6 @@
-import { db, conversations, evidenceItems, competencyAnalysis } from "@workspace/db";
+import { db, conversations, evidenceItems, competencyAnalysis, quizAttempts, quizzes } from "@workspace/db";
 import type { CompetencyAnalysisResult } from "@workspace/db";
-import { and, eq, isNotNull, ne, desc } from "drizzle-orm";
+import { and, eq, isNotNull, ne, desc, sql } from "drizzle-orm";
 
 // Token-budget constants — keep prompt injection bounded
 const MAX_PAST_EXUMS = 3;
@@ -13,6 +13,89 @@ const MAX_TOTAL_CHARS = 3200;
 const MAX_COMPETENCY_ANALYSES = 3;  // most recent analyses per user
 const MAX_GAPS = 5;                  // cap listed gaps per analysis
 const MAX_RECS = 3;                  // cap recommendations per analysis
+
+/**
+ * Builds a context block from the user's quiz attempt history.
+ *
+ * For learning quizzes:  shows pre-score, post-score, and delta (= PKB evidence of improvement).
+ * For proficiency quizzes: shows score and pass/fail (= validated mastery of claimed experience).
+ *
+ * The AI uses this to reference concrete measured competency during interviews and Exum writing.
+ */
+export async function buildQuizContext(userId: number): Promise<string> {
+  // Fetch all attempts joined to quiz metadata, ordered newest first
+  const rows = await db
+    .select({
+      quizId: quizAttempts.quizId,
+      quizTitle: quizzes.title,
+      jabker: quizzes.jabker,
+      skkUnitCode: quizzes.skkUnitCode,
+      quizType: quizzes.quizType,
+      passingScore: quizzes.passingScore,
+      attemptType: quizAttempts.attemptType,
+      scorePercent: quizAttempts.scorePercent,
+      passed: quizAttempts.passed,
+      completedAt: quizAttempts.completedAt,
+    })
+    .from(quizAttempts)
+    .innerJoin(quizzes, eq(quizAttempts.quizId, quizzes.id))
+    .where(eq(quizAttempts.userId, userId))
+    .orderBy(desc(quizAttempts.completedAt));
+
+  if (!rows.length) return "";
+
+  // Group by quizId — keep best score per attemptType per quiz
+  type AttemptSummary = { score: number; passed: boolean; completedAt: Date };
+  type QuizGroup = {
+    title: string; jabker: string | null; skkUnitCode: string | null;
+    quizType: string; passingScore: number;
+    pre?: AttemptSummary; post?: AttemptSummary; proficiency?: AttemptSummary;
+  };
+  const byQuiz = new Map<number, QuizGroup>();
+
+  for (const r of rows) {
+    if (!byQuiz.has(r.quizId)) {
+      byQuiz.set(r.quizId, {
+        title: r.quizTitle, jabker: r.jabker, skkUnitCode: r.skkUnitCode,
+        quizType: r.quizType, passingScore: r.passingScore,
+      });
+    }
+    const g = byQuiz.get(r.quizId)!;
+    const key = r.attemptType as "pre" | "post" | "proficiency";
+    if (!g[key] || r.scorePercent > g[key]!.score) {
+      g[key] = { score: r.scorePercent, passed: r.passed, completedAt: r.completedAt };
+    }
+  }
+
+  if (!byQuiz.size) return "";
+
+  const lines: string[] = [
+    "\n\n=== DATA QUIZ PKB TKK ===",
+    "Hasil quiz yang telah dikerjakan TKK. GUNAKAN ini untuk menyebut kompetensi terukur secara konkret:",
+  ];
+
+  for (const [, g] of byQuiz) {
+    const label = g.skkUnitCode ? `[${g.skkUnitCode}] ${g.title}` : g.title;
+    if (g.quizType === "learning" && (g.pre || g.post)) {
+      const preStr = g.pre ? `${g.pre.score}%` : "—";
+      const postStr = g.post ? `${g.post.score}%` : "—";
+      const delta = (g.pre && g.post) ? g.post.score - g.pre.score : null;
+      const deltaStr = delta !== null ? ` (peningkatan: ${delta > 0 ? "+" : ""}${delta}%)` : "";
+      const status = g.post?.passed ? "LULUS" : g.post ? "BELUM LULUS" : g.pre?.passed ? "LULUS (pre)" : "BELUM LULUS (pre)";
+      lines.push(`📘 ${label}: Pre=${preStr} → Post=${postStr}${deltaStr} | ${status}`);
+    } else if (g.quizType === "proficiency" && g.proficiency) {
+      const s = g.proficiency;
+      lines.push(`🏆 ${label} (Proficiency): ${s.score}% — ${s.passed ? "LULUS ✓" : `Belum lulus (min. ${g.passingScore}%)`}`);
+    }
+  }
+
+  lines.push(
+    "\nSebut skor quiz di atas saat relevan — ini adalah bukti PKB terukur yang memperkuat narasi kompetensi TKK.",
+  );
+
+  const combined = lines.join("\n");
+  return combined.length > 1500 ? combined.slice(0, 1500) + "\n…[data quiz dipotong]" : combined;
+}
 
 /**
  * Builds a context block from the user's competency analysis snapshot:
