@@ -12,6 +12,8 @@
 import express from "express";
 import request from "supertest";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { db, users as usersTable } from "@workspace/db";
+import { callWithFallback } from "../lib/llm.js";
 
 // ── 1. db mock ────────────────────────────────────────────────────────────────
 //
@@ -414,5 +416,163 @@ describe("POST /api/chat/conversations/:id/messages", () => {
       .send({});
 
     expect(res.status).toBe(400);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests: POST /api/chat/generate-exum
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * DB call order inside generate-exum for a successful request:
+ *  1. loadOwnedConversation  → db.select → [FAKE_CONV]
+ *  2. db.transaction         → mocked per-test (no queue entry)
+ *  3. db.select messages     → []
+ *  4. db.select evidenceItems → []
+ *  5. Promise.all: db.select exumOutlines (.then() on chain) → []
+ *  6. callWithFallback       → no DB
+ *  7. db.update conversations → undefined
+ *  8. db.insert usageEvents  → undefined
+ */
+describe("POST /api/chat/generate-exum", () => {
+  let app: express.Express;
+
+  /** Re-usable standard callWithFallback factory (captures messages, streams fake response). */
+  function installStandardLLMMock() {
+    vi.mocked(callWithFallback).mockImplementation(
+      async (_model: string, factory: (llm: any) => Promise<any>) => {
+        const fakeClient = {
+          client: {
+            chat: {
+              completions: {
+                create: vi.fn().mockImplementation((opts: any) => {
+                  capturedLLMMessages = opts.messages;
+                  // generate-exum reads result.choices[0]?.message?.content (non-streaming).
+                  // Return an object that satisfies that path.
+                  return { choices: [{ message: { content: "EXUM_RESPONSE" } }] };
+                }),
+              },
+            },
+          },
+          model: "gpt-4o",
+        };
+        const result = await factory(fakeClient);
+        return { result, modelUsed: "gpt-4o" };
+      },
+    );
+  }
+
+  beforeEach(async () => {
+    capturedLLMMessages = [];
+    dbState.queue = [];
+    app = await buildApp();
+    installStandardLLMMock();
+    // Default: transaction allows a paid credit.
+    vi.mocked(db.transaction).mockResolvedValue({ allowed: true, source: "paid" } as any);
+  });
+
+  it("includes competency analysis context in the Exum LLM prompt", async () => {
+    // Queue: conv, messages, evidenceItems, exumOutlines, update conv, insert usageEvents
+    dbState.push([FAKE_CONV], [], [], [], undefined, undefined);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    expect(res.status).toBe(200);
+
+    // generate-exum sends a single user message whose content is the full prompt.
+    expect(capturedLLMMessages.length).toBeGreaterThan(0);
+    const prompt = capturedLLMMessages[0];
+    expect(prompt.role).toBe("user");
+
+    // Competency context from buildCompetencyAnalysisContext must appear verbatim.
+    expect(prompt.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+    expect(prompt.content).toContain("SKPK estimasi: 18/25");
+    expect(prompt.content).toContain("Gap A");
+    expect(prompt.content).toContain("Rec A");
+  });
+
+  it("includes the user's real APL 01 profile in the Exum LLM prompt", async () => {
+    dbState.push([FAKE_CONV], [], [], [], undefined, undefined);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    expect(res.status).toBe(200);
+
+    const prompt = capturedLLMMessages[0];
+    expect(prompt.role).toBe("user");
+
+    // Profile context from buildProfileContext must appear so the Exum references the
+    // user's real job title and employer — not generic placeholders.
+    expect(prompt.content).toContain("PROFIL APL 01 TKK");
+    expect(prompt.content).toContain("Manajer Proyek Konstruksi");
+    expect(prompt.content).toContain("PT Bangun Sejahtera");
+  });
+
+  it("calls buildCompetencyAnalysisContext and buildProfileContext with the authenticated user's ID", async () => {
+    dbState.push([FAKE_CONV], [], [], [], undefined, undefined);
+
+    await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    const { buildCompetencyAnalysisContext, buildProfileContext } = await import("../lib/historical-pkb.js");
+    expect(vi.mocked(buildCompetencyAnalysisContext)).toHaveBeenCalledWith(42);
+    expect(vi.mocked(buildProfileContext)).toHaveBeenCalledWith(42);
+  });
+
+  it("refunds the reserved credit and returns 503 when the LLM call fails", async () => {
+    // Queue items consumed before the LLM call: conv, messages, evidenceItems, exumOutlines
+    dbState.push([FAKE_CONV], [], [], []);
+    // Refund path: db.update(users).set(...).where(...).catch(() => {})
+    // The chain's .catch() pops one item from the queue — empty queue returns [] by default.
+
+    // Make the LLM throw so the refund path is triggered.
+    vi.mocked(callWithFallback).mockRejectedValueOnce(new Error("All providers unavailable"));
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    // The inner catch returns 503 with a message that credits were not deducted.
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/kredit tidak dikurangi/i);
+
+    // Refund: db.update must have been called with the users table (to restore exumCredits).
+    expect(vi.mocked(db.update)).toHaveBeenCalledWith(usersTable);
+  });
+
+  it("returns 402 when the user has no credits and has already used the free trial", async () => {
+    dbState.push([FAKE_CONV]);
+    // Transaction returns denied.
+    vi.mocked(db.transaction).mockResolvedValue({ allowed: false } as any);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    expect(res.status).toBe(402);
+    expect(res.body.code).toBe("plan_limit");
+  });
+
+  it("returns 400 when conversationId is missing", async () => {
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 when the conversation does not belong to the authenticated user", async () => {
+    dbState.push([{ ...FAKE_CONV, userId: 999 }]);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    expect(res.status).toBe(404);
   });
 });
