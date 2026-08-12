@@ -25,6 +25,28 @@ async function loadOwned(req: Request, res: Response, id: number) {
   return rows[0];
 }
 
+// ── Check whether the authenticated user has an analysis for a given jabker ───────
+// Uses findJabkerGroup for canonical ID resolution so the match is always exact.
+router.get("/competency-studio/check", requireAuth, async (req, res) => {
+  const jabkerQuery = typeof req.query.jabker === "string" ? req.query.jabker.trim() : "";
+  if (!jabkerQuery) {
+    res.status(400).json({ error: "jabker query param is required" });
+    return;
+  }
+  const jabker = findJabkerGroup(jabkerQuery);
+  if (!jabker) {
+    // Unknown jabker — treat as no analysis
+    res.json({ hasAnalysis: false });
+    return;
+  }
+  const rows = await db
+    .select({ id: competencyAnalysis.id })
+    .from(competencyAnalysis)
+    .where(and(eq(competencyAnalysis.userId, req.dbUser!.id), eq(competencyAnalysis.jabkerId, jabker.id)))
+    .limit(1);
+  res.json({ hasAnalysis: rows.length > 0 });
+});
+
 // ── List own analyses (summary fields only) ──────────────────────────────────────
 router.get("/competency-studio", requireAuth, async (req, res) => {
   const rows = await db

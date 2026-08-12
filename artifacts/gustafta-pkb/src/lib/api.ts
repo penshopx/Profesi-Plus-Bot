@@ -526,6 +526,21 @@ export async function listCompetencyAnalyses(): Promise<CompetencyAnalysisSummar
   return res.json();
 }
 
+/**
+ * Checks whether the authenticated user has at least one competency analysis
+ * for the given jabker string. The server canonicalises the jabker via
+ * findJabkerGroup so the match is always exact (by jabkerId), never a substring.
+ */
+export async function checkCompetencyAnalysisForJabker(jabker: string): Promise<boolean> {
+  const res = await fetch(
+    `${BASE}/competency-studio/check?jabker=${encodeURIComponent(jabker)}`,
+    { credentials: "include" },
+  );
+  if (!res.ok) throw new Error("Failed to check competency analysis");
+  const data = await res.json() as { hasAnalysis: boolean };
+  return data.hasAnalysis;
+}
+
 export async function getCompetencyAnalysis(id: number): Promise<CompetencyAnalysisFull> {
   const res = await fetch(`${BASE}/competency-studio/${id}`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch analysis");

@@ -11,7 +11,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import {
   getConversation, streamMessage, generateExum, advancePhase, createEvidence, deleteEvidence, patchEvidence,
-  fetchSkkUnits, updateConversation, listPersonas, PlanLimitError, SCALEV_CHECKOUT_URL,
+  fetchSkkUnits, updateConversation, listPersonas, checkCompetencyAnalysisForJabker, PlanLimitError, SCALEV_CHECKOUT_URL,
   type Message, type EvidenceItem, type SkkUnit, type SocratiDialog,
 } from "@/lib/api";
 import { ExumOutlineEditor } from "@/components/ExumOutlineEditor";
@@ -1161,6 +1161,7 @@ export default function ChatPage() {
 
   const [copiedMsgId, setCopiedMsgId] = useState<number | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [studioBannerDismissed, setStudioBannerDismissed] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<(() => void) | null>(null);
@@ -1195,6 +1196,29 @@ export default function ChatPage() {
     queryFn: getMyPlan,
     staleTime: 5 * 60 * 1000,
   });
+
+  // Studio Kompetensi nudge — server canonicalises the jabker via findJabkerGroup
+  // so the match is always exact (by jabkerId). Gate banner only on success so we
+  // never falsely nudge during loading or after a fetch error.
+  const {
+    data: hasAnalysisForJabker,
+    status: analysisCheckStatus,
+  } = useQuery({
+    queryKey: ["competency-analysis-check", conv?.jabker],
+    queryFn: () => checkCompetencyAnalysisForJabker(conv!.jabker!),
+    enabled: !!conv?.jabker,
+    staleTime: 5 * 60 * 1000,
+  });
+  const showStudioBanner =
+    !!conv?.jabker &&
+    analysisCheckStatus === "success" &&
+    hasAnalysisForJabker === false &&
+    !studioBannerDismissed;
+
+  // Reset banner dismissal whenever the conversation switches to a different jabker
+  useEffect(() => {
+    setStudioBannerDismissed(false);
+  }, [conv?.jabker]);
 
   useEffect(() => {
     if (conv?.phase) setCurrentPhase(conv.phase);
@@ -1641,6 +1665,32 @@ export default function ChatPage() {
               className="flex items-center gap-1.5 bg-white border border-amber-300 text-amber-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-amber-50 transition-colors disabled:opacity-50">
               {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
               {generating ? "Membuat ulang..." : "Regenerate"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Studio Kompetensi nudge banner */}
+      {showStudioBanner && (
+        <div className="border-b border-amber-200 bg-amber-50/70 px-4 py-2.5 shrink-0">
+          <div className="max-w-3xl mx-auto flex items-center gap-2 flex-wrap">
+            <BarChart3 className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="text-sm text-amber-900 flex-1">
+              <strong>Tingkatkan kualitas saran AI</strong> — jalankan Studio Kompetensi untuk jabker <em>{conv?.jabker}</em> agar Pak Budi bisa memberikan panduan yang lebih spesifik dan terarah.
+            </span>
+            <a
+              href="/studio"
+              className="flex items-center gap-1.5 bg-white border border-amber-300 text-amber-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-amber-50 transition-colors shrink-0"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              Buka Studio Kompetensi
+            </a>
+            <button
+              onClick={() => setStudioBannerDismissed(true)}
+              title="Tutup notifikasi ini"
+              className="text-amber-500 hover:text-amber-700 transition-colors shrink-0 p-0.5"
+            >
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
