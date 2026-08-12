@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { db, competencyAnalysis } from "@workspace/db";
 import { and, eq, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { competencyRateLimiter } from "../middlewares/rateLimiter";
 import { findJabkerGroup } from "../lib/skk-data";
 import { getUserProjectBrain } from "../lib/project-brain";
 import { getClientForModel, isKnownModel, DEFAULT_MODEL } from "../lib/llm";
@@ -58,7 +59,7 @@ router.get("/competency-studio/:id", requireAuth, async (req, res) => {
 });
 
 // ── Run a new analysis ───────────────────────────────────────────────────────────
-router.post("/competency-studio/analyze", requireAuth, async (req, res) => {
+router.post("/competency-studio/analyze", requireAuth, competencyRateLimiter, async (req, res) => {
   const b = req.body as Record<string, unknown>;
   const jabkerQuery = typeof b.jabker === "string" ? b.jabker.trim() : "";
   if (!jabkerQuery) {
