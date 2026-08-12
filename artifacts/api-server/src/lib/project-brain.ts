@@ -16,6 +16,12 @@ const KIND_LABELS: Record<string, string> = {
 /**
  * Active project-brain entries for a user, newest first. Capped so prompt
  * injection stays bounded.
+ *
+ * IMPORTANT – no caching: this function intentionally queries the database on
+ * every call so that entries deleted (or deactivated) by the user are excluded
+ * from the AI context in subsequent chat requests immediately, without any
+ * cache invalidation step. Do not add an in-memory or Redis cache here unless
+ * you also hook into the delete/deactivate paths to purge it.
  */
 export async function getUserProjectBrain(userId: number): Promise<ProjectBrainEntry[]> {
   return db
