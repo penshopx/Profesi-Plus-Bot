@@ -15,6 +15,7 @@ import {
   type Message, type EvidenceItem, type SkkUnit, type SocratiDialog,
 } from "@/lib/api";
 import { ExumOutlineEditor } from "@/components/ExumOutlineEditor";
+import { QuizSummaryPanel } from "@/components/QuizSummaryPanel";
 import { getMyUsage, getMyPlan } from "@/lib/api-profile";
 
 // ─── Markdown → HTML helpers (module-level, used by print & HTML export) ──────
@@ -1854,7 +1855,9 @@ export default function ChatPage() {
       {/* Exum Outline Editor — shown at synthesis phase before Exum is generated */}
       {currentPhase === "synthesis" && !exum && id > 0 && (
         <div className="border-t border-border bg-card/50 px-4 py-4 shrink-0">
-          <div className="max-w-3xl mx-auto">
+          <div className="max-w-3xl mx-auto flex flex-col gap-4">
+            {/* Quiz performance summary — so users see what the AI already knows */}
+            <QuizSummaryPanel jabker={conv?.jabker} />
             <ExumOutlineEditor
               conversationId={id}
               onApproved={handleGenerateExum}

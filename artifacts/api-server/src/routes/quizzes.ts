@@ -60,6 +60,75 @@ router.get("/quizzes/my-attempts", requireAuth, async (req, res): Promise<void> 
   res.json(attempts);
 });
 
+/**
+ * GET /quizzes/my-summary
+ *
+ * Returns a structured summary of the user's quiz performance — best score per
+ * attempt type (pre/post/proficiency) per quiz — so the frontend can render a
+ * "Data Quiz Saya" panel before Exum generation.
+ */
+router.get("/quizzes/my-summary", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.dbUser!.id;
+
+  const rows = await db
+    .select({
+      quizId: quizAttempts.quizId,
+      quizTitle: quizzes.title,
+      jabker: quizzes.jabker,
+      skkUnitCode: quizzes.skkUnitCode,
+      quizType: quizzes.quizType,
+      passingScore: quizzes.passingScore,
+      attemptType: quizAttempts.attemptType,
+      scorePercent: quizAttempts.scorePercent,
+      passed: quizAttempts.passed,
+      completedAt: quizAttempts.completedAt,
+    })
+    .from(quizAttempts)
+    .innerJoin(quizzes, eq(quizAttempts.quizId, quizzes.id))
+    .where(eq(quizAttempts.userId, userId))
+    .orderBy(desc(quizAttempts.completedAt));
+
+  // Group by quizId, keep best score per attemptType
+  type AttemptBest = { score: number; passed: boolean; completedAt: string };
+  type QuizSummaryEntry = {
+    quizId: number;
+    quizTitle: string;
+    jabker: string | null;
+    skkUnitCode: string | null;
+    quizType: string;
+    passingScore: number;
+    pre?: AttemptBest;
+    post?: AttemptBest;
+    proficiency?: AttemptBest;
+  };
+
+  const byQuiz = new Map<number, QuizSummaryEntry>();
+
+  for (const r of rows) {
+    if (!byQuiz.has(r.quizId)) {
+      byQuiz.set(r.quizId, {
+        quizId: r.quizId,
+        quizTitle: r.quizTitle,
+        jabker: r.jabker,
+        skkUnitCode: r.skkUnitCode,
+        quizType: r.quizType,
+        passingScore: r.passingScore,
+      });
+    }
+    const g = byQuiz.get(r.quizId)!;
+    const key = r.attemptType as "pre" | "post" | "proficiency";
+    if (!g[key] || r.scorePercent > g[key]!.score) {
+      g[key] = {
+        score: r.scorePercent,
+        passed: r.passed,
+        completedAt: r.completedAt.toISOString(),
+      };
+    }
+  }
+
+  res.json(Array.from(byQuiz.values()));
+});
+
 router.get("/quizzes/:id", requireAuth, async (req, res): Promise<void> => {
   const [quiz] = await db.select().from(quizzes).where(eq(quizzes.id, Number(req.params.id)));
   if (!quiz || !quiz.isActive) { res.status(404).json({ error: "Quiz tidak ditemukan" }); return; }

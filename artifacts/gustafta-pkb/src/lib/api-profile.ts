@@ -183,6 +183,28 @@ export async function deleteClaim(id: number): Promise<void> {
 
 // ─── Quizzes ─────────────────────────────────────────────────────────────────
 
+export interface QuizAttemptBest {
+  score: number;
+  passed: boolean;
+  completedAt: string;
+}
+
+export interface MyQuizSummaryEntry {
+  quizId: number;
+  quizTitle: string;
+  jabker: string | null;
+  skkUnitCode: string | null;
+  quizType: "learning" | "proficiency";
+  passingScore: number;
+  pre?: QuizAttemptBest;
+  post?: QuizAttemptBest;
+  proficiency?: QuizAttemptBest;
+}
+
+export async function getMyQuizSummary(): Promise<MyQuizSummaryEntry[]> {
+  return (await f("/quizzes/my-summary")).json();
+}
+
 export async function listQuizzes(params?: { jabker?: string; type?: string }): Promise<QuizSummary[]> {
   const qs = new URLSearchParams();
   if (params?.jabker) qs.set("jabker", params.jabker);
