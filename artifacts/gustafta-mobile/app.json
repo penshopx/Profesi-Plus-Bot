@@ -28,7 +28,14 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "color": "#1AA890",
+          "sounds": []
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

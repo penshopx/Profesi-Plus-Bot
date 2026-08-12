@@ -19,6 +19,7 @@ import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { ClerkProvider, useAuth } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
 import { registerPushToken } from '@/lib/api';
@@ -146,17 +147,26 @@ async function registerForPushNotifications(getToken: () => Promise<string | nul
     });
   }
 
-  const projectId = process.env.EXPO_PUBLIC_REPL_ID;
-  if (!projectId) return;
+  // Prefer the EAS project ID baked into the app config (set via `eas init` or
+  // `app.json extra.eas.projectId`). In Expo Go the project ID is inferred from
+  // the manifest so we can omit it; in standalone builds it must be provided.
+  const projectId: string | undefined =
+    (Constants.expoConfig?.extra?.eas?.projectId as string | undefined) ??
+    (Constants.easConfig?.projectId as string | undefined);
 
   try {
-    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+    const { data: token } = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : {},
+    );
+    if (__DEV__) console.log('[push] Expo push token:', token);
     const authToken = await getToken();
     if (authToken && token) {
       await registerPushToken(token, authToken);
+      if (__DEV__) console.log('[push] Token registered with server successfully');
     }
-  } catch {
-    // Non-fatal — push is a nice-to-have
+  } catch (err) {
+    // Non-fatal — push is a nice-to-have, but surface it in dev so it's never silently lost
+    if (__DEV__) console.warn('[push] getExpoPushTokenAsync failed:', err);
   }
 }
 
@@ -176,6 +186,21 @@ function RootLayoutNav() {
 
   // Handle notification taps: deep-link to the chat screen and open the Exum modal.
   useEffect(() => {
+    // ── Cold-start case ──────────────────────────────────────────────────────
+    // When the app is fully killed and the user taps a push notification,
+    // `addNotificationResponseReceivedListener` does NOT fire — the OS launches
+    // the app fresh. `getLastNotificationResponseAsync` retrieves that initial
+    // response so the deep-link still works after a cold launch.
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (!response) return;
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      const conversationId = data?.conversationId;
+      if (conversationId) {
+        router.push(`/(home)/chat/${conversationId}?openExum=true` as never);
+      }
+    });
+
+    // ── Foreground / background case ─────────────────────────────────────────
     // Foreground notification display is already configured via setNotificationHandler above.
     notificationListener.current = Notifications.addNotificationReceivedListener(() => {
       // No-op in foreground — the banner is shown automatically.
