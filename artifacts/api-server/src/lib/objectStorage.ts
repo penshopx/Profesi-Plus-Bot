@@ -111,7 +111,7 @@ export class ObjectStorageService {
     return new Response(webStream, { headers });
   }
 
-  async getObjectEntityUploadURL(): Promise<string> {
+  async getObjectEntityUploadURL(userId?: number): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     if (!privateObjectDir) {
       throw new Error(
@@ -121,7 +121,9 @@ export class ObjectStorageService {
     }
 
     const objectId = randomUUID();
-    const fullPath = `${privateObjectDir}/uploads/${objectId}`;
+    // Include userId in path so the path itself encodes ownership.
+    const subPath = userId != null ? `uploads/${userId}/${objectId}` : `uploads/${objectId}`;
+    const fullPath = `${privateObjectDir}/${subPath}`;
 
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
@@ -178,6 +180,15 @@ export class ObjectStorageService {
 
     const entityId = rawObjectPath.slice(objectEntityDir.length);
     return `/objects/${entityId}`;
+  }
+
+  async deleteObjectEntity(objectPath: string): Promise<void> {
+    try {
+      const objectFile = await this.getObjectEntityFile(objectPath);
+      await objectFile.delete({ ignoreNotFound: true });
+    } catch {
+      // If the file doesn't exist or can't be found, treat as already deleted.
+    }
   }
 
   async trySetObjectEntityAclPolicy(

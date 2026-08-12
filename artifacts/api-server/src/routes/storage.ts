@@ -34,7 +34,7 @@ router.post("/storage/uploads/request-url", requireAuth, async (req: Request, re
 
   try {
     const { name, size, contentType } = parsed.data;
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL(req.dbUser!.id);
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
     // Bind this objectPath to the uploading user so the doc-registration endpoint
     // can verify the path was actually issued to them (not borrowed from another user).

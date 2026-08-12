@@ -14,6 +14,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { consumeUploadToken } from "../lib/uploadTokenStore";
+import { ObjectStorageService } from "../lib/objectStorage";
 
 const router = Router();
 
@@ -291,9 +292,23 @@ router.delete("/kegiatan/:id/docs/:docId", requireAuth, async (req, res) => {
     return res.status(403).json({ error: "Kegiatan sudah diverifikasi — bukti tidak dapat diubah" });
   }
 
+  // Fetch the doc row first so we can delete from object storage after DB removal.
+  const [docRow] = await db
+    .select({ objectPath: pkbActivityDocs.objectPath })
+    .from(pkbActivityDocs)
+    .where(and(eq(pkbActivityDocs.id, docId), eq(pkbActivityDocs.activityId, id)))
+    .limit(1);
+
   await db.delete(pkbActivityDocs).where(
     and(eq(pkbActivityDocs.id, docId), eq(pkbActivityDocs.activityId, id))
   );
+
+  // Delete the actual file from object storage so orphaned blobs don't accumulate.
+  if (docRow?.objectPath) {
+    const storageService = new ObjectStorageService();
+    await storageService.deleteObjectEntity(docRow.objectPath);
+  }
+
   await recomputeStatus(id);
   res.json({ success: true });
 });
