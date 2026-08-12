@@ -207,6 +207,17 @@ export default function VoiceNoteModal({
 
       const text = await transcribeAudio(uri, token);
 
+      // Task #21 — guard against empty transcripts (Whisper returned nothing).
+      // Go back to idle with a clear message so the user can retry rather than
+      // accidentally saving an entry with no description.
+      if (!text.trim()) {
+        setErrorMsg(
+          'Tidak ada suara yang berhasil ditranskripsi. Pastikan mikrofon tidak terhalang, lalu coba rekam ulang.',
+        );
+        setStage('idle');
+        return;
+      }
+
       const autoTitle =
         text.trim().slice(0, 50) ||
         `Catatan Suara ${new Date().toLocaleDateString('id-ID')}`;
