@@ -21,11 +21,11 @@ export interface UsageInfo {
 }
 
 export async function getMyPlan(): Promise<PlanInfo> {
-  return f("/api/users/me/plan");
+  return (await f("/users/me/plan")).json();
 }
 
 export async function getMyUsage(): Promise<UsageInfo> {
-  return f("/api/users/me/usage");
+  return (await f("/users/me/usage")).json();
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────

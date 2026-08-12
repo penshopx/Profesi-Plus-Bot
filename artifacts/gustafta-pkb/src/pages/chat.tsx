@@ -1224,6 +1224,7 @@ export default function ChatPage() {
             setCurrentPhase(phase);
             qc.invalidateQueries({ queryKey: ["conversation", id] });
             qc.invalidateQueries({ queryKey: ["conversations"] });
+            qc.invalidateQueries({ queryKey: ["my-usage"] });
             setTimeout(() => textareaRef.current?.focus(), 50);
           },
           (err) => { setStreaming(false); setStreamText(`Terjadi kesalahan: ${err}`); }
@@ -1258,6 +1259,7 @@ export default function ChatPage() {
         });
         qc.invalidateQueries({ queryKey: ["conversation", id] });
         qc.invalidateQueries({ queryKey: ["conversations"] });
+        qc.invalidateQueries({ queryKey: ["my-usage"] });
         setTimeout(() => textareaRef.current?.focus(), 50);
       },
       (err) => { setStreaming(false); setStreamText(`Terjadi kesalahan: ${err}`); textareaRef.current?.focus(); }
@@ -1824,29 +1826,84 @@ export default function ChatPage() {
           </button>
         </div>
         {/* Usage + credit indicators */}
-        <div className="flex items-center justify-between mt-2 px-0.5">
-          {usage ? (() => {
-            const pct = usage.remaining / usage.limit;
-            const low = usage.remaining <= 5;
-            const veryLow = usage.remaining <= 2;
-            return (
-              <span className={`text-[11px] tabular-nums ${veryLow ? "text-red-500 font-medium" : low ? "text-amber-500" : "text-muted-foreground"}`}>
-                {veryLow ? "⚠ " : low ? "⚠ " : ""}
-                {usage.remaining}/{usage.limit} pesan/jam
-              </span>
-            );
-          })() : <span />}
-          {plan && !plan.canGenerate && (
-            <span className="text-[11px] text-amber-500">Kredit Exum habis</span>
-          )}
-          {plan && plan.canGenerate && (
-            <span className="text-[11px] text-muted-foreground">
-              {plan.freeExumUsed
-                ? `Kredit Exum: ${plan.exumCredits}`
-                : `Exum gratis tersedia`}
-            </span>
-          )}
-        </div>
+        {usage && (() => {
+          const pct = usage.remaining / usage.limit;          // 1.0 = full, 0 = empty
+          const low     = usage.remaining <= 5;
+          const veryLow = usage.remaining <= 2;
+          const exhausted = usage.remaining <= 0;
+          // Compute reset time from windowMs (rolling window end ≈ now + windowMs)
+          const resetMs = usage.windowMs ?? 60 * 60 * 1000;
+          const resetAt = new Date(Date.now() + resetMs);
+          const resetHH = resetAt.getHours().toString().padStart(2, "0");
+          const resetMM = resetAt.getMinutes().toString().padStart(2, "0");
+          const resetStr = `${resetHH}:${resetMM}`;
+
+          const barColor = exhausted ? "bg-red-500"
+            : veryLow  ? "bg-red-400"
+            : low       ? "bg-amber-400"
+            : pct > 0.5 ? "bg-emerald-500"
+            :              "bg-amber-400";
+
+          const textColor = exhausted ? "text-red-600 font-semibold"
+            : veryLow  ? "text-red-500 font-medium"
+            : low       ? "text-amber-600"
+            :              "text-muted-foreground";
+
+          return (
+            <div className="mt-2.5 space-y-1.5 max-w-3xl mx-auto">
+              {/* Prominent warning banner when ≤5 messages left */}
+              {low && !exhausted && (
+                <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium border ${veryLow ? "bg-red-50 border-red-200 text-red-700" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    {veryLow
+                      ? `Hampir habis — hanya ${usage.remaining} pesan tersisa sebelum limit reset pukul ${resetStr}.`
+                      : `${usage.remaining} pesan tersisa untuk jam ini. Limit reset pukul ${resetStr}.`}
+                  </span>
+                  {usage.limit <= 30 && (
+                    <a href="/kredits" className="ml-auto shrink-0 underline underline-offset-2 hover:opacity-80">Upgrade Pro →</a>
+                  )}
+                </div>
+              )}
+              {exhausted && (
+                <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium border bg-red-50 border-red-200 text-red-700">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Batas pesan tercapai. Limit reset pukul {resetStr}.</span>
+                  {usage.limit <= 30 && (
+                    <a href="/kredits" className="ml-auto shrink-0 underline underline-offset-2 hover:opacity-80">Upgrade Pro →</a>
+                  )}
+                </div>
+              )}
+              {/* Progress bar + stats row */}
+              <div className="flex items-center gap-2.5 px-0.5">
+                {/* Bar */}
+                <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                    style={{ width: `${Math.max(0, Math.min(100, pct * 100))}%` }}
+                  />
+                </div>
+                {/* Text */}
+                <span className={`text-[11px] tabular-nums shrink-0 ${textColor}`}>
+                  {usage.remaining}/{usage.limit} pesan/jam
+                </span>
+                {/* Reset time — always visible */}
+                <span className="text-[11px] text-muted-foreground shrink-0">
+                  · reset {resetStr}
+                </span>
+                {/* Exum credit */}
+                {plan && !plan.canGenerate && (
+                  <span className="text-[11px] text-amber-500 shrink-0">· Kredit Exum habis</span>
+                )}
+                {plan && plan.canGenerate && (
+                  <span className="text-[11px] text-muted-foreground shrink-0">
+                    · {plan.freeExumUsed ? `Exum: ${plan.exumCredits} kr` : "Exum gratis"}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })()}
         <p className="text-center text-[11px] text-muted-foreground mt-1">
           Dijawab oleh AI · Periksa kembali sebelum digunakan · Nilai Exum: maks. 25 SKPK
         </p>
