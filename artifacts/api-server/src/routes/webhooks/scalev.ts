@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { db, users, payments } from "@workspace/db";
 import { eq, asc, sql } from "drizzle-orm";
 import { DEFAULT_CREDITS_PER_ORDER } from "../../lib/plans";
+import { sendCreditClaimEmail } from "../../lib/email.js";
 
 const router: IRouter = Router();
 
@@ -182,19 +183,40 @@ router.post("/webhooks/scalev", async (req, res): Promise<void> => {
     req.log.warn({ orderId, email }, "Scalev paid order has no matching user by email — payment stored for manual claim");
   }
 
-  // Non-blocking push notification — fire after the response is committed so a
-  // slow Expo API never delays Scalev's webhook acknowledgement.
-  if (credited && userPushToken) {
-    fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip, deflate" },
-      body: JSON.stringify({
-        to: userPushToken,
-        title: "Kredit Exum masuk! 🎉",
-        body: `${quantity} kredit Exum telah ditambahkan ke akun Anda. Siap membuat Exum berikutnya?`,
-        channelId: "payments",
-      }),
-    }).catch((err) => req.log.warn({ err, orderId }, "Failed to send credit push notification"));
+  // Non-blocking push notification + receipt email — fire after the response
+  // is committed so slow external APIs never delay Scalev's acknowledgement.
+  if (credited && userId !== null) {
+    // Push notification
+    if (userPushToken) {
+      fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip, deflate" },
+        body: JSON.stringify({
+          to: userPushToken,
+          title: "Kredit Exum masuk! 🎉",
+          body: `${quantity} kredit Exum telah ditambahkan ke akun Anda. Siap membuat Exum berikutnya?`,
+          channelId: "payments",
+        }),
+      }).catch((err) => req.log.warn({ err, orderId }, "Failed to send credit push notification"));
+    }
+
+    // Receipt email — fetch the buyer's current balance then send non-blockingly.
+    // Only fires when we have a verified buyer email (extracted from the payload).
+    if (email) {
+      db.select({ exumCredits: users.exumCredits })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1)
+        .then(([row]) => {
+          sendCreditClaimEmail({
+            to: email,
+            orderId,
+            creditsGranted: quantity,
+            newBalance: row?.exumCredits ?? quantity,
+          });
+        })
+        .catch((err) => req.log.warn({ err, orderId }, "Failed to fetch balance for receipt email"));
+    }
   }
 
   res.status(200).json({ received: true, credited, quantity });

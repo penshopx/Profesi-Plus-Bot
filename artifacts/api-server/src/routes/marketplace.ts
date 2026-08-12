@@ -10,6 +10,7 @@
 
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
+import { catalogRateLimiter } from "../middlewares/rateLimiter";
 import { db } from "@workspace/db";
 import {
   marketplaceWatched,
@@ -23,9 +24,10 @@ const router = Router();
 
 // ─── GET /api/marketplace/courses ─────────────────────────────────────────────
 // Public endpoint — no auth needed to browse the catalog.
+// Rate-limited at 120 req/hour per IP to prevent scraping.
 // Returns all courses ordered by sort_order, with their AI + ASKOM reviews.
 
-router.get("/marketplace/courses", async (_req, res) => {
+router.get("/marketplace/courses", catalogRateLimiter, async (_req, res) => {
   const [courses, aiReviews, askomReviews] = await Promise.all([
     db.select().from(marketplaceCourses).orderBy(asc(marketplaceCourses.sortOrder)),
     db.select().from(marketplaceAiReviews).orderBy(asc(marketplaceAiReviews.id)),

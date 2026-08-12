@@ -166,3 +166,28 @@ export function createClaimPaymentRateLimiter(overrides: LimiterOverrides = {}) 
 
 /** Production singleton. */
 export const claimPaymentRateLimiter = createClaimPaymentRateLimiter();
+
+// ── catalogRateLimiter ────────────────────────────────────────────────────────
+
+/**
+ * Public catalog endpoint rate limiter (IP-based — no auth required).
+ * 120 requests/hour per IP prevents scraping while allowing normal browsing.
+ */
+export function createCatalogRateLimiter(overrides: LimiterOverrides = {}) {
+  return rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    limit: 120,
+    keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: {
+      error: "Terlalu banyak permintaan. Coba lagi nanti.",
+      code: "rate_limit_catalog",
+    },
+    skip: overrides.skip ?? (() => process.env.NODE_ENV === "test"),
+    ...(overrides.store ? { store: overrides.store } : {}),
+  });
+}
+
+/** Production singleton. */
+export const catalogRateLimiter = createCatalogRateLimiter();
