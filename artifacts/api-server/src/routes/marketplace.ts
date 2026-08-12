@@ -22,6 +22,8 @@ router.get("/marketplace/watched", requireAuth, async (req, res) => {
 /**
  * POST /marketplace/:courseId/watch
  * Marks a course as watched for the authenticated user (upsert — idempotent).
+ * Accepts optional metadata (title, provider, jabkerList, skkTagsList) so the AI
+ * context builder can reference course details without a server-side catalog copy.
  */
 router.post("/marketplace/:courseId/watch", requireAuth, async (req, res) => {
   const uid = req.dbUser!.id;
@@ -30,9 +32,28 @@ router.post("/marketplace/:courseId/watch", requireAuth, async (req, res) => {
     res.status(400).json({ error: "courseId tidak valid" });
     return;
   }
+  const {
+    title,
+    provider,
+    jabkerList,
+    skkTagsList,
+  }: {
+    title?: string;
+    provider?: string;
+    jabkerList?: string[];
+    skkTagsList?: string[];
+  } = req.body ?? {};
+
   await db
     .insert(marketplaceWatches)
-    .values({ userId: uid, courseId })
+    .values({
+      userId: uid,
+      courseId,
+      courseTitle:    title    ?? null,
+      courseProvider: provider ?? null,
+      jabkerList:     Array.isArray(jabkerList)  ? jabkerList  : [],
+      skkTagsList:    Array.isArray(skkTagsList) ? skkTagsList : [],
+    })
     .onConflictDoNothing();
   res.json({ ok: true });
 });

@@ -14,7 +14,7 @@
  *                          11. Timestamp journey
  */
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -302,23 +302,31 @@ function JourneyTimeline({ entries }: { entries: JourneyEntry[] }) {
 
 type FormMode = "create" | "edit";
 
-function ActivityFormModal({ mode, initial, onClose, onSaved }: {
-  mode: FormMode; initial?: Activity; onClose: () => void; onSaved: (a: Activity) => void;
+interface MarketplacePrefill {
+  marketplaceId: string;
+  courseTitle: string;
+  courseProvider: string;
+  courseJabkerList: string[];
+  courseSkkTagsList: string[];
+}
+
+function ActivityFormModal({ mode, initial, prefill, onClose, onSaved }: {
+  mode: FormMode; initial?: Activity; prefill?: MarketplacePrefill; onClose: () => void; onSaved: (a: Activity) => void;
 }) {
   const { toast } = useToast();
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState({
-    namaKegiatan:    initial?.namaKegiatan    ?? "",
+    namaKegiatan:    initial?.namaKegiatan    ?? prefill?.courseTitle    ?? "",
     tanggalMulai:    initial?.tanggalMulai    ?? "",
     tanggalSelesai:  initial?.tanggalSelesai  ?? "",
     tempatKegiatan:  initial?.tempatKegiatan  ?? "",
     modePelaksanaan: initial?.modePelaksanaan ?? "Online",
-    namaMateri:      initial?.namaMateri      ?? "",
-    penyelenggara:   initial?.penyelenggara   ?? "",
+    namaMateri:      initial?.namaMateri      ?? prefill?.courseTitle    ?? "",
+    penyelenggara:   initial?.penyelenggara   ?? prefill?.courseProvider ?? "",
     namaInstruktur:  initial?.namaInstruktur  ?? "",
-    jenisPkb:        initial?.jenisPkb        ?? "",
+    jenisPkb:        initial?.jenisPkb        ?? (prefill ? "Kursus Online" : ""),
     jpPkb:           initial?.jpPkb           ?? "",
     uraianSingkat:   initial?.uraianSingkat   ?? "",
     linkRekaman:     initial?.linkRekaman     ?? "",
@@ -336,7 +344,18 @@ function ActivityFormModal({ mode, initial, onClose, onSaved }: {
     }
     setSaving(true);
     try {
-      const payload = { ...form, jpPkb: form.jpPkb ? Number(form.jpPkb) : undefined };
+      const payload = {
+        ...form,
+        jpPkb: form.jpPkb ? Number(form.jpPkb) : undefined,
+        // Marketplace link — auto-marks course as watched server-side when present
+        ...(prefill ? {
+          marketplaceId:    prefill.marketplaceId,
+          courseTitle:      prefill.courseTitle,
+          courseProvider:   prefill.courseProvider,
+          courseJabkerList: prefill.courseJabkerList,
+          courseSkkTagsList: prefill.courseSkkTagsList,
+        } : {}),
+      };
       const activity: Activity = mode === "create"
         ? await apiFetch("/kegiatan", { method: "POST", body: JSON.stringify(payload) })
         : await apiFetch(`/kegiatan/${initial!.id}`, { method: "PATCH", body: JSON.stringify(payload) });
@@ -834,7 +853,24 @@ export default function KegiatanPage() {
   const [showForm, setShowForm] = useState(false);
   const [editActivity, setEditActivity] = useState<Activity | null>(null);
   const [detailActivity, setDetailActivity] = useState<Activity | null>(null);
+  const [marketplacePrefill, setMarketplacePrefill] = useState<MarketplacePrefill | undefined>(undefined);
   const queryClient = useQueryClient();
+
+  // If the user navigated here from the marketplace "Catat ke PKB" button, open
+  // the create form pre-filled with the course data stored in sessionStorage.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("KEGIATAN_FROM_MARKETPLACE");
+      if (raw) {
+        sessionStorage.removeItem("KEGIATAN_FROM_MARKETPLACE");
+        const data = JSON.parse(raw) as MarketplacePrefill;
+        if (data?.marketplaceId && data?.courseTitle) {
+          setMarketplacePrefill(data);
+          setShowForm(true);
+        }
+      }
+    } catch {}
+  }, []);
 
   const { data: activities = [], isLoading } = useQuery<Activity[]>({
     queryKey: ["kegiatan"],
@@ -945,10 +981,11 @@ export default function KegiatanPage() {
 
       {/* Modals */}
       {showForm && (
-        <ActivityFormModal mode="create" onClose={() => setShowForm(false)}
+        <ActivityFormModal mode="create" prefill={marketplacePrefill} onClose={() => { setShowForm(false); setMarketplacePrefill(undefined); }}
           onSaved={(a) => {
             queryClient.invalidateQueries({ queryKey: ["kegiatan"] });
             setShowForm(false);
+            setMarketplacePrefill(undefined);
             setDetailActivity(a);
           }} />
       )}

@@ -162,6 +162,7 @@ export async function streamMessage(
   content: string,
   onChunk: (text: string) => void,
   onPhaseAdvance?: () => void,
+  onContextWarning?: () => void,
 ): Promise<void> {
   const headers = await buildHeaders({ Accept: 'text/event-stream' });
   const url = `${getBaseUrl()}/api/chat/conversations/${conversationId}/messages`;
@@ -197,6 +198,7 @@ export async function streamMessage(
       }
       try {
         const parsed = JSON.parse(data);
+        if (parsed.contextWarning) onContextWarning?.();
         const chunk = parsed.content ?? parsed.text ?? parsed.delta;
         if (chunk) onChunk(chunk);
       } catch {

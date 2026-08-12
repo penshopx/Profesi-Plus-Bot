@@ -245,7 +245,8 @@ export function streamMessage(
   content: string,
   onChunk: (text: string) => void,
   onDone: (phase: string) => void,
-  onError: (err: string) => void
+  onError: (err: string) => void,
+  onContextWarning?: () => void,
 ): () => void {
   const controller = new AbortController();
 
@@ -290,6 +291,7 @@ export function streamMessage(
             if (!json) continue;
             try {
               const parsed = JSON.parse(json);
+              if (parsed.contextWarning) onContextWarning?.();
               if (parsed.content) onChunk(parsed.content);
               if (parsed.done) onDone(parsed.phase ?? "profiling");
               if (parsed.error) onError(parsed.error);
@@ -762,9 +764,20 @@ export async function getWatchedCourses(): Promise<string[]> {
   return data.watchedIds;
 }
 
-/** Idempotent — marks a course as watched. Fire-and-forget is fine. */
-export async function markCourseWatched(courseId: string): Promise<void> {
-  await f(`/marketplace/${encodeURIComponent(courseId)}/watch`, { method: "POST" });
+export interface WatchMetadata {
+  title?: string;
+  provider?: string;
+  jabkerList?: string[];
+  skkTagsList?: string[];
+}
+
+/** Idempotent — marks a course as watched and stores metadata for AI context. */
+export async function markCourseWatched(courseId: string, meta?: WatchMetadata): Promise<void> {
+  await f(`/marketplace/${encodeURIComponent(courseId)}/watch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(meta ?? {}),
+  });
 }
 
 // ─── Dialog Gustafta (public landing demo) ──────────────────────────────────

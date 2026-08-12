@@ -10,3 +10,6 @@
 - [Expo push notifications](expo-push-notifications.md) — use Expo Push API (exp.host) from the server; store token in users.expoPushToken; SDK version: expo-notifications@~0.32.17 + expo-device@~8.0.10 for SDK 54.
 - [Voice notes transcription](voice-notes-transcription.md) — multer memory storage → OpenAI toFile() → whisper-1 with language:"id"; mobile uses standard fetch (not expo/fetch) for multipart; expo-av@~15.0.0 for recording in SDK 54.
 - [ASKOM PKB verification](askom-verification.md) — role "askom" added to ROLES; pkbActivities has askomNote/askomVerifiedAt/askomVerifiedBy; status adds "ditolak"; GET/POST /askom/submissions/* endpoints; web panel at /dashboard/askom; rejected activities can be re-submitted (resets askomNote).
+- [Marketplace catalog pattern](marketplace-catalog-pattern.md) — catalog is static frontend-only; store metadata at watch-time in marketplace_watches for AI context.
+- [Upload token security](upload-token-security.md) — issueUploadToken/consumeUploadToken in-memory store gates doc registration to actual uploaders.
+- [Context failure detection](context-failure-detection.md) — contextErrors array + SSE contextWarning event + client amber banner when personalisation blocks throw.

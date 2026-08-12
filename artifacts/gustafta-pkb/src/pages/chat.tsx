@@ -1155,6 +1155,7 @@ export default function ChatPage() {
   const [phaseToast, setPhaseToast] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [paywall, setPaywall] = useState<{ msg: string; canUpgrade: boolean } | null>(null);
+  const [contextFailureBanner, setContextFailureBanner] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
@@ -1267,7 +1268,8 @@ export default function ChatPage() {
             qc.invalidateQueries({ queryKey: ["my-usage"] });
             setTimeout(() => textareaRef.current?.focus(), 50);
           },
-          (err) => { setStreaming(false); setStreamText(`Terjadi kesalahan: ${err}`); }
+          (err) => { setStreaming(false); setStreamText(`Terjadi kesalahan: ${err}`); },
+          () => setContextFailureBanner(true),
         );
       }, 400);
     }
@@ -1283,6 +1285,7 @@ export default function ChatPage() {
     setInput("");
     setStreaming(true);
     setStreamText("");
+    setContextFailureBanner(false);
     if (abortRef.current) abortRef.current();
     abortRef.current = streamMessage(
       id, content,
@@ -1302,7 +1305,8 @@ export default function ChatPage() {
         qc.invalidateQueries({ queryKey: ["my-usage"] });
         setTimeout(() => textareaRef.current?.focus(), 50);
       },
-      (err) => { setStreaming(false); setStreamText(`Terjadi kesalahan: ${err}`); textareaRef.current?.focus(); }
+      (err) => { setStreaming(false); setStreamText(`Terjadi kesalahan: ${err}`); textareaRef.current?.focus(); },
+      () => setContextFailureBanner(true),
     );
   }, [id, input, streaming, qc]);
 
@@ -1891,6 +1895,19 @@ export default function ChatPage() {
             {streaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
           </button>
         </div>
+        {/* Context failure banner — shown when a personalisation block failed server-side */}
+        {contextFailureBanner && (
+          <div className="mt-2 max-w-3xl mx-auto flex items-start gap-2 rounded-xl px-3 py-2 text-xs border bg-amber-50 border-amber-200 text-amber-800">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span className="flex-1">
+              Beberapa data profil Anda gagal dimuat sementara ini — Pak Budi mungkin memberikan saran yang lebih umum dari biasanya. Coba kirim pesan lagi atau muat ulang halaman.
+            </span>
+            <button onClick={() => setContextFailureBanner(false)} className="shrink-0 hover:opacity-70">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Usage + credit indicators */}
         {usage && (() => {
           const pct = usage.remaining / usage.limit;          // 1.0 = full, 0 = empty

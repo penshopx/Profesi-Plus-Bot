@@ -6,7 +6,7 @@ import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL, callWithFal
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
 import { buildKnowledgeContext } from "../../lib/knowledge-base";
 import { buildProjectBrainContext } from "../../lib/project-brain";
-import { buildHistoricalPKBContext, buildCompetencyAnalysisContext, buildQuizContext, buildProfileContext, buildKegiatanContext } from "../../lib/historical-pkb";
+import { buildHistoricalPKBContext, buildCompetencyAnalysisContext, buildQuizContext, buildProfileContext, buildKegiatanContext, buildWatchedCoursesContext } from "../../lib/historical-pkb";
 import { recommendPersona, isKnownPersona, isConfidentJabkerMatch, DEFAULT_PERSONA_ID } from "../../lib/personas";
 import { findJabkerGroup } from "../../lib/skk-data";
 import { requireAuth } from "../../middlewares/auth";
@@ -244,22 +244,27 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
 
   const lastUserMsg = [...existingMsgs].reverse().find((m: { role: string; content: string }) => m.role === "user")?.content ?? null;
   // safeCtx wraps each context builder so a single DB/network failure cannot
-  // kill the entire chat request. Failures are logged as warnings so we can
-  // detect context degradation in the server logs without surfacing an error
-  // to the user.
+  // kill the entire chat request. Failures are logged and tracked so the
+  // client can surface a non-blocking warning when personalisation blocks fail.
+  const contextErrors: string[] = [];
   const safeCtx = async (name: string, fn: () => Promise<string>): Promise<string> => {
     try { return await fn(); }
-    catch (err) { req.log.warn({ err, contextBlock: name }, "Context builder failed — falling back to empty string"); return ""; }
+    catch (err) {
+      req.log.warn({ err, contextBlock: name }, "Context builder failed — falling back to empty string");
+      contextErrors.push(name);
+      return "";
+    }
   };
 
-  const [knowledgeContext, projectBrainContext, historicalPKBContext, competencyContext, quizContext, profileContext, kegiatanContext] = await Promise.all([
-    safeCtx("knowledge",    () => buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: lastUserMsg })),
-    safeCtx("projectBrain", () => buildProjectBrainContext(req.dbUser!.id)),
-    safeCtx("historical",   () => buildHistoricalPKBContext(req.dbUser!.id, convId)),
-    safeCtx("competency",   () => buildCompetencyAnalysisContext(req.dbUser!.id)),
-    safeCtx("quiz",         () => buildQuizContext(req.dbUser!.id)),
-    safeCtx("profile",      () => buildProfileContext(req.dbUser!.id)),
-    safeCtx("kegiatan",     () => buildKegiatanContext(req.dbUser!.id)),
+  const [knowledgeContext, projectBrainContext, historicalPKBContext, competencyContext, quizContext, profileContext, kegiatanContext, watchedCoursesContext] = await Promise.all([
+    safeCtx("knowledge",       () => buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: lastUserMsg })),
+    safeCtx("projectBrain",    () => buildProjectBrainContext(req.dbUser!.id)),
+    safeCtx("historical",      () => buildHistoricalPKBContext(req.dbUser!.id, convId)),
+    safeCtx("competency",      () => buildCompetencyAnalysisContext(req.dbUser!.id)),
+    safeCtx("quiz",            () => buildQuizContext(req.dbUser!.id)),
+    safeCtx("profile",         () => buildProfileContext(req.dbUser!.id)),
+    safeCtx("kegiatan",        () => buildKegiatanContext(req.dbUser!.id)),
+    safeCtx("watchedCourses",  () => buildWatchedCoursesContext(req.dbUser!.id)),
   ]);
 
   // Detect silent context degradation: warn in logs if no personalisation data
@@ -273,13 +278,14 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
   // Priority (higher = preserved first when budget is tight):
   //   7 profile, 6 competency, 5 quiz, 4 kegiatan, 3 knowledge, 2 projectBrain, 1 historical
   const combinedContext = applySharedContextBudget([
-    { content: profileContext,       priority: 7 },
-    { content: competencyContext,    priority: 6 },
-    { content: quizContext,          priority: 5 },
-    { content: kegiatanContext,      priority: 4 },
-    { content: knowledgeContext,     priority: 3 },
-    { content: projectBrainContext,  priority: 2 },
-    { content: historicalPKBContext, priority: 1 },
+    { content: profileContext,        priority: 7 },
+    { content: competencyContext,     priority: 6 },
+    { content: quizContext,           priority: 5 },
+    { content: kegiatanContext,       priority: 4 },
+    { content: watchedCoursesContext, priority: 3.5 },
+    { content: knowledgeContext,      priority: 3 },
+    { content: projectBrainContext,   priority: 2 },
+    { content: historicalPKBContext,  priority: 1 },
   ]);
   const systemPrompt = buildSystemPrompt(
     conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence,
@@ -327,6 +333,16 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
   res.setHeader("Connection", "keep-alive");
   if (modelUsed !== primaryModel) {
     res.setHeader("X-Model-Fallback", modelUsed);
+  }
+
+  // If any personalisation block threw (not just legitimately empty for a new
+  // user), surface a non-blocking warning so the client can tell the user that
+  // their profile data could not be loaded this turn.
+  const PERSONALISATION_BLOCKS = ["profile", "projectBrain", "competency", "kegiatan"];
+  const failedPersonalisation = contextErrors.filter((b) => PERSONALISATION_BLOCKS.includes(b));
+  if (failedPersonalisation.length > 0) {
+    res.write(`data: ${JSON.stringify({ contextWarning: true, failedBlocks: failedPersonalisation })}\n\n`);
+    req.log.warn({ userId: req.dbUser!.id, convId, failedPersonalisation }, "Personalisation context failed — user notified");
   }
 
   let fullResponse = "";
@@ -459,14 +475,15 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       catch (err) { req.log.warn({ err, contextBlock: name }, "Exum context builder failed — falling back to empty string"); return ""; }
     };
 
-    const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency, exumQuiz, exumProfile, exumKegiatan, approvedOutlineRow] = await Promise.all([
-      safeExumCtx("exum:knowledge",    () => buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: conv.jabker })),
-      safeExumCtx("exum:projectBrain", () => buildProjectBrainContext(req.dbUser!.id)),
-      safeExumCtx("exum:historical",   () => buildHistoricalPKBContext(req.dbUser!.id, conversationId)),
-      safeExumCtx("exum:competency",   () => buildCompetencyAnalysisContext(req.dbUser!.id)),
-      safeExumCtx("exum:quiz",         () => buildQuizContext(req.dbUser!.id)),
-      safeExumCtx("exum:profile",      () => buildProfileContext(req.dbUser!.id)),
-      safeExumCtx("exum:kegiatan",     () => buildKegiatanContext(req.dbUser!.id)),
+    const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency, exumQuiz, exumProfile, exumKegiatan, exumWatchedCourses, approvedOutlineRow] = await Promise.all([
+      safeExumCtx("exum:knowledge",       () => buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: conv.jabker })),
+      safeExumCtx("exum:projectBrain",    () => buildProjectBrainContext(req.dbUser!.id)),
+      safeExumCtx("exum:historical",      () => buildHistoricalPKBContext(req.dbUser!.id, conversationId)),
+      safeExumCtx("exum:competency",      () => buildCompetencyAnalysisContext(req.dbUser!.id)),
+      safeExumCtx("exum:quiz",            () => buildQuizContext(req.dbUser!.id)),
+      safeExumCtx("exum:profile",         () => buildProfileContext(req.dbUser!.id)),
+      safeExumCtx("exum:kegiatan",        () => buildKegiatanContext(req.dbUser!.id)),
+      safeExumCtx("exum:watchedCourses",  () => buildWatchedCoursesContext(req.dbUser!.id)),
       db.select().from(exumOutlines)
         .where(and(eq(exumOutlines.conversationId, convId), eq(exumOutlines.isApproved, true)))
         .then((rows) => rows[0] ?? null)
@@ -489,14 +506,15 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
     // outlineContext (approved blueprint) gets highest priority since it drives
     // the document structure. historicalPKBContext is trimmed first.
     const exumCombinedContext = applySharedContextBudget([
-      { content: outlineContext,    priority: 8 },
-      { content: exumProfile,      priority: 7 },
-      { content: exumCompetency,   priority: 6 },
-      { content: exumQuiz,         priority: 5 },
-      { content: exumKegiatan,     priority: 4 },
-      { content: exumKnowledge,    priority: 3 },
-      { content: exumProjectBrain, priority: 2 },
-      { content: exumHistorical,   priority: 1 },
+      { content: outlineContext,       priority: 8 },
+      { content: exumProfile,          priority: 7 },
+      { content: exumCompetency,       priority: 6 },
+      { content: exumQuiz,             priority: 5 },
+      { content: exumKegiatan,         priority: 4 },
+      { content: exumWatchedCourses,   priority: 3.5 },
+      { content: exumKnowledge,        priority: 3 },
+      { content: exumProjectBrain,     priority: 2 },
+      { content: exumHistorical,       priority: 1 },
     ]);
     const exumPrompt = buildExumPrompt(
       conv.mode, conv.jabker, conv.jenjang, transcript, evidence,

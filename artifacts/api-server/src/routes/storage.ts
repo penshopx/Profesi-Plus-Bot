@@ -11,6 +11,7 @@ import { z } from "zod";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { ObjectNotFoundError, ObjectStorageService } from "../lib/objectStorage";
+import { issueUploadToken } from "../lib/uploadTokenStore";
 import { db, pkbActivityDocs, pkbActivities } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -35,6 +36,9 @@ router.post("/storage/uploads/request-url", requireAuth, async (req: Request, re
     const { name, size, contentType } = parsed.data;
     const uploadURL = await objectStorageService.getObjectEntityUploadURL();
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+    // Bind this objectPath to the uploading user so the doc-registration endpoint
+    // can verify the path was actually issued to them (not borrowed from another user).
+    issueUploadToken(objectPath, req.dbUser!.id);
     res.json({ uploadURL, objectPath, metadata: { name, size, contentType } });
   } catch (error) {
     req.log?.error({ err: error }, "Error generating upload URL");

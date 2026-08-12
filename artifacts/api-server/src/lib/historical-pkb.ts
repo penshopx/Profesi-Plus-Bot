@@ -1,4 +1,4 @@
-import { db, conversations, evidenceItems, competencyAnalysis, quizAttempts, quizzes, profiles, competencyClaims, pkbActivities, pkbActivitySkk } from "@workspace/db";
+import { db, conversations, evidenceItems, competencyAnalysis, quizAttempts, quizzes, profiles, competencyClaims, pkbActivities, pkbActivitySkk, marketplaceWatches } from "@workspace/db";
 import type { CompetencyAnalysisResult } from "@workspace/db";
 import { and, eq, isNotNull, ne, desc, asc, sql } from "drizzle-orm";
 
@@ -334,6 +334,48 @@ export async function buildHistoricalPKBContext(
  * helping the user write their Exum — rather than asking the user to repeat
  * information they've already documented.
  */
+/**
+ * Builds a context block listing marketplace courses the user has opened ("watched").
+ * Helps Pak Budi reference what the user has been studying without asking again.
+ * Only rows with a stored title (metadata-enriched watches) are included.
+ */
+export async function buildWatchedCoursesContext(userId: number): Promise<string> {
+  const MAX_COURSES = 10;
+  const MAX_BLOCK_CHARS = 1800;
+
+  const rows = await db
+    .select({
+      courseTitle:    marketplaceWatches.courseTitle,
+      courseProvider: marketplaceWatches.courseProvider,
+      jabkerList:     marketplaceWatches.jabkerList,
+      skkTagsList:    marketplaceWatches.skkTagsList,
+    })
+    .from(marketplaceWatches)
+    .where(and(eq(marketplaceWatches.userId, userId), isNotNull(marketplaceWatches.courseTitle)))
+    .orderBy(desc(marketplaceWatches.watchedAt))
+    .limit(MAX_COURSES);
+
+  if (!rows.length) return "";
+
+  const lines: string[] = [
+    "\n\n=== MODUL MARKETPLACE YANG SUDAH DIPELAJARI ===",
+    "User telah membuka modul-modul berikut. ACU ini saat wawancara — referensikan kursus yang relevan dengan jabker/SKK yang sedang dibahas:",
+  ];
+
+  for (const r of rows) {
+    if (!r.courseTitle) continue;
+    const provider = r.courseProvider ? ` — ${r.courseProvider}` : "";
+    const jabker   = r.jabkerList?.length  ? ` (Jabker: ${r.jabkerList.join(", ")})`            : "";
+    const skk      = r.skkTagsList?.length ? `\n   🏷️ SKK: ${r.skkTagsList.slice(0, 5).join(", ")}` : "";
+    lines.push(`\n• "${r.courseTitle}"${provider}${jabker}${skk}`);
+  }
+
+  const combined = lines.join("\n");
+  return combined.length > MAX_BLOCK_CHARS
+    ? combined.slice(0, MAX_BLOCK_CHARS) + "\n…[modul dipotong]"
+    : combined;
+}
+
 export async function buildKegiatanContext(userId: number): Promise<string> {
   const MAX_KEGIATAN = 8;
   const MAX_URAIAN_CHARS = 200;

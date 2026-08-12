@@ -1348,7 +1348,7 @@ function CourseCard({ course, onClick, isWatched }: { course: Course; onClick: (
 
 // ─── Detail Panel ─────────────────────────────────────────────────────────────
 
-function DetailPanel({ course, onClose, onWatch }: { course: Course; onClose: () => void; onWatch: (courseId: string) => void }) {
+function DetailPanel({ course, onClose, onWatch }: { course: Course; onClose: () => void; onWatch: (course: Course) => void }) {
   const T = TYPE_META[course.type];
   const TIcon = T.icon;
   const discount = course.priceOriginalIdr
@@ -1436,7 +1436,7 @@ function DetailPanel({ course, onClose, onWatch }: { course: Course; onClose: ()
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => {
-                  onWatch(course.id);
+                  onWatch(course);
                   window.open(course.url, "_blank", "noopener,noreferrer");
                 }}
                 className="flex items-center justify-center gap-1.5 bg-primary text-primary-foreground rounded-xl py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity"
@@ -1444,15 +1444,26 @@ function DetailPanel({ course, onClose, onWatch }: { course: Course; onClose: ()
                 <Play className="w-4 h-4" /> Buka Kursus
                 <ExternalLink className="w-3 h-3 opacity-70" />
               </button>
-              <a
-                href="/sessions"
+              <button
+                onClick={() => {
+                  try {
+                    sessionStorage.setItem("KEGIATAN_FROM_MARKETPLACE", JSON.stringify({
+                      marketplaceId:   course.id,
+                      courseTitle:     course.title,
+                      courseProvider:  course.provider,
+                      courseJabkerList: course.jabker,
+                      courseSkkTagsList: course.skkTags.map((t) => t.code),
+                    }));
+                  } catch {}
+                  window.location.href = "/kegiatan";
+                }}
                 className="flex items-center justify-center gap-1.5 bg-emerald-600 text-white rounded-xl py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity"
               >
-                <CheckCircle2 className="w-4 h-4" /> Tambah ke PKB
-              </a>
+                <CheckCircle2 className="w-4 h-4" /> Catat ke PKB
+              </button>
             </div>
             <p className="text-[11px] text-muted-foreground text-center">
-              "Tambah ke PKB" akan membuka sesi interview PKB — ceritakan apa yang Anda pelajari dari kursus ini kepada Pak Budi.
+              "Catat ke PKB" akan membuka form dokumentasi Kegiatan PKB yang sudah terisi otomatis dengan data kursus ini.
             </p>
           </div>
 
@@ -1568,7 +1579,13 @@ export default function MarketplacePage() {
   const watchedSet = useMemo(() => new Set(watchedIds), [watchedIds]);
 
   const watchMutation = useMutation({
-    mutationFn: markCourseWatched,
+    mutationFn: (c: Course) =>
+      markCourseWatched(c.id, {
+        title:       c.title,
+        provider:    c.provider,
+        jabkerList:  c.jabker,
+        skkTagsList: c.skkTags.map((t) => t.code),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["marketplace-watched"] }),
   });
 
@@ -1822,7 +1839,7 @@ export default function MarketplacePage() {
         <DetailPanel
           course={selectedCourse}
           onClose={() => setSelectedCourse(null)}
-          onWatch={(id) => watchMutation.mutate(id)}
+          onWatch={(c) => watchMutation.mutate(c)}
         />
       )}
     </div>

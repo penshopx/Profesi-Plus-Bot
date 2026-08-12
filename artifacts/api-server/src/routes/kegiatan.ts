@@ -9,10 +9,11 @@ import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { db } from "@workspace/db";
 import {
-  pkbActivities, pkbActivitySkk, pkbActivityDocs, pkbActivityJourney,
+  pkbActivities, pkbActivitySkk, pkbActivityDocs, pkbActivityJourney, marketplaceWatches,
   KEGIATAN_STATUS, type KegiatanStatus, type JourneyEvent,
 } from "@workspace/db/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
+import { consumeUploadToken } from "../lib/uploadTokenStore";
 
 const router = Router();
 
@@ -112,6 +113,7 @@ router.post("/kegiatan", requireAuth, async (req, res) => {
   const {
     namaKegiatan, tanggalMulai, tanggalSelesai, tempatKegiatan, modePelaksanaan,
     namaMateri, penyelenggara, namaInstruktur, marketplaceId,
+    courseTitle, courseProvider, courseJabkerList, courseSkkTagsList,
     uraianSingkat, linkRekaman, jenisPkb, jpPkb,
   } = req.body;
 
@@ -128,6 +130,23 @@ router.post("/kegiatan", requireAuth, async (req, res) => {
     jenisPkb: jenisPkb ?? null, jpPkb: jpPkb ?? null,
     status: "draft",
   }).returning();
+
+  // Auto-mark the marketplace course as watched when a PKB activity is linked to it.
+  // Only triggers when the client supplies both marketplaceId and courseTitle; older
+  // clients that omit these fields are unaffected.
+  if (marketplaceId && courseTitle) {
+    await db
+      .insert(marketplaceWatches)
+      .values({
+        userId,
+        courseId:       marketplaceId,
+        courseTitle:    courseTitle   ?? null,
+        courseProvider: courseProvider ?? null,
+        jabkerList:     Array.isArray(courseJabkerList)  ? courseJabkerList  : [],
+        skkTagsList:    Array.isArray(courseSkkTagsList) ? courseSkkTagsList : [],
+      })
+      .onConflictDoNothing();
+  }
 
   await addJourney(act.id, "kegiatan_dibuat", `Kegiatan "${act.namaKegiatan}" dibuat`);
   if (linkRekaman) await addJourney(act.id, "link_rekaman_ditambahkan", "Link rekaman ditambahkan");
@@ -220,6 +239,12 @@ router.post("/kegiatan/:id/docs", requireAuth, async (req, res) => {
   const { docType, filename, objectPath, mimeType, sizeBytes, caption } = req.body;
   if (!docType || !filename || !objectPath) {
     return res.status(400).json({ error: "docType, filename, objectPath wajib" });
+  }
+
+  // Verify this objectPath was issued by our presign endpoint to this exact user.
+  // Prevents a user from registering a path they didn't personally upload.
+  if (!consumeUploadToken(objectPath, userId)) {
+    return res.status(403).json({ error: "objectPath tidak valid atau sudah kadaluarsa — silakan upload ulang." });
   }
 
   const [doc] = await db.insert(pkbActivityDocs).values({
