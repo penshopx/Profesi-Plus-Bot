@@ -4,6 +4,7 @@ import { db, users, payments } from "@workspace/db";
 import { eq, asc, sql } from "drizzle-orm";
 import { DEFAULT_CREDITS_PER_ORDER } from "../../lib/plans";
 import { sendCreditClaimEmail } from "../../lib/email.js";
+import { sendPushNotification } from "../../lib/push";
 
 const router: IRouter = Router();
 
@@ -186,18 +187,13 @@ router.post("/webhooks/scalev", async (req, res): Promise<void> => {
   // Non-blocking push notification + receipt email — fire after the response
   // is committed so slow external APIs never delay Scalev's acknowledgement.
   if (credited && userId !== null) {
-    // Push notification
+    // Push notification — sendPushNotification handles DeviceNotRegistered cleanup.
     if (userPushToken) {
-      fetch("https://exp.host/--/api/v2/push/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip, deflate" },
-        body: JSON.stringify({
-          to: userPushToken,
-          title: "Kredit Exum masuk! 🎉",
-          body: `${quantity} kredit Exum telah ditambahkan ke akun Anda. Siap membuat Exum berikutnya?`,
-          channelId: "payments",
-        }),
-      }).catch((err) => req.log.warn({ err, orderId }, "Failed to send credit push notification"));
+      sendPushNotification(userId, userPushToken, {
+        title: "Kredit Exum masuk! 🎉",
+        body: `${quantity} kredit Exum telah ditambahkan ke akun Anda. Siap membuat Exum berikutnya?`,
+        channelId: "payments",
+      }, req.log).catch(() => {/* already logged inside helper */});
     }
 
     // Receipt email — fetch the buyer's current balance then send non-blockingly.

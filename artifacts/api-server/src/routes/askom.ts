@@ -21,43 +21,7 @@ import {
   pkbActivities, pkbActivitySkk, pkbActivityDocs, pkbActivityJourney,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
-
-// ─── Push notification helper ─────────────────────────────────────────────────
-
-async function sendPushNotification(
-  log: import("pino").Logger,
-  userId: number,
-  pushToken: string,
-  title: string,
-  body: string,
-  data?: Record<string, string>,
-): Promise<void> {
-  try {
-    const pushRes = await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip, deflate" },
-      body: JSON.stringify({ to: pushToken, title, body, data: data ?? {}, channelId: "kegiatan" }),
-    });
-    if (!pushRes.ok) {
-      log.warn({ status: pushRes.status }, "Expo push HTTP error (askom)");
-      return;
-    }
-    const pushBody = await pushRes.json() as { data?: Array<{ status?: string; details?: { error?: string } }> };
-    const tickets = pushBody?.data ?? [];
-    const isDeviceNotRegistered = tickets.some(
-      (t) => t.status === "error" && t.details?.error === "DeviceNotRegistered",
-    );
-    if (isDeviceNotRegistered) {
-      // Log a fingerprint (last 8 chars) instead of the full token — tokens are bearer credentials.
-      log.warn({ tokenSuffix: pushToken.slice(-8), userId }, "Expo token DeviceNotRegistered (askom) — clearing from DB");
-      await db.update(users)
-        .set({ expoPushToken: null })
-        .where(and(eq(users.id, userId), eq(users.expoPushToken, pushToken)));
-    }
-  } catch (err) {
-    log.warn({ err }, "Failed to send Expo push (askom)");
-  }
-}
+import { sendPushNotification } from "../lib/push";
 
 const router = Router();
 
@@ -218,16 +182,12 @@ router.post("/askom/submissions/:id/verify", requireAuth, requireAskom, async (r
     .where(eq(users.id, act.userId))
     .limit(1);
   if (owner?.expoPushToken) {
-    (async () => {
-      await sendPushNotification(
-        req.log,
-        owner.id,
-        owner.expoPushToken!,
-        "Kegiatan PKB Diverifikasi ✅",
-        `"${act.namaKegiatan}" telah diverifikasi oleh tim Gustafta. Ketuk untuk melihat detail.`,
-        { activityId: String(id) },
-      );
-    })();
+    sendPushNotification(owner.id, owner.expoPushToken!, {
+      title: "Kegiatan PKB Diverifikasi ✅",
+      body: `"${act.namaKegiatan}" telah diverifikasi oleh tim Gustafta. Ketuk untuk melihat detail.`,
+      data: { activityId: String(id) },
+      channelId: "kegiatan",
+    }, req.log).catch(() => {/* already logged inside helper */});
   }
 
   res.json({ ok: true, status: "diverifikasi" });
@@ -286,16 +246,12 @@ router.post("/askom/submissions/:id/reject", requireAuth, requireAskom, async (r
     .where(eq(users.id, act.userId))
     .limit(1);
   if (owner?.expoPushToken) {
-    (async () => {
-      await sendPushNotification(
-        req.log,
-        owner.id,
-        owner.expoPushToken!,
-        "Kegiatan PKB Perlu Diperbaiki ⚠️",
-        `"${act.namaKegiatan}" dikembalikan untuk perbaikan. Buka aplikasi untuk melihat catatan tim verifikasi.`,
-        { activityId: String(id) },
-      );
-    })();
+    sendPushNotification(owner.id, owner.expoPushToken!, {
+      title: "Kegiatan PKB Perlu Diperbaiki ⚠️",
+      body: `"${act.namaKegiatan}" dikembalikan untuk perbaikan. Buka aplikasi untuk melihat catatan tim verifikasi.`,
+      data: { activityId: String(id) },
+      channelId: "kegiatan",
+    }, req.log).catch(() => {/* already logged inside helper */});
   }
 
   res.json({ ok: true, status: "ditolak" });

@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from "../middlewares/auth";
 import { claimPaymentRateLimiter } from "../middlewares/rateLimiter";
 import { FREE_EXUM_LIFETIME } from "../lib/plans";
 import { sendCreditClaimEmail } from "../lib/email.js";
+import { sendPushNotification } from "../lib/push";
 
 const router = Router();
 
@@ -203,19 +204,15 @@ router.post("/users/me/claim-payment", requireAuth, claimPaymentRateLimiter, asy
       );
   }
 
-  // Non-blocking push notification to the claimant's device
+  // Non-blocking push notification to the claimant's device.
+  // sendPushNotification handles DeviceNotRegistered cleanup via the shared helper.
   const pushToken = req.dbUser!.expoPushToken;
   if (pushToken) {
-    fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept-Encoding": "gzip, deflate" },
-      body: JSON.stringify({
-        to: pushToken,
-        title: "Klaim kredit berhasil! 🎉",
-        body: `${creditsGranted} kredit Exum telah ditambahkan ke akun Anda.`,
-        channelId: "payments",
-      }),
-    }).catch((err) => req.log.warn({ err, orderId: trimmedId }, "Failed to send claim push notification"));
+    sendPushNotification(req.dbUser!.id, pushToken, {
+      title: "Klaim kredit berhasil! 🎉",
+      body: `${creditsGranted} kredit Exum telah ditambahkan ke akun Anda.`,
+      channelId: "payments",
+    }, req.log).catch(() => {/* already logged inside helper */});
   }
 
   res.json({ ok: true, creditsGranted });
