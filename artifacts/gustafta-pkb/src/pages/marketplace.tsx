@@ -106,10 +106,11 @@ function buildShareText(course: Course, mode: "full" | "short" = "full"): string
   const jabkerStr = course.jabker.map((j) => JABKER_LABELS[j] ?? j).join(", ");
   const skkStr = course.skkTags.slice(0, 3).map((t) => `• ${t.code} — ${t.name}`).join("\n");
   const reviews = course.reviews;
-  const askomStr = reviews?.askomReview
-    ? reviews.askomReview.recommendation === "direkomendasikan"
+  const firstAskom = reviews?.askomReviews?.[0];
+  const askomStr = firstAskom
+    ? firstAskom.recommendation === "direkomendasikan"
       ? "✅ Direkomendasikan ASKOM BNSP"
-      : reviews.askomReview.recommendation === "direkomendasikan_dengan_catatan"
+      : firstAskom.recommendation === "direkomendasikan_dengan_catatan"
       ? "⚠️ Direkomendasikan ASKOM (dengan catatan)"
       : ""
     : "";
@@ -311,7 +312,7 @@ function ReviewsSection({ reviews }: { reviews: Course["reviews"] }) {
       <div className="flex items-center gap-2 mb-3">
         <MessageSquare className="w-3.5 h-3.5 text-primary" />
         <h3 className="font-semibold text-sm">Penilaian & Ulasan</h3>
-        {reviews.askomReview && (
+        {reviews.askomReviews.length > 0 && (
           <span className="flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
             <UserCheck className="w-3 h-3" /> ASKOM Terverifikasi
           </span>
@@ -332,7 +333,7 @@ function ReviewsSection({ reviews }: { reviews: Course["reviews"] }) {
             {reviews.aiReviews.length}
           </span>
         </button>
-        {reviews.askomReview && (
+        {reviews.askomReviews.length > 0 && (
           <button
             onClick={() => setActiveTab("askom")}
             className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -341,6 +342,11 @@ function ReviewsSection({ reviews }: { reviews: Course["reviews"] }) {
           >
             <UserCheck className="w-3 h-3" />
             Penilaian ASKOM
+            {reviews.askomReviews.length > 1 && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === "askom" ? "bg-primary/10 text-primary" : "bg-muted"}`}>
+                {reviews.askomReviews.length}
+              </span>
+            )}
           </button>
         )}
       </div>
@@ -409,8 +415,8 @@ function ReviewsSection({ reviews }: { reviews: Course["reviews"] }) {
       )}
 
       {/* ASKOM Review tab */}
-      {activeTab === "askom" && reviews.askomReview && (() => {
-        const a = reviews.askomReview!;
+      {activeTab === "askom" && reviews.askomReviews.length > 0 && (() => {
+        const a = reviews.askomReviews[0]!
         const rec = REC_META[a.recommendation as AskomRecommendation];
         const RecIcon = rec.icon;
         return (
@@ -491,7 +497,7 @@ function CourseCard({ course, onClick, isWatched }: { course: Course; onClick: (
   const [shareOpen, setShareOpen] = useState(false);
   const reviews = course.reviews;
   const avgR = reviews?.aiReviews?.length ? avgAiRating(reviews.aiReviews) : null;
-  const rec = reviews?.askomReview?.recommendation as AskomRecommendation | undefined;
+  const rec = reviews?.askomReviews?.[0]?.recommendation as AskomRecommendation | undefined;
 
   return (
     <div className="relative group">

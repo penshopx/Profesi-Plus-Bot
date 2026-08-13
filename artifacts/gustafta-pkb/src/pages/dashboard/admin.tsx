@@ -6,6 +6,7 @@ import {
   LayoutDashboard, LogOut, Users, Video, MessageSquare,
   CheckCircle2, ChevronDown, Search, BookOpen, Plus, Pencil, Trash2, X, Sparkles, Award,
   ClipboardList, ChevronUp, ToggleLeft, ToggleRight, AlertCircle, BarChart2, Loader2, ShoppingBag,
+  Star,
 } from "lucide-react";
 import {
   listAllUsers, updateUserRole, listVideos, type VideoItem, type DbUser,
@@ -13,7 +14,11 @@ import {
   seedKnowledgeBase, KB_CATEGORIES, type KbEntry, type KbInput,
   adminListMarketplaceCourses, adminCreateMarketplaceCourse,
   adminUpdateMarketplaceCourse, adminDeleteMarketplaceCourse,
+  adminCreateAiReview, adminUpdateAiReview, adminDeleteAiReview,
+  adminCreateAskomReview, adminUpdateAskomReview, adminDeleteAskomReview,
   type AdminCourse, type AdminCourseInput,
+  type AdminAiReview, type AdminAiReviewInput,
+  type AdminAskomReview, type AdminAskomReviewInput,
 } from "@/lib/api";
 import {
   listAdminQuizzes, adminCreateQuiz, adminUpdateQuiz, adminDeleteQuiz, adminGenerateQuestions,
@@ -58,6 +63,9 @@ export default function DashboardAdmin() {
   const [quizStatsId, setQuizStatsId] = useState<number | null>(null);
   const [courseModalOpen, setCourseModalOpen] = useState(false);
   const [courseEditing, setCourseEditing] = useState<AdminCourse | null>(null);
+  const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
+  const [aiReviewModal, setAiReviewModal] = useState<{ courseId: string; review: AdminAiReview | null } | null>(null);
+  const [askomReviewModal, setAskomReviewModal] = useState<{ courseId: string; review: AdminAskomReview | null } | null>(null);
 
   const { data: users = [], isLoading: usersLoading } = useQuery({
     queryKey: ["admin-users"],
@@ -115,6 +123,38 @@ export default function DashboardAdmin() {
   });
   const courseDeleteMut = useMutation({
     mutationFn: (id: string) => adminDeleteMarketplaceCourse(id),
+    onSuccess: invalidateMarketplace,
+  });
+
+  const aiReviewCreateMut = useMutation({
+    mutationFn: ({ courseId, data }: { courseId: string; data: AdminAiReviewInput }) =>
+      adminCreateAiReview(courseId, data),
+    onSuccess: () => { invalidateMarketplace(); setAiReviewModal(null); },
+  });
+  const aiReviewUpdateMut = useMutation({
+    mutationFn: ({ courseId, reviewId, data }: { courseId: string; reviewId: number; data: Partial<AdminAiReviewInput> }) =>
+      adminUpdateAiReview(courseId, reviewId, data),
+    onSuccess: () => { invalidateMarketplace(); setAiReviewModal(null); },
+  });
+  const aiReviewDeleteMut = useMutation({
+    mutationFn: ({ courseId, reviewId }: { courseId: string; reviewId: number }) =>
+      adminDeleteAiReview(courseId, reviewId),
+    onSuccess: invalidateMarketplace,
+  });
+
+  const askomReviewCreateMut = useMutation({
+    mutationFn: ({ courseId, data }: { courseId: string; data: AdminAskomReviewInput }) =>
+      adminCreateAskomReview(courseId, data),
+    onSuccess: () => { invalidateMarketplace(); setAskomReviewModal(null); },
+  });
+  const askomReviewUpdateMut = useMutation({
+    mutationFn: ({ courseId, reviewId, data }: { courseId: string; reviewId: number; data: Partial<AdminAskomReviewInput> }) =>
+      adminUpdateAskomReview(courseId, reviewId, data),
+    onSuccess: () => { invalidateMarketplace(); setAskomReviewModal(null); },
+  });
+  const askomReviewDeleteMut = useMutation({
+    mutationFn: ({ courseId, reviewId }: { courseId: string; reviewId: number }) =>
+      adminDeleteAskomReview(courseId, reviewId),
     onSuccess: invalidateMarketplace,
   });
 
@@ -471,35 +511,159 @@ export default function DashboardAdmin() {
               </div>
             ) : (
               <div className="space-y-2">
-                {marketplaceCourses.map((c) => (
-                  <div key={c.id} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
-                    <span className="text-xl w-8 text-center">{c.providerLogo ?? "📚"}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{c.title}</p>
-                      <p className="text-[11px] text-muted-foreground truncate">
-                        {c.provider} · {c.type} · {c.price === "gratis" ? "Gratis" : `Rp ${c.priceIdr?.toLocaleString("id-ID") ?? "–"}`} · urutan {c.sortOrder}
-                      </p>
+                {marketplaceCourses.map((c) => {
+                  const isExpanded = expandedCourseId === c.id;
+                  const reviewCount = (c.aiReviews?.length ?? 0) + (c.askomReviews?.length ?? 0);
+                  return (
+                    <div key={c.id} className="bg-card border border-border rounded-xl overflow-hidden">
+                      {/* Course row header */}
+                      <div className="px-4 py-3 flex items-center gap-3">
+                        <span className="text-xl w-8 text-center">{c.providerLogo ?? "📚"}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{c.title}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            {c.provider} · {c.type} · {c.price === "gratis" ? "Gratis" : `Rp ${c.priceIdr?.toLocaleString("id-ID") ?? "–"}`} · urutan {c.sortOrder}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${c.isFeatured ? "bg-amber-50 text-amber-600" : c.isBestSeller ? "bg-emerald-50 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                            {c.isFeatured ? "Featured" : c.isBestSeller ? "Best Seller" : c.isNew ? "Baru" : "Standar"}
+                          </span>
+                          <button
+                            onClick={() => setExpandedCourseId(isExpanded ? null : c.id)}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${isExpanded ? "bg-primary/10 text-primary" : "hover:bg-muted text-muted-foreground"}`}
+                            title="Kelola Reviews"
+                          >
+                            <Star className="w-3 h-3" />
+                            <span>{reviewCount}</span>
+                          </button>
+                          <button
+                            onClick={() => { setCourseEditing(c); setCourseModalOpen(true); }}
+                            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => { if (confirm(`Hapus "${c.title}"? Reviews juga akan terhapus.`)) courseDeleteMut.mutate(c.id); }}
+                            disabled={courseDeleteMut.isPending}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-red-500"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Expandable reviews panel */}
+                      {isExpanded && (
+                        <div className="border-t border-border bg-muted/20 px-4 py-4 space-y-5">
+
+                          {/* ── AI Reviews ── */}
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                                <Star className="w-3 h-3 text-amber-500" /> AI Reviews
+                              </p>
+                              <button
+                                onClick={() => setAiReviewModal({ courseId: c.id, review: null })}
+                                className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 font-medium"
+                              >
+                                <Plus className="w-3 h-3" /> Tambah
+                              </button>
+                            </div>
+                            {(c.aiReviews ?? []).length === 0 ? (
+                              <p className="text-[11px] text-muted-foreground italic">Belum ada AI review.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {(c.aiReviews ?? []).map((r) => (
+                                  <div key={r.id} className="bg-card border border-border rounded-lg px-3 py-2 flex items-start gap-2">
+                                    <span className="text-base leading-none mt-0.5">{r.platformIcon}</span>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-[11px] font-medium">{r.platform}</span>
+                                        <span className="text-[11px] text-amber-600">★ {r.rating}</span>
+                                        <span className="text-[10px] text-muted-foreground">{r.relevanceScore}% relevan · {r.reviewedAt}</span>
+                                      </div>
+                                      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{r.comment}</p>
+                                    </div>
+                                    <div className="flex items-center gap-0.5 shrink-0">
+                                      <button onClick={() => setAiReviewModal({ courseId: c.id, review: r })}
+                                        className="p-1 rounded hover:bg-muted text-muted-foreground">
+                                        <Pencil className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => { if (confirm("Hapus AI review ini?")) aiReviewDeleteMut.mutate({ courseId: c.id, reviewId: r.id }); }}
+                                        disabled={aiReviewDeleteMut.isPending}
+                                        className="p-1 rounded hover:bg-red-50 text-red-400">
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* ── ASKOM Reviews ── */}
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                                <Award className="w-3 h-3 text-violet-500" /> ASKOM Reviews
+                              </p>
+                              <button
+                                onClick={() => setAskomReviewModal({ courseId: c.id, review: null })}
+                                className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100 font-medium"
+                              >
+                                <Plus className="w-3 h-3" /> Tambah
+                              </button>
+                            </div>
+                            {(c.askomReviews ?? []).length === 0 ? (
+                              <p className="text-[11px] text-muted-foreground italic">Belum ada ASKOM review.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {(c.askomReviews ?? []).map((r) => (
+                                  <div key={r.id} className="bg-card border border-border rounded-lg px-3 py-2 flex items-start gap-2">
+                                    <Award className="w-4 h-4 text-violet-500 shrink-0 mt-0.5" />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-[11px] font-medium">{r.reviewerName}</span>
+                                        <span className="text-[10px] text-muted-foreground">{r.credential}</span>
+                                        <span className="text-[11px] text-amber-600">★ {r.rating}</span>
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                          r.recommendation === "direkomendasikan" ? "bg-emerald-50 text-emerald-700"
+                                          : r.recommendation === "direkomendasikan_dengan_catatan" ? "bg-amber-50 text-amber-700"
+                                          : "bg-red-50 text-red-600"
+                                        }`}>
+                                          {r.recommendation === "direkomendasikan" ? "Direkomendasikan"
+                                            : r.recommendation === "direkomendasikan_dengan_catatan" ? "Dengan Catatan"
+                                            : "Tidak Direkomendasikan"}
+                                        </span>
+                                      </div>
+                                      <p className="text-[10px] text-muted-foreground">{r.institution} · {r.reviewedAt}</p>
+                                      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{r.comment}</p>
+                                    </div>
+                                    <div className="flex items-center gap-0.5 shrink-0">
+                                      <button onClick={() => setAskomReviewModal({ courseId: c.id, review: r })}
+                                        className="p-1 rounded hover:bg-muted text-muted-foreground">
+                                        <Pencil className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => { if (confirm("Hapus ASKOM review ini?")) askomReviewDeleteMut.mutate({ courseId: c.id, reviewId: r.id }); }}
+                                        disabled={askomReviewDeleteMut.isPending}
+                                        className="p-1 rounded hover:bg-red-50 text-red-400">
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${c.isFeatured ? "bg-amber-50 text-amber-600" : c.isBestSeller ? "bg-emerald-50 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                        {c.isFeatured ? "Featured" : c.isBestSeller ? "Best Seller" : c.isNew ? "Baru" : "Standar"}
-                      </span>
-                      <button
-                        onClick={() => { setCourseEditing(c); setCourseModalOpen(true); }}
-                        className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => { if (confirm(`Hapus "${c.title}"? Reviews juga akan terhapus.`)) courseDeleteMut.mutate(c.id); }}
-                        disabled={courseDeleteMut.isPending}
-                        className="p-1.5 rounded-lg hover:bg-red-50 text-red-500"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -541,6 +705,40 @@ export default function DashboardAdmin() {
           }}
           isPending={courseCreateMut.isPending || courseUpdateMut.isPending}
           error={(courseCreateMut.error as Error | null)?.message ?? (courseUpdateMut.error as Error | null)?.message ?? null}
+        />
+      )}
+
+      {aiReviewModal && (
+        <AiReviewModal
+          courseId={aiReviewModal.courseId}
+          review={aiReviewModal.review}
+          onClose={() => setAiReviewModal(null)}
+          onSubmit={(data) => {
+            if (aiReviewModal.review) {
+              aiReviewUpdateMut.mutate({ courseId: aiReviewModal.courseId, reviewId: aiReviewModal.review.id, data });
+            } else {
+              aiReviewCreateMut.mutate({ courseId: aiReviewModal.courseId, data: data as AdminAiReviewInput });
+            }
+          }}
+          isPending={aiReviewCreateMut.isPending || aiReviewUpdateMut.isPending}
+          error={(aiReviewCreateMut.error as Error | null)?.message ?? (aiReviewUpdateMut.error as Error | null)?.message ?? null}
+        />
+      )}
+
+      {askomReviewModal && (
+        <AskomReviewModal
+          courseId={askomReviewModal.courseId}
+          review={askomReviewModal.review}
+          onClose={() => setAskomReviewModal(null)}
+          onSubmit={(data) => {
+            if (askomReviewModal.review) {
+              askomReviewUpdateMut.mutate({ courseId: askomReviewModal.courseId, reviewId: askomReviewModal.review.id, data });
+            } else {
+              askomReviewCreateMut.mutate({ courseId: askomReviewModal.courseId, data: data as AdminAskomReviewInput });
+            }
+          }}
+          isPending={askomReviewCreateMut.isPending || askomReviewUpdateMut.isPending}
+          error={(askomReviewCreateMut.error as Error | null)?.message ?? (askomReviewUpdateMut.error as Error | null)?.message ?? null}
         />
       )}
     </div>
@@ -1406,6 +1604,280 @@ function QuestionEditor({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── AI Review Modal ──────────────────────────────────────────────────────────
+
+function AiReviewModal({
+  courseId,
+  review,
+  onClose,
+  onSubmit,
+  isPending,
+  error,
+}: {
+  courseId: string;
+  review: AdminAiReview | null;
+  onClose: () => void;
+  onSubmit: (data: Partial<AdminAiReviewInput>) => void;
+  isPending: boolean;
+  error: string | null;
+}) {
+  const isEdit = review !== null;
+  const [form, setForm] = useState<AdminAiReviewInput>({
+    platform:       review?.platform       ?? "",
+    platformIcon:   review?.platformIcon   ?? "🤖",
+    rating:         review?.rating         ?? 4.5,
+    relevanceScore: review?.relevanceScore ?? 80,
+    comment:        review?.comment        ?? "",
+    reviewedAt:     review?.reviewedAt     ?? "",
+  });
+  const set = <K extends keyof AdminAiReviewInput>(k: K, v: AdminAiReviewInput[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  const canSubmit = form.platform.trim() && form.comment.trim() && form.reviewedAt.trim();
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Star className="w-4 h-4 text-amber-500" />
+            <h2 className="text-sm font-semibold">{isEdit ? "Edit AI Review" : "Tambah AI Review"}</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-[11px] text-muted-foreground">Kursus: <span className="font-mono">{courseId}</span></p>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <label className="text-[11px] font-medium text-muted-foreground">Platform AI *</label>
+              <input value={form.platform} onChange={(e) => set("platform", e.target.value)}
+                placeholder="ChatGPT, Gemini, Claude…"
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Ikon</label>
+              <input value={form.platformIcon} onChange={(e) => set("platformIcon", e.target.value)}
+                placeholder="🤖"
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Rating (1–5)</label>
+              <input type="number" min={1} max={5} step={0.1} value={form.rating}
+                onChange={(e) => set("rating", parseFloat(e.target.value))}
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Relevansi (0–100)</label>
+              <input type="number" min={0} max={100} value={form.relevanceScore}
+                onChange={(e) => set("relevanceScore", Number(e.target.value))}
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground">Komentar *</label>
+            <textarea rows={3} value={form.comment} onChange={(e) => set("comment", e.target.value)}
+              placeholder="Ringkasan penilaian dari platform AI ini…"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y" />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground">Periode Review *</label>
+            <input value={form.reviewedAt} onChange={(e) => set("reviewedAt", e.target.value)}
+              placeholder="Oktober 2025"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+
+          {error && (
+            <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</p>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 pb-4">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted">
+            Batal
+          </button>
+          <button onClick={() => onSubmit(form)} disabled={isPending || !canSubmit}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50">
+            {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {isEdit ? "Simpan" : "Tambah Review"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ASKOM Review Modal ───────────────────────────────────────────────────────
+
+function AskomReviewModal({
+  courseId,
+  review,
+  onClose,
+  onSubmit,
+  isPending,
+  error,
+}: {
+  courseId: string;
+  review: AdminAskomReview | null;
+  onClose: () => void;
+  onSubmit: (data: Partial<AdminAskomReviewInput>) => void;
+  isPending: boolean;
+  error: string | null;
+}) {
+  const isEdit = review !== null;
+  const [form, setForm] = useState<AdminAskomReviewInput>({
+    reviewerName:     review?.reviewerName     ?? "",
+    credential:       review?.credential       ?? "",
+    institution:      review?.institution      ?? "",
+    credentialNumber: review?.credentialNumber ?? "",
+    rating:           review?.rating           ?? 4.5,
+    relevanceScore:   review?.relevanceScore   ?? 80,
+    recommendation:   review?.recommendation  ?? "direkomendasikan",
+    comment:          review?.comment          ?? "",
+    strengths:        review?.strengths        ?? [],
+    notes:            review?.notes            ?? "",
+    reviewedAt:       review?.reviewedAt       ?? "",
+  });
+  const [strengthsText, setStrengthsText] = useState((review?.strengths ?? []).join("\n"));
+
+  const set = <K extends keyof AdminAskomReviewInput>(k: K, v: AdminAskomReviewInput[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  const handleStrengthsChange = (text: string) => {
+    setStrengthsText(text);
+    set("strengths", text.split("\n").map((s) => s.trim()).filter(Boolean));
+  };
+
+  const canSubmit = form.reviewerName.trim() && form.credential.trim() && form.institution.trim() && form.comment.trim() && form.reviewedAt.trim();
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-xl my-8">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Award className="w-4 h-4 text-violet-500" />
+            <h2 className="text-sm font-semibold">{isEdit ? "Edit ASKOM Review" : "Tambah ASKOM Review"}</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-[11px] text-muted-foreground">Kursus: <span className="font-mono">{courseId}</span></p>
+
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground">Nama Reviewer *</label>
+            <input value={form.reviewerName} onChange={(e) => set("reviewerName", e.target.value)}
+              placeholder="Dr. Ir. Budi Santoso"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Credential *</label>
+              <input value={form.credential} onChange={(e) => set("credential", e.target.value)}
+                placeholder="Asesor BNSP"
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">No. Sertifikat</label>
+              <input value={form.credentialNumber ?? ""} onChange={(e) => set("credentialNumber", e.target.value)}
+                placeholder="BNSP-XXX-2024"
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground">Institusi *</label>
+            <input value={form.institution} onChange={(e) => set("institution", e.target.value)}
+              placeholder="Balai Jasa Konstruksi Wilayah V"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Rating (1–5)</label>
+              <input type="number" min={1} max={5} step={0.1} value={form.rating}
+                onChange={(e) => set("rating", parseFloat(e.target.value))}
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-muted-foreground">Relevansi (0–100)</label>
+              <input type="number" min={0} max={100} value={form.relevanceScore}
+                onChange={(e) => set("relevanceScore", Number(e.target.value))}
+                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground">Rekomendasi *</label>
+            <select value={form.recommendation} onChange={(e) => set("recommendation", e.target.value)}
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+              <option value="direkomendasikan">Direkomendasikan</option>
+              <option value="direkomendasikan_dengan_catatan">Direkomendasikan dengan Catatan</option>
+              <option value="tidak_direkomendasikan">Tidak Direkomendasikan</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground">Komentar *</label>
+            <textarea rows={3} value={form.comment} onChange={(e) => set("comment", e.target.value)}
+              placeholder="Ulasan dari asesor kompetensi…"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y" />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground">Kekuatan (satu per baris, opsional)</label>
+            <textarea rows={2} value={strengthsText} onChange={(e) => handleStrengthsChange(e.target.value)}
+              placeholder={"Materi sesuai standar BNSP\nPengajar berpengalaman"}
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y" />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground">Catatan (opsional)</label>
+            <textarea rows={2} value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value)}
+              placeholder="Catatan tambahan untuk admin…"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y" />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-medium text-muted-foreground">Periode Review *</label>
+            <input value={form.reviewedAt} onChange={(e) => set("reviewedAt", e.target.value)}
+              placeholder="Oktober 2025"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+
+          {error && (
+            <p className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</p>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 pb-4">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted">
+            Batal
+          </button>
+          <button onClick={() => onSubmit(form)} disabled={isPending || !canSubmit}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50">
+            {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {isEdit ? "Simpan" : "Tambah Review"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

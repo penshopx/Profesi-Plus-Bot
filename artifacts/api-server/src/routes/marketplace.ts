@@ -49,9 +49,10 @@ router.get("/marketplace/courses", catalogRateLimiter, async (_req, res) => {
     if (!aiMap.has(r.courseId)) aiMap.set(r.courseId, []);
     aiMap.get(r.courseId)!.push(r);
   }
-  const askomMap = new Map<string, (typeof askomReviews)[number]>();
+  const askomListMap = new Map<string, typeof askomReviews>();
   for (const r of askomReviews) {
-    askomMap.set(r.courseId, r);
+    if (!askomListMap.has(r.courseId)) askomListMap.set(r.courseId, []);
+    askomListMap.get(r.courseId)!.push(r);
   }
 
   const result = courses.map((c) => ({
@@ -65,24 +66,19 @@ router.get("/marketplace/courses", catalogRateLimiter, async (_req, res) => {
         comment: r.comment,
         reviewedAt: r.reviewedAt,
       })),
-      askomReview: askomMap.has(c.id)
-        ? (() => {
-            const a = askomMap.get(c.id)!;
-            return {
-              reviewerName: a.reviewerName,
-              credential: a.credential,
-              institution: a.institution,
-              credentialNumber: a.credentialNumber ?? undefined,
-              rating: a.rating,
-              relevanceScore: a.relevanceScore,
-              recommendation: a.recommendation,
-              comment: a.comment,
-              strengths: a.strengths,
-              notes: a.notes ?? undefined,
-              reviewedAt: a.reviewedAt,
-            };
-          })()
-        : undefined,
+      askomReviews: (askomListMap.get(c.id) ?? []).map((a) => ({
+        reviewerName: a.reviewerName,
+        credential: a.credential,
+        institution: a.institution,
+        credentialNumber: a.credentialNumber ?? undefined,
+        rating: a.rating,
+        relevanceScore: a.relevanceScore,
+        recommendation: a.recommendation,
+        comment: a.comment,
+        strengths: a.strengths,
+        notes: a.notes ?? undefined,
+        reviewedAt: a.reviewedAt,
+      })),
     },
   }));
 
@@ -163,10 +159,29 @@ router.delete("/marketplace/watched/:courseId", requireAuth, async (req, res) =>
 // These endpoints require role='admin'. They allow admins to manage the catalog
 // without touching code or re-deploying.
 
-/** GET /api/marketplace/admin/courses — list all courses (with full fields) */
+/** GET /api/marketplace/admin/courses — list all courses with their reviews */
 router.get("/marketplace/admin/courses", requireAuth, requireAdmin, async (_req, res) => {
-  const courses = await db.select().from(marketplaceCourses).orderBy(asc(marketplaceCourses.sortOrder));
-  res.json({ courses });
+  const [courses, aiReviews, askomReviews] = await Promise.all([
+    db.select().from(marketplaceCourses).orderBy(asc(marketplaceCourses.sortOrder)),
+    db.select().from(marketplaceAiReviews).orderBy(asc(marketplaceAiReviews.id)),
+    db.select().from(marketplaceAskomReviews).orderBy(asc(marketplaceAskomReviews.id)),
+  ]);
+  const aiMap = new Map<string, typeof aiReviews>();
+  for (const r of aiReviews) {
+    if (!aiMap.has(r.courseId)) aiMap.set(r.courseId, []);
+    aiMap.get(r.courseId)!.push(r);
+  }
+  const askomMap = new Map<string, typeof askomReviews>();
+  for (const r of askomReviews) {
+    if (!askomMap.has(r.courseId)) askomMap.set(r.courseId, []);
+    askomMap.get(r.courseId)!.push(r);
+  }
+  const result = courses.map((c) => ({
+    ...c,
+    aiReviews: aiMap.get(c.id) ?? [],
+    askomReviews: askomMap.get(c.id) ?? [],
+  }));
+  res.json({ courses: result });
 });
 
 /** POST /api/marketplace/admin/courses — create a new course */
@@ -249,6 +264,123 @@ router.patch("/marketplace/admin/courses/:id", requireAuth, requireAdmin, async 
 router.delete("/marketplace/admin/courses/:id", requireAuth, requireAdmin, async (req, res) => {
   const { id } = req.params;
   await db.delete(marketplaceCourses).where(eq(marketplaceCourses.id, id));
+  res.json({ ok: true });
+});
+
+// ─── ADMIN: AI Reviews ────────────────────────────────────────────────────────
+
+/** POST /api/marketplace/admin/courses/:id/ai-reviews — add an AI review */
+router.post("/marketplace/admin/courses/:id/ai-reviews", requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const body = req.body as Record<string, unknown>;
+  if (!body.platform || !body.platformIcon || body.rating === undefined ||
+      body.relevanceScore === undefined || !body.comment || !body.reviewedAt) {
+    res.status(400).json({ error: "platform, platformIcon, rating, relevanceScore, comment, reviewedAt wajib diisi." });
+    return;
+  }
+  const [created] = await db.insert(marketplaceAiReviews).values({
+    courseId: id,
+    platform: String(body.platform),
+    platformIcon: String(body.platformIcon),
+    rating: Number(body.rating),
+    relevanceScore: Number(body.relevanceScore),
+    comment: String(body.comment),
+    reviewedAt: String(body.reviewedAt),
+  }).returning();
+  res.status(201).json({ review: created });
+});
+
+/** PATCH /api/marketplace/admin/courses/:id/ai-reviews/:reviewId */
+router.patch("/marketplace/admin/courses/:id/ai-reviews/:reviewId", requireAuth, requireAdmin, async (req, res) => {
+  const { id: courseId } = req.params;
+  const reviewId = Number(req.params.reviewId);
+  if (!Number.isFinite(reviewId)) { res.status(400).json({ error: "reviewId tidak valid." }); return; }
+  const body = req.body as Record<string, unknown>;
+  const patch: Partial<typeof marketplaceAiReviews.$inferInsert> = {};
+  if (body.platform !== undefined)       patch.platform       = String(body.platform);
+  if (body.platformIcon !== undefined)   patch.platformIcon   = String(body.platformIcon);
+  if (body.rating !== undefined)         patch.rating         = Number(body.rating);
+  if (body.relevanceScore !== undefined) patch.relevanceScore = Number(body.relevanceScore);
+  if (body.comment !== undefined)        patch.comment        = String(body.comment);
+  if (body.reviewedAt !== undefined)     patch.reviewedAt     = String(body.reviewedAt);
+  if (Object.keys(patch).length === 0) { res.status(400).json({ error: "Tidak ada field yang diperbarui." }); return; }
+  const [updated] = await db.update(marketplaceAiReviews).set(patch)
+    .where(and(eq(marketplaceAiReviews.id, reviewId), eq(marketplaceAiReviews.courseId, courseId))).returning();
+  if (!updated) { res.status(404).json({ error: "Review tidak ditemukan." }); return; }
+  res.json({ review: updated });
+});
+
+/** DELETE /api/marketplace/admin/courses/:id/ai-reviews/:reviewId */
+router.delete("/marketplace/admin/courses/:id/ai-reviews/:reviewId", requireAuth, requireAdmin, async (req, res) => {
+  const { id: courseId } = req.params;
+  const reviewId = Number(req.params.reviewId);
+  if (!Number.isFinite(reviewId)) { res.status(400).json({ error: "reviewId tidak valid." }); return; }
+  await db.delete(marketplaceAiReviews)
+    .where(and(eq(marketplaceAiReviews.id, reviewId), eq(marketplaceAiReviews.courseId, courseId)));
+  res.json({ ok: true });
+});
+
+// ─── ADMIN: ASKOM Reviews ─────────────────────────────────────────────────────
+
+/** POST /api/marketplace/admin/courses/:id/askom-reviews — add an ASKOM endorsement */
+router.post("/marketplace/admin/courses/:id/askom-reviews", requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const body = req.body as Record<string, unknown>;
+  if (!body.reviewerName || !body.credential || !body.institution ||
+      body.rating === undefined || body.relevanceScore === undefined ||
+      !body.recommendation || !body.comment || !body.reviewedAt) {
+    res.status(400).json({ error: "reviewerName, credential, institution, rating, relevanceScore, recommendation, comment, reviewedAt wajib diisi." });
+    return;
+  }
+  const [created] = await db.insert(marketplaceAskomReviews).values({
+    courseId: id,
+    reviewerName:     String(body.reviewerName),
+    credential:       String(body.credential),
+    institution:      String(body.institution),
+    credentialNumber: body.credentialNumber ? String(body.credentialNumber) : null,
+    rating:           Number(body.rating),
+    relevanceScore:   Number(body.relevanceScore),
+    recommendation:   String(body.recommendation),
+    comment:          String(body.comment),
+    strengths:        Array.isArray(body.strengths) ? body.strengths.map(String) : [],
+    notes:            body.notes ? String(body.notes) : null,
+    reviewedAt:       String(body.reviewedAt),
+  }).returning();
+  res.status(201).json({ review: created });
+});
+
+/** PATCH /api/marketplace/admin/courses/:id/askom-reviews/:reviewId */
+router.patch("/marketplace/admin/courses/:id/askom-reviews/:reviewId", requireAuth, requireAdmin, async (req, res) => {
+  const { id: courseId } = req.params;
+  const reviewId = Number(req.params.reviewId);
+  if (!Number.isFinite(reviewId)) { res.status(400).json({ error: "reviewId tidak valid." }); return; }
+  const body = req.body as Record<string, unknown>;
+  const patch: Partial<typeof marketplaceAskomReviews.$inferInsert> = {};
+  if (body.reviewerName !== undefined)     patch.reviewerName     = String(body.reviewerName);
+  if (body.credential !== undefined)       patch.credential       = String(body.credential);
+  if (body.institution !== undefined)      patch.institution      = String(body.institution);
+  if (body.credentialNumber !== undefined) patch.credentialNumber = body.credentialNumber ? String(body.credentialNumber) : null;
+  if (body.rating !== undefined)           patch.rating           = Number(body.rating);
+  if (body.relevanceScore !== undefined)   patch.relevanceScore   = Number(body.relevanceScore);
+  if (body.recommendation !== undefined)   patch.recommendation   = String(body.recommendation);
+  if (body.comment !== undefined)          patch.comment          = String(body.comment);
+  if (Array.isArray(body.strengths))       patch.strengths        = body.strengths.map(String);
+  if (body.notes !== undefined)            patch.notes            = body.notes ? String(body.notes) : null;
+  if (body.reviewedAt !== undefined)       patch.reviewedAt       = String(body.reviewedAt);
+  if (Object.keys(patch).length === 0) { res.status(400).json({ error: "Tidak ada field yang diperbarui." }); return; }
+  const [updated] = await db.update(marketplaceAskomReviews).set(patch)
+    .where(and(eq(marketplaceAskomReviews.id, reviewId), eq(marketplaceAskomReviews.courseId, courseId))).returning();
+  if (!updated) { res.status(404).json({ error: "Review tidak ditemukan." }); return; }
+  res.json({ review: updated });
+});
+
+/** DELETE /api/marketplace/admin/courses/:id/askom-reviews/:reviewId */
+router.delete("/marketplace/admin/courses/:id/askom-reviews/:reviewId", requireAuth, requireAdmin, async (req, res) => {
+  const { id: courseId } = req.params;
+  const reviewId = Number(req.params.reviewId);
+  if (!Number.isFinite(reviewId)) { res.status(400).json({ error: "reviewId tidak valid." }); return; }
+  await db.delete(marketplaceAskomReviews)
+    .where(and(eq(marketplaceAskomReviews.id, reviewId), eq(marketplaceAskomReviews.courseId, courseId)));
   res.json({ ok: true });
 });
 

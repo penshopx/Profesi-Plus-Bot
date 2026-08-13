@@ -821,7 +821,8 @@ export interface AskomReview {
 
 export interface CourseReviews {
   aiReviews: AIReview[];
-  askomReview?: AskomReview;
+  /** All ASKOM endorsements for this course, ordered by id asc. */
+  askomReviews: AskomReview[];
 }
 
 export interface MarketplaceCourseItem {
@@ -968,6 +969,58 @@ export async function listWatchedModules(): Promise<MarketplaceWatchedItem[]> {
 
 // ─── Admin Marketplace CRUD ───────────────────────────────────────────────────
 
+export interface AdminAiReview {
+  id: number;
+  courseId: string;
+  platform: string;
+  platformIcon: string;
+  rating: number;
+  relevanceScore: number;
+  comment: string;
+  reviewedAt: string;
+  createdAt: string;
+}
+
+export interface AdminAiReviewInput {
+  platform: string;
+  platformIcon: string;
+  rating: number;
+  relevanceScore: number;
+  comment: string;
+  reviewedAt: string;
+}
+
+export interface AdminAskomReview {
+  id: number;
+  courseId: string;
+  reviewerName: string;
+  credential: string;
+  institution: string;
+  credentialNumber?: string | null;
+  rating: number;
+  relevanceScore: number;
+  recommendation: string;
+  comment: string;
+  strengths: string[];
+  notes?: string | null;
+  reviewedAt: string;
+  createdAt: string;
+}
+
+export interface AdminAskomReviewInput {
+  reviewerName: string;
+  credential: string;
+  institution: string;
+  credentialNumber?: string;
+  rating: number;
+  relevanceScore: number;
+  recommendation: string;
+  comment: string;
+  strengths?: string[];
+  notes?: string;
+  reviewedAt: string;
+}
+
 export interface AdminCourse {
   id: string;
   title: string;
@@ -992,6 +1045,8 @@ export interface AdminCourse {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  aiReviews: AdminAiReview[];
+  askomReviews: AdminAskomReview[];
 }
 
 export interface AdminCourseInput {
@@ -1064,4 +1119,86 @@ export async function adminDeleteMarketplaceCourse(id: string): Promise<void> {
     credentials: "include",
   });
   if (!res.ok) throw new Error("Gagal menghapus kursus");
+}
+
+// ─── Admin AI Review CRUD ─────────────────────────────────────────────────────
+
+export async function adminCreateAiReview(
+  courseId: string,
+  input: AdminAiReviewInput,
+): Promise<AdminAiReview> {
+  const res = await fetch(
+    `${BASE}/marketplace/admin/courses/${encodeURIComponent(courseId)}/ai-reviews`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(input) },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Gagal membuat AI review");
+  }
+  return (await res.json()).review;
+}
+
+export async function adminUpdateAiReview(
+  courseId: string,
+  reviewId: number,
+  patch: Partial<AdminAiReviewInput>,
+): Promise<AdminAiReview> {
+  const res = await fetch(
+    `${BASE}/marketplace/admin/courses/${encodeURIComponent(courseId)}/ai-reviews/${reviewId}`,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(patch) },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Gagal memperbarui AI review");
+  }
+  return (await res.json()).review;
+}
+
+export async function adminDeleteAiReview(courseId: string, reviewId: number): Promise<void> {
+  const res = await fetch(
+    `${BASE}/marketplace/admin/courses/${encodeURIComponent(courseId)}/ai-reviews/${reviewId}`,
+    { method: "DELETE", credentials: "include" },
+  );
+  if (!res.ok) throw new Error("Gagal menghapus AI review");
+}
+
+// ─── Admin ASKOM Review CRUD ──────────────────────────────────────────────────
+
+export async function adminCreateAskomReview(
+  courseId: string,
+  input: AdminAskomReviewInput,
+): Promise<AdminAskomReview> {
+  const res = await fetch(
+    `${BASE}/marketplace/admin/courses/${encodeURIComponent(courseId)}/askom-reviews`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(input) },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Gagal membuat ASKOM review");
+  }
+  return (await res.json()).review;
+}
+
+export async function adminUpdateAskomReview(
+  courseId: string,
+  reviewId: number,
+  patch: Partial<AdminAskomReviewInput>,
+): Promise<AdminAskomReview> {
+  const res = await fetch(
+    `${BASE}/marketplace/admin/courses/${encodeURIComponent(courseId)}/askom-reviews/${reviewId}`,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(patch) },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Gagal memperbarui ASKOM review");
+  }
+  return (await res.json()).review;
+}
+
+export async function adminDeleteAskomReview(courseId: string, reviewId: number): Promise<void> {
+  const res = await fetch(
+    `${BASE}/marketplace/admin/courses/${encodeURIComponent(courseId)}/askom-reviews/${reviewId}`,
+    { method: "DELETE", credentials: "include" },
+  );
+  if (!res.ok) throw new Error("Gagal menghapus ASKOM review");
 }
