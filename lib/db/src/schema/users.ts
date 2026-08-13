@@ -19,6 +19,9 @@ export const users = pgTable("users", {
   exumCredits: integer("exum_credits").notNull().default(0),
   freeExumUsed: boolean("free_exum_used").notNull().default(false),
   expoPushToken: text("expo_push_token"),
+  /** Set whenever a new push token is stored. Used to proactively clear tokens
+   *  that have gone stale (e.g. app uninstalled without re-registering). */
+  expoPushTokenSetAt: timestamp("expo_push_token_set_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

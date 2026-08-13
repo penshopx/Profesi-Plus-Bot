@@ -130,6 +130,62 @@ and passes now, the cold-start fix is working.)
 
 ---
 
+## Test 5 — Token Replacement on Reinstall
+
+**Goal**: Confirm that reinstalling the app and signing in again replaces the old token in the database (not appends a second one).
+
+### Steps
+1. Note the current `expoPushToken` for your test account:
+   ```sql
+   SELECT id, email, "expoPushToken", "expoPushTokenSetAt" FROM users WHERE email = '<your-email>';
+   ```
+2. Uninstall the app from the physical device.
+3. Reinstall (via Expo Go or an EAS build) and sign in with the **same Clerk account**.
+4. Grant notification permissions when prompted.
+5. Re-run the SQL query above.
+
+### Pass criteria
+- `expoPushToken` is updated to a new `ExponentPushToken[...]` value (may be the same token if the OS reuses it, which is also valid).
+- `expoPushTokenSetAt` is updated to roughly `now()` — confirming the timestamp is being written.
+- There is still only **one row** for the user — no duplicate tokens.
+
+---
+
+## Test 6 — Stale Token Cleanup on Server Restart
+
+**Goal**: Confirm the startup job clears push tokens that are older than 90 days or have no recorded `expoPushTokenSetAt`.
+
+> This is a manual simulation test — artificially age a token to trigger cleanup without waiting 90 real days.
+
+### Steps
+1. Find a test user that has a push token registered:
+   ```sql
+   SELECT id, email, "expoPushToken", "expoPushTokenSetAt" FROM users WHERE "expoPushToken" IS NOT NULL;
+   ```
+2. Manually backdate `expoPushTokenSetAt` to 91 days ago (or set it to NULL):
+   ```sql
+   -- Age the token
+   UPDATE users
+     SET "expoPushTokenSetAt" = NOW() - INTERVAL '91 days'
+     WHERE id = <user-id>;
+   -- Or simulate pre-migration state (NULL timestamp):
+   -- UPDATE users SET "expoPushTokenSetAt" = NULL WHERE id = <user-id>;
+   ```
+3. Restart the API server workflow (`artifacts/api-server: API Server`).
+4. Check the API server logs for:
+   ```
+   Cleared stale Expo push tokens
+   ```
+5. Re-run the SQL from Step 1.
+
+### Pass criteria
+- `expoPushToken` is now `NULL` for the affected user.
+- `expoPushTokenSetAt` is now `NULL` for the affected user.
+- The log line shows `count: 1` (or more if multiple stale tokens existed).
+- A production push to a reinstalled user immediately after sign-in still works (token was refreshed in step 3 of Test 5).
+
+---
+
 ## Expo Push Notification Test Tool
 
 You can manually send a test push notification without triggering Exum:

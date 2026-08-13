@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { clearStalePushTokens } from "./lib/push-cleanup";
 
 /**
  * One-time migration: revoke legacy "askom" role from any users still carrying
@@ -81,13 +82,16 @@ function validateEmailConfig(): void {
 
 validateEmailConfig();
 
-migrateAskomRoleToUser().then(() => backfillCreditsGranted()).then(() => {
-  app.listen(port, (err) => {
-    if (err) {
-      logger.error({ err }, "Error listening on port");
-      process.exit(1);
-    }
+migrateAskomRoleToUser()
+  .then(() => backfillCreditsGranted())
+  .then(() => clearStalePushTokens(logger))
+  .then(() => {
+    app.listen(port, (err) => {
+      if (err) {
+        logger.error({ err }, "Error listening on port");
+        process.exit(1);
+      }
 
-    logger.info({ port }, "Server listening");
+      logger.info({ port }, "Server listening");
+    });
   });
-});

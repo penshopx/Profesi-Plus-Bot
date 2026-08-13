@@ -245,9 +245,13 @@ async function handlePushToken(
     res.status(400).json({ error: "token required" });
     return;
   }
-  if (req.dbUser!.expoPushToken !== token) {
-    await db.update(users).set({ expoPushToken: token }).where(eq(users.id, req.dbUser!.id));
-  }
+  // Always update the token AND the timestamp, even when Expo returns the same
+  // token string as before.  Stable devices (same ExponentPushToken across
+  // sign-ins) only reset the clock this way, otherwise the startup cleanup
+  // would incorrectly wipe a perfectly valid 90-day-old token.
+  await db.update(users)
+    .set({ expoPushToken: token, expoPushTokenSetAt: new Date() })
+    .where(eq(users.id, req.dbUser!.id));
   res.json({ ok: true });
 }
 
