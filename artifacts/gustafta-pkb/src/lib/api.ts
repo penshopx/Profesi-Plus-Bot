@@ -624,14 +624,14 @@ export interface QuizAttemptSummary {
 
 /** List active quizzes for a specific jabker ID. */
 export async function listQuizzesByJabker(jabker: string): Promise<QuizSummary[]> {
-  const res = await f(`/quizzes?jabker=${encodeURIComponent(jabker)}`);
+  const res = await fetch(`${BASE}/quizzes?jabker=${encodeURIComponent(jabker)}`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch quizzes");
   return res.json();
 }
 
 /** User's own quiz attempt history (all quizzes). */
 export async function getMyQuizAttempts(): Promise<QuizAttemptSummary[]> {
-  const res = await f("/quizzes/my-attempts");
+  const res = await fetch(`${BASE}/quizzes/my-attempts`, { credentials: "include" });
   if (!res.ok) throw new Error("Failed to fetch quiz attempts");
   return res.json();
 }
@@ -862,7 +862,8 @@ export async function getMarketplaceCatalog(): Promise<MarketplaceCourseItem[]> 
 
 /** Returns course IDs the authenticated user has already opened ("watched"). */
 export async function getWatchedCourses(): Promise<string[]> {
-  const res = await f("/marketplace/watched");
+  const res = await fetch(`${BASE}/marketplace/watched`, { credentials: "include" });
+  if (!res.ok) throw new Error("Gagal memuat status tonton marketplace");
   const data: { watchedIds: string[] } = await res.json();
   return data.watchedIds;
 }
@@ -876,8 +877,9 @@ export interface WatchMetadata {
 
 /** Idempotent — marks a course as watched and stores metadata for AI context. */
 export async function markCourseWatched(courseId: string, meta?: WatchMetadata): Promise<void> {
-  await f(`/marketplace/${encodeURIComponent(courseId)}/watch`, {
+  await fetch(`${BASE}/marketplace/${encodeURIComponent(courseId)}/watch`, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(meta ?? {}),
   });
