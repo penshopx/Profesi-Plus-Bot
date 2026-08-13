@@ -97,6 +97,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const isWeb = Platform.OS === 'web';
   const [printingApl, setPrintingApl] = React.useState(false);
+  const [claimNudgeDismissed, setClaimNudgeDismissed] = React.useState(false);
 
   const topPad = isWeb ? 67 : insets.top;
   const bottomPad = isWeb ? 34 + 84 : 84 + insets.bottom;
@@ -305,20 +306,35 @@ export default function ProfileScreen() {
         />
       </Pressable>
 
-      {/* Klaim Kredit — prominent shortcut so users don't have to dig */}
-      <Pressable
-        onPress={() => router.push('/(home)/kredits')}
-        style={({ pressed }) => [
-          styles.claimShortcut,
-          { borderColor: colors.primary, opacity: pressed ? 0.75 : 1 },
-        ]}
-      >
-        <Feather name="download-cloud" size={16} color={colors.primary} />
-        <Text style={[styles.claimShortcutText, { color: colors.primary }]}>
-          Klaim Kredit Exum dari Pesanan
-        </Text>
-        <Feather name="chevron-right" size={15} color={colors.primary} />
-      </Pressable>
+      {/* Klaim Kredit nudge — only shown when credits are zero and no free trial */}
+      {!planLoading &&
+        (planData as any)?.exumCredits === 0 &&
+        !(planData as any)?.canGenerate &&
+        !claimNudgeDismissed && (
+          <View
+            style={[
+              styles.claimShortcut,
+              { borderColor: colors.primary },
+            ]}
+          >
+            <Feather name="download-cloud" size={16} color={colors.primary} />
+            <Pressable
+              onPress={() => router.push('/(home)/kredits')}
+              style={{ flex: 1 }}
+            >
+              <Text style={[styles.claimShortcutText, { color: colors.primary }]}>
+                Klaim Pesanan? Tap di sini untuk mengklaim kredit dari pesanan kamu.
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setClaimNudgeDismissed(true)}
+              hitSlop={8}
+              style={{ padding: 2 }}
+            >
+              <Feather name="x" size={15} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
+        )}
 
       {/* Admin: Kelola Quiz */}
       {isAdmin ? (
