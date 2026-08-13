@@ -9,6 +9,8 @@ import {
   updateProjectBrain,
   deleteProjectBrain,
   PROJECT_BRAIN_KINDS,
+  listWatchedModules,
+  unmarkModuleWatched,
   type ProjectBrainEntry,
   type ProjectBrainInput,
 } from "@/lib/api";
@@ -80,6 +82,21 @@ export default function DashboardUser() {
   const delMut = useMutation({
     mutationFn: (id: number) => deleteProjectBrain(id),
     onSuccess: invalidate,
+  });
+
+  // NOTE: distinct key — marketplace.tsx caches ['marketplace-watched'] as string[] (IDs only).
+  const { data: watched = [] } = useQuery({
+    queryKey: ["marketplace-watched-details"],
+    queryFn: listWatchedModules,
+  });
+
+  const unwatchMut = useMutation({
+    mutationFn: (courseId: string) => unmarkModuleWatched(courseId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["marketplace-watched-details"] });
+      // Keep the marketplace page's watched indicators in sync too.
+      qc.invalidateQueries({ queryKey: ["marketplace-watched"] });
+    },
   });
 
   const pinMut = useMutation({
@@ -288,6 +305,49 @@ export default function DashboardUser() {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </section>
+
+        {/* Watched modules */}
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-primary" /> Modul Ditonton
+              <span className="text-[11px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                {watched.length}
+              </span>
+            </h2>
+          </div>
+          {watched.length === 0 ? (
+            <div className="border border-dashed border-border rounded-2xl p-6 text-center">
+              <BookOpen className="w-7 h-7 text-muted-foreground/40 mx-auto mb-2" />
+              <p className="text-xs text-muted-foreground">
+                Belum ada modul yang ditandai. Jelajahi marketplace dan tandai modul yang sudah Anda tonton.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {watched.map((w) => (
+                <div key={w.id} className="group flex items-center gap-3 border border-border rounded-xl bg-card px-4 py-3">
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <Video className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground truncate">{w.courseTitle || w.courseId}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {w.provider || "—"} · ditonton {new Date(w.watchedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => { if (confirm(`Hapus tanda tonton "${w.courseTitle || w.courseId}"?`)) unwatchMut.mutate(w.courseId); }}
+                    className="p-1.5 rounded-lg opacity-60 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-red-50 text-muted-foreground hover:text-red-500"
+                    title="Hapus tanda"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </section>
