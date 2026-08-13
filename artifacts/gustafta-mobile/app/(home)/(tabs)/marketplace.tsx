@@ -875,14 +875,16 @@ export default function MarketplaceScreen() {
       </ScrollView>
 
       {/* List */}
-      {isLoading ? (
+      {/* Show spinner only when loading with no cached data to display yet */}
+      {isLoading && rawCatalog.length === 0 ? (
         <View style={ms.loadingBox}>
           <ActivityIndicator color={colors.primary} />
           <Text style={[ms.loadingText, { color: colors.mutedForeground }]}>
             {catalogLoading ? 'Memuat katalog kursus...' : 'Memuat status...'}
           </Text>
         </View>
-      ) : catalogError ? (
+      ) : catalogError && rawCatalog.length === 0 ? (
+        /* Show error only when there is no cached data to fall back to */
         <View style={ms.loadingBox}>
           <Feather name="wifi-off" size={32} color={colors.mutedForeground} />
           <Text style={[ms.loadingText, { color: colors.mutedForeground }]}>
