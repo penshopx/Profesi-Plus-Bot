@@ -37,8 +37,16 @@ vi.mock("@workspace/db", () => {
   return {
     db: {
       select: vi.fn().mockReturnValue(chain),
+      // lastUsedAt bookkeeping — resolved outside the shared queue so the
+      // fire-and-forget update never steals queued select results.
+      update: vi.fn().mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([]),
+        }),
+      }),
     },
     projectBrain: {
+      id: "id",
       userId: "userId",
       isActive: "isActive",
       isPinned: "isPinned",
@@ -51,11 +59,17 @@ vi.mock("drizzle-orm", () => ({
   eq: vi.fn().mockReturnValue({}),
   and: vi.fn().mockReturnValue({}),
   desc: vi.fn().mockReturnValue({}),
+  inArray: vi.fn().mockReturnValue({}),
 }));
 
 import { db, projectBrain } from "@workspace/db";
 import { desc } from "drizzle-orm";
-import { getUserProjectBrain, buildProjectBrainContext } from "../lib/project-brain.js";
+import {
+  getUserProjectBrain,
+  buildProjectBrainContext,
+  buildProjectBrainContextWithMeta,
+  markProjectBrainUsed,
+} from "../lib/project-brain.js";
 
 function entry(overrides: Record<string, unknown> = {}) {
   return {
@@ -71,6 +85,7 @@ function entry(overrides: Record<string, unknown> = {}) {
     highlights: "Zero accident 400 hari",
     skkUnitCodes: "F.410140.001.01",
     isPinned: false,
+    lastUsedAt: null,
     isActive: true,
     updatedAt: new Date("2026-08-01"),
     ...overrides,
@@ -80,6 +95,7 @@ function entry(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   dbState.queue.length = 0;
   vi.mocked(db.select).mockClear();
+  vi.mocked(db.update).mockClear();
   vi.mocked(desc).mockClear();
 });
 
@@ -126,6 +142,56 @@ describe("project brain no-cache guarantee", () => {
     dbState.push([]);
     const after = await buildProjectBrainContext(7);
     expect(after).toBe("");
+  });
+
+  it("marks lastUsedAt only for entries whose block survived the shared budget", async () => {
+    dbState.push([entry({ id: 41 }), entry({ id: 42, title: "Proyek B" })]);
+    const meta = await buildProjectBrainContextWithMeta(7);
+    expect(meta.blocks.map((b) => b.id)).toEqual([41, 42]);
+
+    // Simulate the shared budget dropping the second entry's block.
+    const finalContext = meta.blocks[0]!.block;
+    markProjectBrainUsed(meta, finalContext);
+    await new Promise((r) => setImmediate(r));
+
+    expect(db.update).toHaveBeenCalledTimes(1);
+    const setMock = vi.mocked(db.update).mock.results[0]!.value.set;
+    expect(setMock).toHaveBeenCalledWith({ lastUsedAt: expect.any(Date) });
+    const { inArray } = await import("drizzle-orm");
+    expect(vi.mocked(inArray)).toHaveBeenCalledWith(projectBrain.id, [41]);
+  });
+
+  it("does not touch lastUsedAt when the whole block was dropped from the prompt", async () => {
+    dbState.push([entry({ id: 41 })]);
+    const meta = await buildProjectBrainContextWithMeta(7);
+    markProjectBrainUsed(meta, ""); // budget dropped the block entirely
+    await new Promise((r) => setImmediate(r));
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("marks only the surviving copy when two entries render identical blocks", async () => {
+    // Two entries with identical rendered content — only the first survives the budget.
+    dbState.push([entry({ id: 41 }), entry({ id: 42 })]);
+    const meta = await buildProjectBrainContextWithMeta(7);
+    expect(meta.blocks[0]!.block).toBe(meta.blocks[1]!.block);
+
+    markProjectBrainUsed(meta, meta.blocks[0]!.block); // one copy retained
+    await new Promise((r) => setImmediate(r));
+
+    const { inArray } = await import("drizzle-orm");
+    expect(vi.mocked(inArray)).toHaveBeenCalledWith(projectBrain.id, [41]);
+  });
+
+  it("a failing lastUsedAt update never throws into the caller", async () => {
+    dbState.push([entry({ id: 41 })]);
+    const meta = await buildProjectBrainContextWithMeta(7);
+    vi.mocked(db.update).mockReturnValueOnce({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockRejectedValue(new Error("db down")),
+      }),
+    } as never);
+    expect(() => markProjectBrainUsed(meta, meta.text)).not.toThrow();
+    await new Promise((r) => setImmediate(r));
   });
 
   it("renders entry metadata, highlights, and SKK codes in the context block", async () => {

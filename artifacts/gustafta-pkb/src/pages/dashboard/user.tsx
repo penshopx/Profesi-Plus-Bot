@@ -31,6 +31,16 @@ const KIND_META: Record<string, { label: string; icon: typeof Brain; color: stri
   profile: { label: "Profil", icon: UserCircle, color: "text-rose-500 bg-rose-50" },
 };
 
+function relTime(iso: string): string {
+  const mins = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 1) return "baru saja";
+  if (mins < 60) return `${mins} mnt lalu`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} jam lalu`;
+  const days = Math.floor(hrs / 24);
+  return `${days} hari lalu`;
+}
+
 const EMPTY_FORM: ProjectBrainInput = {
   kind: "project", title: "", organization: "", role: "", period: "",
   location: "", description: "", skkUnitCodes: "", jenjang: "", highlights: "",
@@ -229,6 +239,14 @@ export default function DashboardUser() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">{meta.label}</span>
+                          {e.lastUsedAt && (
+                            <span
+                              className="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded"
+                              title={`Terakhir dibaca AI: ${new Date(e.lastUsedAt).toLocaleString("id-ID")}`}
+                            >
+                              dibaca AI {relTime(e.lastUsedAt)}
+                            </span>
+                          )}
                           {e.isPinned && (
                             <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded">
                               <Pin className="w-2.5 h-2.5" /> disematkan

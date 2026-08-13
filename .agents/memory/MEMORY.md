@@ -13,4 +13,5 @@
 - [Marketplace catalog pattern](marketplace-catalog-pattern.md) — catalog now in DB (marketplace_courses + AI/ASKOM review tables); seeded via lib/db/src/seed-marketplace.ts (idempotent, run in post-merge.sh); admin CRUD at /api/marketplace/admin/courses.
 - [Client countdown + server clock skew](client-countdown-server-now.md) — always include serverNow in rate-limit responses; client computes resetDelay=resetAt-serverNow and ticks from Date.now() to avoid device clock skew (#92 pattern).
 - [Upload token security](upload-token-security.md) — issueUploadToken/consumeUploadToken in-memory store gates doc registration to actual uploaders.
+- [Context usage bookkeeping](context-usage-bookkeeping.md) — mark "AI read this entry" only after the shared prompt budget, via ordered block scan; never inside the context builder.
 - [Context failure detection](context-failure-detection.md) — contextErrors array + SSE contextWarning event + client amber banner when personalisation blocks throw.

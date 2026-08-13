@@ -424,6 +424,7 @@ export interface ProjectBrainEntry {
   jenjang: string | null;
   highlights: string | null;
   isPinned: boolean;
+  lastUsedAt: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

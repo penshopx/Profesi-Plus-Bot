@@ -5,7 +5,7 @@ import { logger } from "../../lib/logger";
 import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL, callWithFallback } from "../../lib/llm";
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
 import { buildKnowledgeContext } from "../../lib/knowledge-base";
-import { buildProjectBrainContext } from "../../lib/project-brain";
+import { buildProjectBrainContextWithMeta, markProjectBrainUsed, type ProjectBrainContextMeta } from "../../lib/project-brain";
 import { buildHistoricalPKBContext, buildCompetencyAnalysisContext, buildQuizContext, buildProfileContext, buildKegiatanContext, buildWatchedModulesContext } from "../../lib/historical-pkb";
 import { recommendPersona, isKnownPersona, isConfidentJabkerMatch, DEFAULT_PERSONA_ID } from "../../lib/personas";
 import { findJabkerGroup } from "../../lib/skk-data";
@@ -264,9 +264,13 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     }
   };
 
+  let pbMeta: ProjectBrainContextMeta = { text: "", blocks: [] };
   const [knowledgeContext, projectBrainContext, historicalPKBContext, competencyContext, quizContext, profileContext, kegiatanContext, watchedModulesContext] = await Promise.all([
     safeCtx("knowledge",       () => buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: lastUserMsg })),
-    safeCtx("projectBrain",    () => buildProjectBrainContext(req.dbUser!.id)),
+    safeCtx("projectBrain",    async () => {
+      pbMeta = await buildProjectBrainContextWithMeta(req.dbUser!.id);
+      return pbMeta.text;
+    }),
     safeCtx("historical",      () => buildHistoricalPKBContext(req.dbUser!.id, convId)),
     safeCtx("competency",      () => buildCompetencyAnalysisContext(req.dbUser!.id)),
     safeCtx("quiz",            () => buildQuizContext(req.dbUser!.id)),
@@ -295,6 +299,8 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     { content: projectBrainContext,    priority: 2 },
     { content: historicalPKBContext,   priority: 1 },
   ]);
+  // Mark only entries whose block survived the shared budget (fire-and-forget).
+  markProjectBrainUsed(pbMeta, combinedContext);
   const systemPrompt = buildSystemPrompt(
     conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence,
     combinedContext,
@@ -487,9 +493,13 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       }
     };
 
+    let exumPbMeta: ProjectBrainContextMeta = { text: "", blocks: [] };
     const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency, exumQuiz, exumProfile, exumKegiatan, exumWatched, approvedOutlineRow] = await Promise.all([
       safeExumCtx("exum:knowledge",       () => buildKnowledgeContext({ jabker: conv.jabker, jenjang: conv.jenjang, query: conv.jabker })),
-      safeExumCtx("exum:projectBrain",    () => buildProjectBrainContext(req.dbUser!.id)),
+      safeExumCtx("exum:projectBrain",    async () => {
+        exumPbMeta = await buildProjectBrainContextWithMeta(req.dbUser!.id);
+        return exumPbMeta.text;
+      }),
       safeExumCtx("exum:historical",      () => buildHistoricalPKBContext(req.dbUser!.id, conversationId)),
       safeExumCtx("exum:competency",      () => buildCompetencyAnalysisContext(req.dbUser!.id)),
       safeExumCtx("exum:quiz",            () => buildQuizContext(req.dbUser!.id)),
@@ -533,6 +543,7 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       { content: exumProjectBrain,  priority: 2 },
       { content: exumHistorical,    priority: 1 },
     ]);
+    markProjectBrainUsed(exumPbMeta, exumCombinedContext);
     const exumPrompt = buildExumPrompt(
       conv.mode, conv.jabker, conv.jenjang, transcript, evidence,
       exumCombinedContext,
