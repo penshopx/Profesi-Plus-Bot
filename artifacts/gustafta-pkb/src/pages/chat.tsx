@@ -1190,13 +1190,6 @@ export default function ChatPage() {
     return false; // real value loaded in the jabker effect below
   });
 
-  const dismissStudioBanner = useCallback(() => {
-    if (conv?.jabker) {
-      try { localStorage.setItem(`STUDIO_NUDGE_DISMISSED_${conv.jabker}`, "1"); } catch {}
-    }
-    setStudioBannerDismissedRaw(true);
-  }, [conv?.jabker]);
-
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<(() => void) | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -1209,6 +1202,13 @@ export default function ChatPage() {
     enabled: !!id,
     refetchOnWindowFocus: false,
   });
+
+  const dismissStudioBanner = useCallback(() => {
+    if (conv?.jabker) {
+      try { localStorage.setItem(`STUDIO_NUDGE_DISMISSED_${conv.jabker}`, "1"); } catch {}
+    }
+    setStudioBannerDismissedRaw(true);
+  }, [conv?.jabker]);
 
   const { data: personaData } = useQuery({
     queryKey: ["personas"],
