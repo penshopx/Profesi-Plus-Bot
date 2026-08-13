@@ -29,7 +29,7 @@ router.get("/project-brain", requireAuth, async (req, res) => {
     .select()
     .from(projectBrain)
     .where(eq(projectBrain.userId, req.dbUser!.id))
-    .orderBy(desc(projectBrain.updatedAt));
+    .orderBy(desc(projectBrain.isPinned), desc(projectBrain.updatedAt));
   res.json(rows);
 });
 
@@ -86,6 +86,7 @@ router.patch("/project-brain/:id", requireAuth, async (req, res) => {
   if ("jenjang" in b) patch.jenjang = str(b.jenjang);
   if ("highlights" in b) patch.highlights = str(b.highlights);
   if (typeof b.isActive === "boolean") patch.isActive = b.isActive;
+  if (typeof b.isPinned === "boolean") patch.isPinned = b.isPinned;
 
   const [updated] = await db
     .update(projectBrain)

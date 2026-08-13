@@ -28,7 +28,7 @@ export async function getUserProjectBrain(userId: number): Promise<ProjectBrainE
     .select()
     .from(projectBrain)
     .where(and(eq(projectBrain.userId, userId), eq(projectBrain.isActive, true)))
-    .orderBy(desc(projectBrain.updatedAt))
+    .orderBy(desc(projectBrain.isPinned), desc(projectBrain.updatedAt))
     .limit(MAX_ENTRIES);
 }
 

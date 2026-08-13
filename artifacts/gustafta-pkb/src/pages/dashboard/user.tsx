@@ -15,7 +15,7 @@ import {
 import {
   LayoutDashboard, MessageSquare, Video, LogOut, Plus,
   CheckCircle2, Briefcase, BookOpen, Layers, Package, ChevronRight,
-  Brain, Pencil, Trash2, X, Award, Wrench, UserCircle, Building2, Target,
+  Brain, Pencil, Trash2, X, Award, Wrench, UserCircle, Building2, Target, Pin,
 } from "lucide-react";
 
 const PHASE_LABELS: Record<string, string> = {
@@ -69,6 +69,12 @@ export default function DashboardUser() {
 
   const delMut = useMutation({
     mutationFn: (id: number) => deleteProjectBrain(id),
+    onSuccess: invalidate,
+  });
+
+  const pinMut = useMutation({
+    mutationFn: ({ id, isPinned }: { id: number; isPinned: boolean }) =>
+      updateProjectBrain(id, { isPinned }),
     onSuccess: invalidate,
   });
 
@@ -223,6 +229,11 @@ export default function DashboardUser() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">{meta.label}</span>
+                          {e.isPinned && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                              <Pin className="w-2.5 h-2.5" /> disematkan
+                            </span>
+                          )}
                           {!e.isActive && (
                             <span className="text-[10px] text-muted-foreground/50 bg-muted px-1.5 py-0.5 rounded">nonaktif</span>
                           )}
@@ -236,7 +247,14 @@ export default function DashboardUser() {
                           <p className="text-[10px] text-violet-500/80 mt-1.5 truncate">SKK: {e.skkUnitCodes}</p>
                         )}
                       </div>
-                      <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className={`flex flex-col gap-1 transition-opacity ${e.isPinned ? "" : "opacity-0 group-hover:opacity-100"}`}>
+                        <button
+                          onClick={() => pinMut.mutate({ id: e.id, isPinned: !e.isPinned })}
+                          className={`p-1.5 rounded-lg hover:bg-muted ${e.isPinned ? "text-primary" : "text-muted-foreground"}`}
+                          title={e.isPinned ? "Lepas sematan" : "Sematkan — AI memprioritaskan entri ini"}
+                        >
+                          <Pin className={`w-3.5 h-3.5 ${e.isPinned ? "fill-current" : ""}`} />
+                        </button>
                         <button onClick={() => openEdit(e)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground" title="Edit">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>

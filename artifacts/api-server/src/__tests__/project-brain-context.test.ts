@@ -41,6 +41,7 @@ vi.mock("@workspace/db", () => {
     projectBrain: {
       userId: "userId",
       isActive: "isActive",
+      isPinned: "isPinned",
       updatedAt: "updatedAt",
     },
   };
@@ -52,7 +53,8 @@ vi.mock("drizzle-orm", () => ({
   desc: vi.fn().mockReturnValue({}),
 }));
 
-import { db } from "@workspace/db";
+import { db, projectBrain } from "@workspace/db";
+import { desc } from "drizzle-orm";
 import { getUserProjectBrain, buildProjectBrainContext } from "../lib/project-brain.js";
 
 function entry(overrides: Record<string, unknown> = {}) {
@@ -68,6 +70,7 @@ function entry(overrides: Record<string, unknown> = {}) {
     description: "Pelaksanaan struktur beton bertulang 8 lantai.",
     highlights: "Zero accident 400 hari",
     skkUnitCodes: "F.410140.001.01",
+    isPinned: false,
     isActive: true,
     updatedAt: new Date("2026-08-01"),
     ...overrides,
@@ -77,6 +80,7 @@ function entry(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   dbState.queue.length = 0;
   vi.mocked(db.select).mockClear();
+  vi.mocked(desc).mockClear();
 });
 
 describe("project brain no-cache guarantee", () => {
@@ -85,6 +89,17 @@ describe("project brain no-cache guarantee", () => {
     await getUserProjectBrain(7);
     await getUserProjectBrain(7);
     expect(db.select).toHaveBeenCalledTimes(2);
+  });
+
+  it("orders by pinned-first, then most recently updated", async () => {
+    dbState.push([entry()]);
+    await getUserProjectBrain(7);
+    // desc() must be called with real columns — pinned first, then updatedAt.
+    expect(vi.mocked(desc).mock.calls.map((c) => c[0])).toEqual([
+      projectBrain.isPinned,
+      projectBrain.updatedAt,
+    ]);
+    expect(projectBrain.isPinned).toBeDefined();
   });
 
   it("includes a newly created entry in the very next context build", async () => {

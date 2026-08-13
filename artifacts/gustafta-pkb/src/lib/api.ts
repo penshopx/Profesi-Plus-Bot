@@ -423,6 +423,7 @@ export interface ProjectBrainEntry {
   skkUnitCodes: string | null;
   jenjang: string | null;
   highlights: string | null;
+  isPinned: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -439,6 +440,7 @@ export interface ProjectBrainInput {
   skkUnitCodes?: string | null;
   jenjang?: string | null;
   highlights?: string | null;
+  isPinned?: boolean;
   isActive?: boolean;
 }
 

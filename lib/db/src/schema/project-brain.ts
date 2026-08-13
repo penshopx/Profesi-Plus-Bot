@@ -16,6 +16,7 @@ export const projectBrain = pgTable("project_brain", {
   skkUnitCodes: text("skk_unit_codes"),
   jenjang: text("jenjang"),
   highlights: text("highlights"),
+  isPinned: boolean("is_pinned").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
