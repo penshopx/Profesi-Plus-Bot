@@ -84,6 +84,14 @@ export function sendEmail(opts: SendEmailOpts): void {
     );
 }
 
+/**
+ * Returns true when both RESEND_API_KEY and RESEND_FROM are set.
+ * Used by the health endpoint so ops can confirm email delivery is active.
+ */
+export function isEmailConfigured(): boolean {
+  return Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM);
+}
+
 /** Sends the credit-claim confirmation receipt. */
 export function sendCreditClaimEmail(opts: {
   to: string;

@@ -165,8 +165,14 @@ components:
       properties:
         status:
           type: string
+        emailConfigured:
+          type: boolean
+          description: >
+            True when both RESEND_API_KEY and RESEND_FROM are set.
+            False means transactional emails (credit receipts) are silently skipped.
       required:
         - status
+        - emailConfigured
     Conversation:
       type: object
       properties:
