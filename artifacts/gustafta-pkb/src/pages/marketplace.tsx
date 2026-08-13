@@ -754,6 +754,25 @@ function DetailPanel({
               </button>
             </div>
 
+            {/* Interview shortcut — takes user to a new PKB session pre-seeded with this course */}
+            <button
+              onClick={() => {
+                try {
+                  sessionStorage.setItem("INTERVIEW_FROM_MARKETPLACE", JSON.stringify({
+                    marketplaceId:  course.id,
+                    namaMateri:     course.title,
+                    penyelenggara:  course.provider,
+                    jabker:         course.jabker[0] ?? "",
+                    isWatched,
+                  }));
+                } catch {}
+                window.location.href = "/sessions?new=1";
+              }}
+              className="w-full flex items-center justify-center gap-1.5 bg-blue-600 text-white rounded-xl py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity"
+            >
+              <MessageSquare className="w-4 h-4" /> Ceritakan ke Pak Budi
+            </button>
+
             {/* Watched toggle */}
             <button
               onClick={handleToggleWatch}

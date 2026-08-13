@@ -67,6 +67,27 @@ function formatTime(iso: string): string {
 
 const AUTO_GREETING = "Halo Pak Budi, saya siap memulai.";
 
+// Read + consume the marketplace context set by the DetailPanel.
+// Returns null if no context is stored. Clears the key on first read
+// so the context is only applied to the conversation it was created for.
+function consumeMarketplaceInterviewCtx(): { namaMateri: string; penyelenggara: string; isWatched: boolean } | null {
+  try {
+    const raw = sessionStorage.getItem("INTERVIEW_FROM_MARKETPLACE");
+    if (!raw) return null;
+    sessionStorage.removeItem("INTERVIEW_FROM_MARKETPLACE");
+    return JSON.parse(raw) as { namaMateri: string; penyelenggara: string; isWatched: boolean };
+  } catch {
+    return null;
+  }
+}
+
+function buildMarketplaceGreeting(ctx: { namaMateri: string; penyelenggara: string; isWatched: boolean }): string {
+  const watchedPhrase = ctx.isWatched
+    ? `saya baru selesai menonton **${ctx.namaMateri}** dari **${ctx.penyelenggara}**`
+    : `saya baru membuka modul **${ctx.namaMateri}** dari **${ctx.penyelenggara}** di marketplace PKB`;
+  return `Halo Pak Budi, ${watchedPhrase} dan ingin membahasnya sebagai bukti PKB saya. Bisa kita mulai?`;
+}
+
 // ─── Phase config ─────────────────────────────────────────────────────────────
 const PHASE_STEPS = ["profiling", "context", "core_interview", "evidence", "synthesis", "done"];
 const PHASE_LABELS: Record<string, string> = {
@@ -1273,13 +1294,17 @@ export default function ChatPage() {
     if (!conv || autoGreetedRef.current || streaming) return;
     if (conv.messages && conv.messages.length === 0) {
       autoGreetedRef.current = true;
+      // Consume the marketplace context on first render of a fresh session.
+      // consumeMarketplaceInterviewCtx() clears the key so it is never replayed.
+      const mktCtx = consumeMarketplaceInterviewCtx();
+      const greeting = mktCtx ? buildMarketplaceGreeting(mktCtx) : AUTO_GREETING;
       // Small delay so the chat area has rendered first
       setTimeout(() => {
         setStreaming(true);
         setStreamText("");
         abortRef.current = streamMessage(
           id,
-          AUTO_GREETING,
+          greeting,
           (chunk) => setStreamText((prev) => prev + chunk),
           (phase) => {
             setStreaming(false);

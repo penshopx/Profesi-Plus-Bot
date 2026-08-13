@@ -54,6 +54,24 @@ const MODES = [
 
 const JENJANG_OPTIONS = ["Jenjang 7 (100 SKPK)", "Jenjang 8 (150 SKPK)", "Jenjang 9 (200 SKPK)"];
 
+interface MarketplaceCtx {
+  marketplaceId: string;
+  namaMateri: string;
+  penyelenggara: string;
+  jabker: string;
+  isWatched: boolean;
+}
+
+function readMarketplaceCtx(): MarketplaceCtx | null {
+  try {
+    const raw = sessionStorage.getItem("INTERVIEW_FROM_MARKETPLACE");
+    if (!raw) return null;
+    return JSON.parse(raw) as MarketplaceCtx;
+  } catch {
+    return null;
+  }
+}
+
 export default function Home() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
@@ -70,6 +88,19 @@ export default function Home() {
   const [personaId, setPersonaId] = useState("");
   const [showJabkerDropdown, setShowJabkerDropdown] = useState(false);
   const jabkerRef = useRef<HTMLDivElement>(null);
+
+  // Marketplace context: set by DetailPanel when user clicks "Ceritakan ke Pak Budi"
+  const [marketplaceCtx, setMarketplaceCtx] = useState<MarketplaceCtx | null>(null);
+
+  useEffect(() => {
+    const ctx = readMarketplaceCtx();
+    if (!ctx) return;
+    setMarketplaceCtx(ctx);
+    // Pre-fill jabker if the marketplace course suggests one
+    if (ctx.jabker) setJabker(ctx.jabker);
+    // Auto-open the new-session form when arriving from marketplace
+    setShowNew(true);
+  }, []);
 
   const { data: personaData } = useQuery({
     queryKey: ["personas"],
@@ -137,7 +168,9 @@ export default function Home() {
   const createMut = useMutation({
     mutationFn: () =>
       createConversation({
-        title: `Exum PKB — ${jabker || "TKK"} (${selectedMode === "A" ? "Pengalaman" : selectedMode === "B" ? "Hasil Belajar" : "Hybrid"})`,
+        title: marketplaceCtx
+          ? `PKB — ${marketplaceCtx.namaMateri} (${selectedMode === "A" ? "Pengalaman" : selectedMode === "B" ? "Hasil Belajar" : "Hybrid"})`
+          : `Exum PKB — ${jabker || "TKK"} (${selectedMode === "A" ? "Pengalaman" : selectedMode === "B" ? "Hasil Belajar" : "Hybrid"})`,
         mode: selectedMode,
         model,
         jabker,
@@ -147,6 +180,7 @@ export default function Home() {
     onSuccess: (conv) => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       navigate(`/chat/${conv.id}`);
+      // sessionStorage is left intact so chat.tsx can read it on mount
     },
   });
 
@@ -402,7 +436,32 @@ export default function Home() {
         {showNew ? (
           <div className="w-full max-w-2xl">
             <h2 className="text-2xl font-bold text-foreground mb-1">Buat Sesi Wawancara Baru</h2>
-            <p className="text-muted-foreground text-sm mb-8">Pilih mode penulisan Exum PKB Anda</p>
+            <p className="text-muted-foreground text-sm mb-4">Pilih mode penulisan Exum PKB Anda</p>
+
+            {/* Marketplace context banner — shown when arriving from DetailPanel */}
+            {marketplaceCtx && (
+              <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3.5 mb-6 animate-in fade-in slide-in-from-top-2">
+                <MessageSquare className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-blue-900 leading-snug">
+                    Konteks dari Marketplace PKB
+                  </p>
+                  <p className="text-xs text-blue-700 mt-0.5 leading-relaxed">
+                    Pak Budi akan langsung membahas{" "}
+                    <span className="font-semibold">"{marketplaceCtx.namaMateri}"</span>{" "}
+                    dari <span className="font-semibold">{marketplaceCtx.penyelenggara}</span>
+                    {marketplaceCtx.isWatched ? " yang sudah Anda tonton" : ""}.
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setMarketplaceCtx(null); try { sessionStorage.removeItem("INTERVIEW_FROM_MARKETPLACE"); } catch {} }}
+                  className="p-1 rounded-lg hover:bg-blue-200/60 transition-colors shrink-0"
+                  title="Hapus konteks kursus"
+                >
+                  <X className="w-3.5 h-3.5 text-blue-500" />
+                </button>
+              </div>
+            )}
 
             <div className="space-y-3 mb-8">
               {MODES.map((m) => {
