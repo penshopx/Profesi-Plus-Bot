@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and, asc, count, gte, inArray, sql } from "drizzle-orm";
-import { db, conversations, messages, evidenceItems, usageEvents, users, exumOutlines, type Conversation } from "@workspace/db";
+import { db, conversations, messages, evidenceItems, usageEvents, users, exumOutlines, quizAttempts, type Conversation } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL, callWithFallback } from "../../lib/llm";
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
@@ -476,9 +476,14 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       .map((m) => `${m.role === "user" ? "TKK" : "Pak Budi"}: ${m.content}`)
       .join("\n\n");
 
+    const exumContextErrors: string[] = [];
     const safeExumCtx = async (name: string, fn: () => Promise<string>): Promise<string> => {
       try { return await fn(); }
-      catch (err) { req.log.warn({ err, contextBlock: name }, "Exum context builder failed — falling back to empty string"); return ""; }
+      catch (err) {
+        req.log.warn({ err, contextBlock: name, context_block_failed: name.replace("exum:", "") }, "Exum context builder failed — falling back to empty string");
+        exumContextErrors.push(name);
+        return "";
+      }
     };
 
     const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency, exumQuiz, exumProfile, exumKegiatan, exumWatched, approvedOutlineRow] = await Promise.all([
@@ -495,6 +500,11 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
         .then((rows) => rows[0] ?? null)
         .catch((err) => { req.log.warn({ err }, "Failed to load approved outline — proceeding without it"); return null; }),
     ]);
+
+    // Emit a structured alert when the quiz context failed so it can be monitored.
+    if (exumContextErrors.includes("exum:quiz")) {
+      req.log.warn({ userId: req.dbUser!.id, convId, context_block_failed: "quiz" }, "Quiz context block failed for Exum — generation will proceed without quiz data");
+    }
 
     // Build outline context — inject user-approved structure when present
     let outlineContext = "";
@@ -549,7 +559,33 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       return;
     }
 
-    const content = exumResponse;
+    // If the quiz context builder threw, the Exum was written without quiz data.
+    // Show a visible footer notice. We suppress it only when we can positively
+    // confirm the user has zero attempts (nothing to lose). If the confirmation
+    // query itself fails we fail conservatively and keep the notice.
+    let finalExumResponse = exumResponse;
+    if (exumContextErrors.includes("exum:quiz")) {
+      let shouldAppendFooter = true;
+      try {
+        const [quizCountRow] = await db
+          .select({ total: count() })
+          .from(quizAttempts)
+          .where(eq(quizAttempts.userId, req.dbUser!.id));
+        if ((quizCountRow?.total ?? 1) === 0) {
+          shouldAppendFooter = false; // confirmed: no attempts — no data was lost
+        }
+      } catch (_err) {
+        // Cannot confirm zero attempts — fail conservatively and keep the notice
+      }
+      if (shouldAppendFooter) {
+        finalExumResponse +=
+          "\n\n---\n*Catatan sistem: Data skor quiz tidak dapat dimuat saat Exum ini dibuat. " +
+          "Hasil quiz Anda mungkin tidak tercermin dalam ringkasan di atas.*";
+        req.log.info({ userId: req.dbUser!.id, convId }, "Appended quiz-unavailable footer to Exum response");
+      }
+    }
+
+    const content = finalExumResponse;
     await db.update(conversations)
       .set({ phase: "done", exumContent: content })
       .where(eq(conversations.id, conversationId));

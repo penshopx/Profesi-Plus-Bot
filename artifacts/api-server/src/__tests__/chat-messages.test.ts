@@ -575,4 +575,52 @@ describe("POST /api/chat/generate-exum", () => {
 
     expect(res.status).toBe(404);
   });
+
+  it("appends a quiz-unavailable footer when buildQuizContext throws and user has attempts", async () => {
+    // Simulate a DB outage that causes the quiz context builder to throw.
+    const { buildQuizContext } = await import("../lib/historical-pkb.js");
+    vi.mocked(buildQuizContext).mockRejectedValueOnce(new Error("Quiz table unavailable"));
+
+    // DB call order with quiz failure:
+    //   1. loadOwnedConversation          → [FAKE_CONV]
+    //   2. db.select messages             → []
+    //   3. db.select evidenceItems        → []
+    //   4. Promise.all exumOutlines       → []  (no approved outline)
+    //   5. quiz attempt count query       → [{ total: 2 }]  (user has attempts → show footer)
+    //   6. db.update conversations        → undefined
+    //   7. db.insert usageEvents          → undefined
+    dbState.push([FAKE_CONV], [], [], [], [{ total: 2 }], undefined, undefined);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    // Request must still succeed — a quiz DB failure must not kill the Exum.
+    expect(res.status).toBe(200);
+
+    // The footer notice must appear in both the response body (what the client sees)
+    // and will be identical to what is persisted (content === finalExumResponse).
+    expect(res.body.content).toContain("EXUM_RESPONSE");
+    expect(res.body.content).toContain("Data skor quiz tidak dapat dimuat");
+  });
+
+  it("still appends the quiz-unavailable footer when the attempt count query also fails", async () => {
+    // Both the quiz context builder and the follow-up count query fail.
+    // The handler must fail conservatively and still deliver the user notice.
+    const { buildQuizContext } = await import("../lib/historical-pkb.js");
+    vi.mocked(buildQuizContext).mockRejectedValueOnce(new Error("Quiz table unavailable"));
+
+    // Push null for the count query slot: Promise.resolve(null) resolves with null,
+    // and `const [quizCountRow] = null` throws a TypeError that is caught by the
+    // try/catch around the count query — triggering the conservative "keep footer" path.
+    dbState.push([FAKE_CONV], [], [], [], null, undefined, undefined);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    expect(res.status).toBe(200);
+    // Conservative: footer must still appear even when count query itself fails.
+    expect(res.body.content).toContain("Data skor quiz tidak dapat dimuat");
+  });
 });
