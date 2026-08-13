@@ -292,6 +292,7 @@ export default function ProfileScreen() {
 
       {/* Kredit shortcuts */}
       <Pressable
+        testID="btn-goto-kredits"
         onPress={() => router.push('/(home)/kredits')}
         style={({ pressed }) => [
           styles.infoCard,

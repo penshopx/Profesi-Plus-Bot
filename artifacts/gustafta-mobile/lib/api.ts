@@ -49,8 +49,18 @@ async function apiFetch(path: string, options: RequestInit = {}) {
     ...(signal != null ? { signal } : {}),
   });
   if (!response.ok) {
-    const text = await response.text().catch(() => 'Unknown error');
-    throw new Error(`API ${response.status}: ${text}`);
+    // Read the body once as text (a Response body stream can only be consumed
+    // once), then attempt a JSON parse to extract the server's `error` field.
+    const text = await response.text().catch(() => '');
+    let errorMessage: string;
+    try {
+      const body = JSON.parse(text) as { error?: string };
+      errorMessage = body.error ?? `API ${response.status}`;
+    } catch {
+      // Body was not JSON (e.g. proxy HTML error page) — surface the raw text.
+      errorMessage = text || `API ${response.status}`;
+    }
+    throw Object.assign(new Error(errorMessage), { status: response.status });
   }
   return response;
 }

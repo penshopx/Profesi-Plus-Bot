@@ -1,0 +1,82 @@
+---
+# Maestro E2E flow: claim-payment-success
+#
+# Verifies Task #83 happy-path acceptance criterion:
+#   "Submit a valid order ID + email → green success banner appears AND
+#    credit balance increments."
+#
+# App identifiers:
+#   Expo Go (dev/CI emulator):  appId: host.exp.exponent
+#   Standalone EAS build:       set ios.bundleIdentifier / android.package in
+#                               app.json and replace appId below.
+#
+# Prerequisites — run once before this flow (or include in a beforeFlow):
+#   1. Seed the test database:
+#        INSERT INTO payments (external_id, customer_email, status,
+#          credits_granted, user_id)
+#        VALUES ('INV-MAESTRO-SUCCESS-001', 'buyer@maestro.test',
+#          'paid', 3, NULL);
+#   2. The device/emulator is signed in as a test user with 0 exum_credits.
+#   3. EXPO_PUBLIC_DOMAIN points to the test API server.
+#
+# Navigation:
+#   Uses the Expo URL scheme deep-link (gustafta-mobile://kredits) to jump
+#   directly to the Kredit Exum screen, bypassing tab navigation.
+#
+# Run:
+#   maestro test artifacts/gustafta-mobile/.maestro/claim-payment-success.yaml
+
+appId: host.exp.exponent
+
+---
+# Open the app and navigate directly to the Kredit Exum screen via deep link.
+- launchApp:
+    arguments:
+      EAS_PROJECT_ROOT: "."
+- openLink: "gustafta-mobile://kredits"
+
+# Wait for the screen to load
+- assertVisible:
+    text: "Klaim Pesanan Manual"
+    timeout: 6000
+
+# Record the initial credit balance (test user starts at 0)
+- assertVisible:
+    id: "text-credit-balance"
+    timeout: 3000
+
+# Fill in the claim form with valid order + matching email
+- tapOn:
+    id: "input-order-id"
+- inputText: "INV-MAESTRO-SUCCESS-001"
+
+- tapOn:
+    id: "input-email"
+- inputText: "buyer@maestro.test"
+
+# Submit the form
+- tapOn:
+    id: "btn-klaim"
+
+# Assert 1: green success banner appears
+- assertVisible:
+    id: "banner-success"
+    timeout: 6000
+
+# Assert 2: banner mentions "kredit Exum"
+- assertVisible:
+    text: "kredit Exum"
+    timeout: 2000
+
+# Assert 3: credit balance incremented (test user went from 0 → 3 credits).
+# The `text-credit-balance` element now shows "3".
+- assertVisible:
+    id: "text-credit-balance"
+    timeout: 4000
+- assertVisible:
+    text: "3"
+    timeout: 2000
+
+# Assert 4: error banner is NOT present
+- assertNotVisible:
+    id: "banner-error"

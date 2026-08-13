@@ -1,0 +1,76 @@
+---
+# Maestro E2E flow: claim-payment-wrong-email
+#
+# Verifies Task #83 error-path acceptance criterion:
+#   "Submit a wrong email → 404 → exact Indonesian error message is displayed."
+#
+# App identifiers:
+#   Expo Go (dev/CI emulator):  appId: host.exp.exponent
+#   Standalone EAS build:       set ios.bundleIdentifier / android.package in
+#                               app.json and replace appId below.
+#
+# Prerequisites — run once before this flow (or include in a beforeFlow):
+#   1. Seed the test database:
+#        INSERT INTO payments (external_id, customer_email, status,
+#          credits_granted, user_id)
+#        VALUES ('INV-MAESTRO-404-001', 'real-buyer@maestro.test',
+#          'paid', 3, NULL);
+#   2. The device/emulator is signed in as a test user.
+#   3. EXPO_PUBLIC_DOMAIN points to the test API server.
+#
+# Navigation:
+#   Uses the Expo URL scheme deep-link (gustafta-mobile://kredits) to jump
+#   directly to the Kredit Exum screen.
+#
+# Run:
+#   maestro test artifacts/gustafta-mobile/.maestro/claim-payment-wrong-email.yaml
+
+appId: host.exp.exponent
+
+---
+# Open the app and navigate directly to the Kredit Exum screen via deep link.
+- launchApp:
+    arguments:
+      EAS_PROJECT_ROOT: "."
+- openLink: "gustafta-mobile://kredits"
+
+# Wait for the screen to load
+- assertVisible:
+    text: "Klaim Pesanan Manual"
+    timeout: 6000
+
+# Fill in the claim form with the correct order ID but WRONG email
+- tapOn:
+    id: "input-order-id"
+- inputText: "INV-MAESTRO-404-001"
+
+- tapOn:
+    id: "input-email"
+- inputText: "wrong-email@maestro.test"
+
+# Submit the form
+- tapOn:
+    id: "btn-klaim"
+
+# Assert 1: red error banner appears
+- assertVisible:
+    id: "banner-error"
+    timeout: 6000
+
+# Assert 2: exact Indonesian error message from the server JSON `error` field is shown.
+# apiFetch() extracts body.error and passes it through claimPayment() → ClaimCard's errMsg.
+- assertVisible:
+    text: "Pesanan tidak ditemukan"
+    timeout: 2000
+
+- assertVisible:
+    text: "email pembelian benar"
+    timeout: 2000
+
+# Assert 3: success banner is NOT present
+- assertNotVisible:
+    id: "banner-success"
+
+# Assert 4: onSuccess was NOT fired — balance unchanged
+- assertNotVisible:
+    id: "banner-success"
