@@ -233,16 +233,26 @@ router.patch("/users/me/role", requireAuth, async (req, res) => {
   res.json(updated);
 });
 
-// Save the Expo push token for this device so the server can send notifications.
-router.post("/users/me/push-token", requireAuth, async (req, res) => {
+// Save (or refresh) the Expo push token for this device.
+// Idempotent: if the stored token is already identical, no DB write is performed.
+// Both POST (legacy clients) and PATCH (updated clients) are accepted.
+async function handlePushToken(
+  req: import("express").Request,
+  res: import("express").Response,
+): Promise<void> {
   const { token } = req.body as { token?: string };
   if (!token || typeof token !== "string") {
     res.status(400).json({ error: "token required" });
     return;
   }
-  await db.update(users).set({ expoPushToken: token }).where(eq(users.id, req.dbUser!.id));
+  if (req.dbUser!.expoPushToken !== token) {
+    await db.update(users).set({ expoPushToken: token }).where(eq(users.id, req.dbUser!.id));
+  }
   res.json({ ok: true });
-});
+}
+
+router.post("/users/me/push-token", requireAuth, handlePushToken);
+router.patch("/users/me/push-token", requireAuth, handlePushToken);
 
 router.get("/users", requireAuth, requireRole("admin"), async (_req, res) => {
   const all = await db.select().from(users).orderBy(users.createdAt);

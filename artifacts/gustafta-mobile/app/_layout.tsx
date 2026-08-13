@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
@@ -203,6 +203,20 @@ function RootLayoutNav() {
         }
       } catch (err) {
         if (__DEV__) console.warn('[push] Silent token refresh failed:', err);
+      }
+    });
+    return () => subscription.remove();
+  }, [isSignedIn, getToken]);
+
+  // Re-register on every foreground event so a rotated token (e.g. after a
+  // system update or device reset) is picked up even without signing out/in.
+  // The PATCH endpoint is idempotent — it skips the DB write when the token
+  // is unchanged, so this is safe to call frequently.
+  useEffect(() => {
+    if (!isSignedIn) return;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        registerForPushNotifications(getToken);
       }
     });
     return () => subscription.remove();

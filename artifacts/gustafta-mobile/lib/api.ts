@@ -312,7 +312,7 @@ export async function registerPushToken(
 ): Promise<void> {
   const url = `${getBaseUrl()}/api/users/me/push-token`;
   await expoFetch(url, {
-    method: 'POST',
+    method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${authToken}`,
