@@ -9,7 +9,8 @@ import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { db } from "@workspace/db";
 import {
-  pkbActivities, pkbActivitySkk, pkbActivityDocs, pkbActivityJourney, pkbActivityChecklist, marketplaceWatches,
+  pkbActivities, pkbActivitySkk, pkbActivityDocs, pkbActivityJourney, pkbActivityChecklist,
+  marketplaceWatches, marketplaceWatched, marketplaceCourses,
   KEGIATAN_STATUS, type KegiatanStatus, type JourneyEvent,
 } from "@workspace/db/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
@@ -53,6 +54,58 @@ async function recomputeStatus(activityId: number): Promise<KegiatanStatus> {
       .where(eq(pkbActivities.id, activityId));
   }
   return status;
+}
+
+// ─── Auto-watch helper ────────────────────────────────────────────────────────
+// Upserts into both watch tables when a PKB activity is linked to a marketplace course.
+// marketplaceWatches — richer table used for AI context (jabker, skkTags).
+// marketplaceWatched — simpler table read by GET /marketplace/watched (drives the badge).
+
+async function autoWatchMarketplaceCourse(
+  userId: number,
+  courseId: string,
+  opts?: { courseTitle?: string; courseProvider?: string; jabkerList?: string[]; skkTagsList?: string[] },
+): Promise<void> {
+  // Resolve title/provider from catalog if not supplied by the caller.
+  let title = opts?.courseTitle ?? "";
+  let provider = opts?.courseProvider ?? "";
+
+  if (!title || !provider) {
+    const [catalog] = await db
+      .select({ title: marketplaceCourses.title, provider: marketplaceCourses.provider })
+      .from(marketplaceCourses)
+      .where(eq(marketplaceCourses.id, courseId))
+      .limit(1);
+    if (catalog) {
+      title    = title    || catalog.title;
+      provider = provider || catalog.provider;
+    }
+  }
+
+  // Fallback so neither column is empty (marketplaceWatched requires notNull values).
+  title    = title    || courseId;
+  provider = provider || "";
+
+  await Promise.all([
+    // marketplaceWatches — AI context table (jabker/skkTags metadata)
+    db
+      .insert(marketplaceWatches)
+      .values({
+        userId,
+        courseId,
+        courseTitle:    title    || null,
+        courseProvider: provider || null,
+        jabkerList:     Array.isArray(opts?.jabkerList)  ? opts!.jabkerList  : [],
+        skkTagsList:    Array.isArray(opts?.skkTagsList) ? opts!.skkTagsList : [],
+      })
+      .onConflictDoNothing(),
+
+    // marketplaceWatched — badge table (GET /marketplace/watched reads this)
+    db
+      .insert(marketplaceWatched)
+      .values({ userId, courseId, courseTitle: title, provider })
+      .onConflictDoNothing(),
+  ]);
 }
 
 // ─── GET /api/kegiatan — list all activities for current user ─────────────────
@@ -134,20 +187,14 @@ router.post("/kegiatan", requireAuth, async (req, res) => {
   }).returning();
 
   // Auto-mark the marketplace course as watched when a PKB activity is linked to it.
-  // Only triggers when the client supplies both marketplaceId and courseTitle; older
-  // clients that omit these fields are unaffected.
-  if (marketplaceId && courseTitle) {
-    await db
-      .insert(marketplaceWatches)
-      .values({
-        userId,
-        courseId:       marketplaceId,
-        courseTitle:    courseTitle   ?? null,
-        courseProvider: courseProvider ?? null,
-        jabkerList:     Array.isArray(courseJabkerList)  ? courseJabkerList  : [],
-        skkTagsList:    Array.isArray(courseSkkTagsList) ? courseSkkTagsList : [],
-      })
-      .onConflictDoNothing();
+  // Upserts into both watch tables so the badge appears immediately in the marketplace.
+  if (marketplaceId) {
+    await autoWatchMarketplaceCourse(userId, marketplaceId, {
+      courseTitle:    courseTitle    ?? undefined,
+      courseProvider: courseProvider ?? undefined,
+      jabkerList:     Array.isArray(courseJabkerList)  ? courseJabkerList  : undefined,
+      skkTagsList:    Array.isArray(courseSkkTagsList) ? courseSkkTagsList : undefined,
+    });
   }
 
   await addJourney(act.id, "kegiatan_dibuat", `Kegiatan "${act.namaKegiatan}" dibuat`);
@@ -188,6 +235,14 @@ router.patch("/kegiatan/:id", requireAuth, async (req, res) => {
     await addJourney(id, "link_rekaman_ditambahkan", "Link rekaman ditambahkan", { url: req.body.linkRekaman });
   } else {
     await addJourney(id, "info_diperbarui", "Informasi kegiatan diperbarui");
+  }
+
+  // Auto-watch when marketplaceId is being set (or updated to a non-empty value).
+  const effectiveMarketplaceId = "marketplaceId" in req.body
+    ? req.body.marketplaceId
+    : existing.marketplaceId;
+  if (effectiveMarketplaceId) {
+    await autoWatchMarketplaceCourse(userId, effectiveMarketplaceId);
   }
 
   const status = await recomputeStatus(id);
