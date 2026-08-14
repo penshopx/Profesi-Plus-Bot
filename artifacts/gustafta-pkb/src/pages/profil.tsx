@@ -14,6 +14,7 @@ import {
   type Profile, type CompetencyClaim,
 } from "@/lib/api-profile";
 import { fetchJabkerList, fetchSkkUnits } from "@/lib/api";
+import { getMissingAplFields, getAplCompleteness } from "@/lib/apl-fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -100,7 +101,7 @@ function buildAplHtml(
 <h3>A. Identitas Diri</h3>
 ${row("Nama Lengkap", userName)}
 ${row("NIK", profile.nik)}
-${row("Tempat, Tanggal Lahir", profile.tempatLahir && profile.tanggalLahir ? `${profile.tempatLahir}, ${profile.tanggalLahir}` : profile.tanggalLahir)}
+${row("Tempat, Tanggal Lahir", profile.tempatLahir || profile.tanggalLahir ? `${f(profile.tempatLahir)}, ${f(profile.tanggalLahir)}` : null)}
 ${row("Jenis Kelamin", profile.jenisKelamin === "L" ? "Laki-laki" : profile.jenisKelamin === "P" ? "Perempuan" : profile.jenisKelamin)}
 ${row("Agama", profile.agama)}
 ${row("Email", email)}
@@ -204,15 +205,7 @@ const BUKTI_TYPES = ["portofolio", "sertifikat", "laporan", "foto", "video", "te
 // ─── Completeness indicator ───────────────────────────────────────────────────
 
 function CompletenessBar({ profile }: { profile: Profile }) {
-  const fields = [
-    profile.nik, profile.tanggalLahir, profile.jenisKelamin,
-    profile.alamat, profile.kotaKabupaten, profile.provinsi,
-    profile.jenjangPendidikan, profile.namaInstitusi,
-    profile.namaPerusahaan, profile.jabatanSekarang,
-    profile.nomorSkk,
-  ];
-  const filled = fields.filter(Boolean).length;
-  const pct = Math.round((filled / fields.length) * 100);
+  const pct = getAplCompleteness(profile);
 
   return (
     <div className="space-y-1">
@@ -642,9 +635,20 @@ export default function ProfilPage() {
   const { data: profile, isLoading } = useQuery({ queryKey: ["my-profile"], queryFn: getMyProfile });
   const { data: claims = [] } = useQuery({ queryKey: ["my-claims"], queryFn: listMyClaims });
   const [saved, setSaved] = useState(false);
+  const [missingFields, setMissingFields] = useState<string[] | null>(null);
 
   const userName = user?.fullName ?? "—";
   const email = user?.primaryEmailAddress?.emailAddress ?? "—";
+
+  function onPrintClick() {
+    if (!profile) return;
+    const missing = getMissingAplFields(profile);
+    if (missing.length > 0) {
+      setMissingFields(missing);
+    } else {
+      handlePrintAPL(profile, claims, userName, email);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -665,7 +669,7 @@ export default function ProfilPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handlePrintAPL(profile, claims, userName, email)}
+              onClick={onPrintClick}
               className="gap-1.5 shrink-0"
             >
               <Printer className="h-3.5 w-3.5" />
@@ -673,6 +677,49 @@ export default function ProfilPage() {
             </Button>
           )}
         </div>
+
+        {/* Incomplete-profile print confirmation */}
+        <Dialog open={missingFields !== null} onOpenChange={(open) => { if (!open) setMissingFields(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-amber-500" />
+                Profil APL 01 Belum Lengkap
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-1">
+              <p className="text-sm text-muted-foreground">
+                Kolom berikut masih kosong dan akan tercetak sebagai "—" pada formulir:
+              </p>
+              <ul className="text-sm space-y-1.5 max-h-48 overflow-y-auto">
+                {(missingFields ?? []).map((f) => (
+                  <li key={f} className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-sm text-muted-foreground">
+                Lengkapi dulu, atau tetap cetak apa adanya?
+              </p>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={() => setMissingFields(null)}>
+                Kembali Lengkapi
+              </Button>
+              <Button
+                onClick={() => {
+                  setMissingFields(null);
+                  if (profile) handlePrintAPL(profile, claims, userName, email);
+                }}
+                className="gap-1.5"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Tetap Cetak
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Status card */}
         {profile && (
