@@ -952,6 +952,30 @@ export async function adminGenerateQuestions(params: {
   return res.json();
 }
 
+export type QuizQuestionStats = {
+  id: string;
+  text: string;
+  options: { id: string; text: string }[];
+  correctId: string;
+  optionCounts: Record<string, number>;
+  failRate: number;
+};
+
+export type QuizAdminStats = {
+  quizId: number;
+  title: string;
+  totalAttempts: number;
+  passCount: number;
+  passRate: number;
+  avgScore: number;
+  questions: QuizQuestionStats[];
+};
+
+export async function getAdminQuizStats(id: number): Promise<QuizAdminStats> {
+  const res = await apiFetch(`/quizzes/admin/stats/${id}`);
+  return res.json();
+}
+
 export async function adminCreateQuiz(data: {
   title: string;
   description?: string;

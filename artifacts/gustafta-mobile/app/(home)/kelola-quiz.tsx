@@ -39,11 +39,13 @@ import {
 function QuizRow({
   quiz,
   onToggle,
+  onStats,
   toggling,
   colors,
 }: {
   quiz: QuizAdminSummary;
   onToggle: (id: number, next: boolean) => void;
+  onStats: (id: number) => void;
   toggling: boolean;
   colors: ReturnType<typeof useColors>;
 }) {
@@ -75,6 +77,17 @@ function QuizRow({
           Lulus ≥ {quiz.passingScore}%
           {Array.isArray(quiz.questions) ? ` · ${quiz.questions.length} soal` : ''}
         </Text>
+        <Pressable
+          onPress={() => onStats(quiz.id)}
+          hitSlop={6}
+          style={({ pressed }) => [
+            qr.statsBtn,
+            { borderColor: colors.border, opacity: pressed ? 0.6 : 1 },
+          ]}
+        >
+          <Feather name="bar-chart-2" size={13} color={colors.primary} />
+          <Text style={[qr.statsText, { color: colors.primary }]}>Statistik</Text>
+        </Pressable>
       </View>
       <Switch
         value={quiz.isActive}
@@ -112,6 +125,21 @@ const qr = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 10,
     overflow: 'hidden',
+  },
+  statsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 4,
+  },
+  statsText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
 });
 
@@ -749,6 +777,12 @@ export default function KelolaQuizScreen() {
                   key={q.id}
                   quiz={q}
                   onToggle={handleToggle}
+                  onStats={(id) =>
+                    router.push({
+                      pathname: '/(home)/quiz-stats/[id]',
+                      params: { id: String(id) },
+                    })
+                  }
                   toggling={togglingIds.has(q.id)}
                   colors={colors}
                 />
