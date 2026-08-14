@@ -23,6 +23,7 @@ import {
   createChatMessageRateLimiter,
   createCompetencyRateLimiter,
   createClaimPaymentRateLimiter,
+  createCatalogRateLimiter,
 } from "../middlewares/rateLimiter.js";
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
@@ -311,5 +312,97 @@ describe("claimPaymentRateLimiter (#87 — blocks brute-force order ID guessing)
     expect(res.status).toBe(200);
     // draft-7 combined header: "limit=10, remaining=9, reset=3600"
     expect(parseDraft7Limit(res.headers as Record<string, string>)).toBe(CLAIM_LIMIT);
+  });
+});
+
+// ── catalogRateLimiter ────────────────────────────────────────────────────────
+// Task #115: confirm the public course catalog can't be scraped before the
+// rate limiter blocks it.
+//
+// The limiter is IP-keyed (no auth required), so different source IPs must
+// have independent buckets even when sharing a MemoryStore.
+
+describe("catalogRateLimiter (#115 — blocks catalog scraping)", () => {
+  const CATALOG_LIMIT = 120;
+
+  /** Build a test app that simulates a given source IP via X-Forwarded-For. */
+  function makeApp(store = new MemoryStore()) {
+    const limiter = createCatalogRateLimiter({ skip: () => false, store });
+    const app = express();
+    app.set("trust proxy", 1);
+    app.use(limiter);
+    app.get("/test", (_req, res) => res.json({ ok: true }));
+    return app;
+  }
+
+  /** Send `count` sequential GET /test requests from a specific IP. */
+  async function sendNFromIp(
+    app: express.Express,
+    count: number,
+    ip: string,
+  ): Promise<number[]> {
+    const statuses: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const res = await request(app)
+        .get("/test")
+        .set("X-Forwarded-For", ip);
+      statuses.push(res.status);
+    }
+    return statuses;
+  }
+
+  it("allows exactly 120 requests before blocking", async () => {
+    const app = makeApp();
+    const statuses = await sendNFromIp(app, CATALOG_LIMIT, "1.2.3.4");
+    expect(statuses.every((s) => s === 200)).toBe(true);
+  });
+
+  it("blocks the 121st request with 429", async () => {
+    const app = makeApp();
+    await sendNFromIp(app, CATALOG_LIMIT, "1.2.3.4");
+    const res = await request(app)
+      .get("/test")
+      .set("X-Forwarded-For", "1.2.3.4");
+    expect(res.status).toBe(429);
+  });
+
+  it("returns code=rate_limit_catalog (not 500) when blocked", async () => {
+    const app = makeApp();
+    await sendNFromIp(app, CATALOG_LIMIT, "1.2.3.4");
+    const res = await request(app)
+      .get("/test")
+      .set("X-Forwarded-For", "1.2.3.4");
+    expect(res.status).toBe(429);
+    expect(res.body).toMatchObject({ code: "rate_limit_catalog" });
+    expect(res.status).not.toBe(500);
+  });
+
+  it("tracks limits per IP independently — exhausted IP A does not block IP B", async () => {
+    // One shared store to confirm keying is per-IP
+    const store = new MemoryStore();
+    const app = makeApp(store);
+
+    // Exhaust IP A's quota entirely
+    await sendNFromIp(app, CATALOG_LIMIT, "10.0.0.1");
+    const blockedA = await request(app)
+      .get("/test")
+      .set("X-Forwarded-For", "10.0.0.1");
+    expect(blockedA.status).toBe(429);
+
+    // IP B must still be allowed — its bucket is independent
+    const allowedB = await request(app)
+      .get("/test")
+      .set("X-Forwarded-For", "10.0.0.2");
+    expect(allowedB.status).toBe(200);
+  });
+
+  it("reports RateLimit-Limit: 120 on the first response (draft-7 header)", async () => {
+    const app = makeApp();
+    const res = await request(app)
+      .get("/test")
+      .set("X-Forwarded-For", "1.2.3.4");
+    expect(res.status).toBe(200);
+    // draft-7 combined header: "limit=120, remaining=119, reset=3600"
+    expect(parseDraft7Limit(res.headers as Record<string, string>)).toBe(CATALOG_LIMIT);
   });
 });
