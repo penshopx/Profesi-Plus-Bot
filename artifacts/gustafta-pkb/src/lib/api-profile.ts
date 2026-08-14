@@ -100,6 +100,7 @@ export interface QuizSummary {
   description?: string | null;
   jabker?: string | null;
   skkUnitCode?: string | null;
+  skkUnitName?: string | null;
   quizType: "learning" | "proficiency";
   passingScore: number;
   isActive: boolean;
