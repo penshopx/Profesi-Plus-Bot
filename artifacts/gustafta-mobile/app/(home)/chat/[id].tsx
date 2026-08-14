@@ -32,6 +32,7 @@ import {
   type Message,
   type QuizCoverageGap,
 } from '@/lib/api';
+import { parseExumDegradation } from '@/lib/exum-degradation';
 import { Audio } from 'expo-av';
 import { useAuth } from '@clerk/expo';
 import { OfflineBanner } from '@/components/OfflineBanner';
@@ -298,6 +299,9 @@ function ExumModal({
   /** True while the background coverage check for an already-generated Exum is in flight.
    * Refresh is disabled until this resolves so the gap gate cannot be bypassed. */
   const [coverageLoading, setCoverageLoading] = useState(false);
+  // Split the context-degradation footer (if any) out of the Exum so it renders
+  // as a distinct amber warning callout instead of ordinary body text.
+  const parsedExum = useMemo(() => parseExumDegradation(content), [content]);
 
   // ── Core generation call (called only after user has seen/acknowledged gaps)
   const doGenerate = useCallback(async () => {
@@ -652,8 +656,17 @@ function ExumModal({
               </View>
             )}
             {coverageGaps.length > 0 && <GapList />}
+            {parsedExum.degradationNote && (
+              <View style={em.degradationBanner}>
+                <Feather name="alert-triangle" size={16} color="#92400E" style={{ marginTop: 2 }} />
+                <Text style={em.degradationText}>
+                  <Text style={{ fontFamily: 'PlusJakartaSans_700Bold' }}>Exum ini mungkin tidak lengkap. </Text>
+                  {parsedExum.degradationNote} Kamu dapat membuat ulang Exum agar data tersebut ikut diperhitungkan.
+                </Text>
+              </View>
+            )}
             <Text style={[em.exumText, { color: colors.foreground }]}>
-              {content || 'Tidak ada konten.'}
+              {parsedExum.body || 'Tidak ada konten.'}
             </Text>
           </ScrollView>
         )}
@@ -679,6 +692,24 @@ const em = StyleSheet.create({
   errText: { fontSize: 14, fontFamily: 'PlusJakartaSans_400Regular', textAlign: 'center' },
   scrollContent: { padding: 20 },
   exumText: { fontSize: 15, fontFamily: 'PlusJakartaSans_400Regular', lineHeight: 26 },
+  // ── Context-degradation warning callout ────────────────────────────────────
+  degradationBanner: {
+    flexDirection: 'row',
+    gap: 8,
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+  },
+  degradationText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 20,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    color: '#92400E',
+  },
   // ── Quota badge ─────────────────────────────────────────────────────────────
   quotaBadge: {
     flexDirection: 'row',

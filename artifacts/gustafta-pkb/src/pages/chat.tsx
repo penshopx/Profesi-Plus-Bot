@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -15,6 +15,7 @@ import {
   type Message, type EvidenceItem, type SkkUnit, type SocratiDialog,
 } from "@/lib/api";
 import { ExumOutlineEditor } from "@/components/ExumOutlineEditor";
+import { parseExumDegradation } from "@/lib/exum-degradation";
 import { QuizSummaryPanel } from "@/components/QuizSummaryPanel";
 import { getMyUsage, getMyPlan, getQuizCoverage } from "@/lib/api-profile";
 
@@ -1171,6 +1172,9 @@ export default function ChatPage() {
   const [streamText, setStreamText] = useState("");
   const [currentPhase, setCurrentPhase] = useState("profiling");
   const [exum, setExum] = useState<string | null>(null);
+  // Split the context-degradation footer (if any) out of the stored Exum so it
+  // can be rendered as a distinct amber callout instead of plain markdown body.
+  const parsedExum = useMemo(() => (exum ? parseExumDegradation(exum) : null), [exum]);
   const [generating, setGenerating] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [showExumModal, setShowExumModal] = useState(false);
@@ -1715,8 +1719,16 @@ export default function ChatPage() {
           </div>
           <div className="flex-1 overflow-y-auto p-6 bg-background">
             <div className="max-w-4xl mx-auto bg-card border border-border rounded-2xl p-8 shadow-sm">
+              {parsedExum?.degradationNote && (
+                <div className="mb-6 flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-sm text-amber-800">
+                    <strong>Exum ini mungkin tidak lengkap.</strong> {parsedExum.degradationNote} Anda dapat membuat ulang Exum agar data tersebut ikut diperhitungkan.
+                  </p>
+                </div>
+              )}
               <div className="prose prose-base max-w-none text-foreground [&_h1]:text-2xl [&_h2]:text-xl [&_h2]:border-b [&_h2]:border-border [&_h2]:pb-2 [&_h3]:text-base [&_h3]:font-bold [&_p]:text-justify [&_p]:leading-relaxed">
-                <ReactMarkdown>{exum}</ReactMarkdown>
+                <ReactMarkdown>{parsedExum?.body ?? exum}</ReactMarkdown>
               </div>
             </div>
           </div>
