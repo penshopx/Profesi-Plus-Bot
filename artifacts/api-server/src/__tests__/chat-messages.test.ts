@@ -589,6 +589,61 @@ describe("POST /api/chat/generate-exum", () => {
     expect(prompt.content).toContain("SKK.02.003");
   });
 
+  it("includes the approved outline blueprint in the Exum LLM prompt and does not evict profile or competency context", async () => {
+    // Seed a fake approved exumOutlines row with two sections, one with userNotes.
+    const APPROVED_OUTLINE_ROW = {
+      id: 99,
+      conversationId: 1,
+      isApproved: true,
+      sections: [
+        {
+          title: "Latar Belakang Profesional",
+          points: ["Pengalaman kerja 16 tahun", "Spesialisasi manajemen proyek"],
+          userNotes: "Tolong tekankan proyek besar di Kalimantan",
+        },
+        {
+          title: "Pencapaian Kompetensi SKK",
+          points: ["SKK.01.001 lulus dengan skor 85%"],
+        },
+      ],
+    };
+
+    // DB call order:
+    //   1. loadOwnedConversation → [FAKE_CONV]
+    //   2. db.select messages    → []
+    //   3. db.select evidenceItems → []
+    //   4. exumOutlines .then()  → [APPROVED_OUTLINE_ROW]  (approved outline present)
+    //   5. db.update conversations → undefined
+    //   6. db.insert usageEvents  → undefined
+    dbState.push([FAKE_CONV], [], [], [APPROVED_OUTLINE_ROW], undefined, undefined);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    expect(res.status).toBe(200);
+
+    expect(capturedLLMMessages.length).toBeGreaterThan(0);
+    const prompt = capturedLLMMessages[0];
+    expect(prompt.role).toBe("user");
+
+    // Blueprint heading must appear — this is the highest-priority context block that
+    // carries the user-approved document structure to the LLM.
+    expect(prompt.content).toContain("BLUEPRINT YANG TELAH DISETUJUI PENGGUNA");
+
+    // At least one section title from the approved outline must be present so the LLM
+    // uses the right document skeleton.
+    expect(prompt.content).toContain("Latar Belakang Profesional");
+
+    // userNotes for a section must also reach the prompt.
+    expect(prompt.content).toContain("Tolong tekankan proyek besar di Kalimantan");
+
+    // Profile and competency context must still be present — the outline block must not
+    // have evicted them from the shared budget.
+    expect(prompt.content).toContain("PROFIL APL 01 TKK");
+    expect(prompt.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+  });
+
   it("does not return 500 and still returns 200 when buildProfileContext throws during Exum generation", async () => {
     const { buildProfileContext } = await import("../lib/historical-pkb.js");
     vi.mocked(buildProfileContext).mockRejectedValueOnce(new Error("Profile DB unreachable"));
