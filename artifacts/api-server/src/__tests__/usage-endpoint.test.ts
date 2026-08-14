@@ -48,6 +48,9 @@ vi.mock("@workspace/db", () => {
     messages: { conversationId: "conversationId", role: "role", createdAt: "createdAt" },
     conversations: { userId: "userId" },
     payments: {},
+    // pool is imported by rateLimiter.ts (via PgRateLimitStore); provide a no-op
+    // so the module can load even though the real DB is not used in these tests.
+    pool: { query: vi.fn().mockResolvedValue({ rows: [] }) },
   };
 });
 

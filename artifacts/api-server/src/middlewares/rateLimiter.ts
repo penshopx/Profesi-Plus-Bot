@@ -19,6 +19,8 @@
 
 import rateLimit, { MemoryStore, ipKeyGenerator, type Options, type Store } from "express-rate-limit";
 import type { Request } from "express";
+import { pool } from "@workspace/db";
+import { PgRateLimitStore } from "../lib/pgRateLimitStore.js";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -40,11 +42,11 @@ export function isPro(req: Request): boolean {
 
 // ── Shared store (exported so /users/me/usage reads the exact same counter) ───
 //
-// express-rate-limit's default MemoryStore is an internal implementation detail;
-// by exporting it here we ensure the display counter can never drift from the
-// counter that actually controls enforcement.  Tests that pass `overrides.store`
-// bypass this singleton cleanly.
-export const chatRateLimitStore = new MemoryStore();
+// Backed by PostgreSQL so the counter survives server restarts.  A user who has
+// sent 29/30 messages will still see 29/30 after a deploy — the hour window
+// continues uninterrupted.  Tests that pass `overrides.store` bypass this
+// singleton cleanly by injecting their own MemoryStore.
+export const chatRateLimitStore = new PgRateLimitStore(pool);
 
 // ── Factory options type ──────────────────────────────────────────────────────
 
