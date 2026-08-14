@@ -134,6 +134,20 @@ export default function ProfileScreen() {
 
   const isAdmin = meData?.role === 'admin';
 
+  // Completeness — same fields as web CompletenessBar (profil.tsx)
+  const aplCompleteness = React.useMemo(() => {
+    if (!aplProfile) return null;
+    const fields = [
+      aplProfile.nik, aplProfile.tanggalLahir, aplProfile.jenisKelamin,
+      aplProfile.alamat, aplProfile.kotaKabupaten, aplProfile.provinsi,
+      aplProfile.jenjangPendidikan, aplProfile.namaInstitusi,
+      aplProfile.namaPerusahaan, aplProfile.jabatanSekarang,
+      aplProfile.nomorSkk,
+    ];
+    const filled = fields.filter(Boolean).length;
+    return Math.round((filled / fields.length) * 100);
+  }, [aplProfile]);
+
   const handleSignOut = async () => {
     await signOut();
     router.replace('/(auth)/sign-in');
@@ -288,6 +302,39 @@ export default function ProfileScreen() {
           colors={colors}
           chevron
         />
+        {aplCompleteness !== null && (
+          <View style={styles.completenessWrap}>
+            <View style={styles.completenessHeader}>
+              <Text style={[styles.completenessLabel, { color: colors.mutedForeground }]}>
+                Kelengkapan APL 01
+              </Text>
+              <Text
+                style={[
+                  styles.completenessPct,
+                  { color: aplCompleteness === 100 ? '#16a34a' : '#d97706' },
+                ]}
+              >
+                {aplCompleteness}%
+              </Text>
+            </View>
+            <View style={[styles.completenessTrack, { backgroundColor: colors.muted }]}>
+              <View
+                style={[
+                  styles.completenessFill,
+                  {
+                    width: `${aplCompleteness}%`,
+                    backgroundColor: aplCompleteness === 100 ? '#22c55e' : '#f59e0b',
+                  },
+                ]}
+              />
+            </View>
+            {aplCompleteness < 100 && (
+              <Text style={[styles.completenessHint, { color: colors.mutedForeground }]}>
+                Profil belum lengkap — {aplCompleteness}% terisi
+              </Text>
+            )}
+          </View>
+        )}
       </Pressable>
 
       {/* Kredit shortcuts */}
@@ -495,6 +542,37 @@ const styles = StyleSheet.create({
   signOutText: {
     fontSize: 15,
     fontFamily: 'PlusJakartaSans_600SemiBold',
+  },
+  completenessWrap: {
+    paddingBottom: 14,
+    paddingTop: 2,
+    gap: 6,
+  },
+  completenessHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  completenessLabel: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_400Regular',
+  },
+  completenessPct: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+  },
+  completenessTrack: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  completenessFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  completenessHint: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_400Regular',
   },
   claimShortcut: {
     flexDirection: 'row',
