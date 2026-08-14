@@ -18,6 +18,7 @@ import {
   deleteProjectBrainEntry,
   type ProjectBrainEntry,
 } from '@/lib/api';
+import { loadProjectBrainUsage } from '@/lib/project-brain-usage';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -56,10 +57,12 @@ function kindMeta(kind: string) {
 // ─── Entry card ───────────────────────────────────────────────────────────────
 
 function EntryCard({
-  entry, colors, onEdit, onDelete, onTogglePin,
+  entry, colors, usedByAI, onEdit, onDelete, onTogglePin,
 }: {
   entry: ProjectBrainEntry;
   colors: ReturnType<typeof useColors>;
+  /** True when this entry was injected into the AI prompt in the last chat turn. */
+  usedByAI: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onTogglePin: () => void;
@@ -70,9 +73,17 @@ function EntryCard({
       <View style={card.top}>
         <Text style={card.emoji}>{meta.emoji}</Text>
         <View style={{ flex: 1 }}>
-          <Text style={[card.title, { color: colors.foreground }]} numberOfLines={2}>
-            {entry.title}
-          </Text>
+          <View style={card.titleRow}>
+            <Text style={[card.title, { color: colors.foreground, flexShrink: 1 }]} numberOfLines={2}>
+              {entry.title}
+            </Text>
+            {usedByAI && (
+              <View style={[card.usedBadge, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
+                <Feather name="check-circle" size={10} color="#047857" />
+                <Text style={card.usedBadgeText}>Digunakan AI</Text>
+              </View>
+            )}
+          </View>
           <Text style={[card.sub, { color: colors.mutedForeground }]}>
             {entry.isPinned ? '📌 Disematkan · ' : ''}{meta.label}{entry.organization ? ` · ${entry.organization}` : ''}{entry.period ? ` · ${entry.period}` : ''}
           </Text>
@@ -111,6 +122,12 @@ const card = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   emoji: { fontSize: 22, lineHeight: 28 },
   title: { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', lineHeight: 20 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  usedBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, borderWidth: 1,
+  },
+  usedBadgeText: { fontSize: 10, fontFamily: 'PlusJakartaSans_600SemiBold', color: '#047857' },
   sub: { fontSize: 12, fontFamily: 'PlusJakartaSans_400Regular', marginTop: 2 },
   actions: { flexDirection: 'row', gap: 6 },
   btn: { padding: 6 },
@@ -315,6 +332,17 @@ export default function ProjectBrainScreen() {
 
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<ProjectBrainEntry | null>(null);
+  const [usedIds, setUsedIds] = useState<Set<number>>(new Set());
+
+  // Load which entries the AI read in the last chat turn (stored by the chat
+  // screen). Refreshed on mount so returning from a chat shows fresh badges.
+  useEffect(() => {
+    let alive = true;
+    loadProjectBrainUsage().then((usage) => {
+      if (alive && usage) setUsedIds(new Set(usage.ids));
+    });
+    return () => { alive = false; };
+  }, []);
 
   const {
     data: entries = [],
@@ -426,6 +454,7 @@ export default function ProjectBrainScreen() {
           <EntryCard
             entry={entry}
             colors={colors}
+            usedByAI={usedIds.has(entry.id)}
             onEdit={() => { setEditTarget(entry); setShowForm(true); }}
             onDelete={() => confirmDelete(entry)}
             onTogglePin={() => pinMut.mutate(entry)}

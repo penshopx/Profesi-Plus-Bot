@@ -5,7 +5,7 @@ import { logger } from "../../lib/logger";
 import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL, callWithFallback } from "../../lib/llm";
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
 import { buildKnowledgeContext } from "../../lib/knowledge-base";
-import { buildProjectBrainContextWithMeta, markProjectBrainUsed, type ProjectBrainContextMeta } from "../../lib/project-brain";
+import { buildProjectBrainContextWithMeta, markProjectBrainUsed, getUsedProjectBrainIds, type ProjectBrainContextMeta } from "../../lib/project-brain";
 import { buildHistoricalPKBContext, buildCompetencyAnalysisContext, buildQuizContext, buildProfileContext, buildKegiatanContext, buildWatchedModulesContext } from "../../lib/historical-pkb";
 import { recommendPersona, isKnownPersona, isConfidentJabkerMatch, DEFAULT_PERSONA_ID } from "../../lib/personas";
 import { findJabkerGroup } from "../../lib/skk-data";
@@ -304,6 +304,9 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
   );
   // Mark only entries whose block survived the shared budget (fire-and-forget).
   markProjectBrainUsed(pbMeta, combinedContext);
+  // Also surface the used-entry IDs to the client so the Project Brain screen
+  // can badge entries the AI actually read this turn.
+  const usedBrainEntryIds = getUsedProjectBrainIds(pbMeta, combinedContext);
   const systemPrompt = buildSystemPrompt(
     conv.mode, conv.jabker, conv.jenjang, conv.phase, evidence,
     combinedContext,
@@ -361,6 +364,10 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     res.write(`data: ${JSON.stringify({ contextWarning: true, failedBlocks: failedPersonalisation })}\n\n`);
     req.log.warn({ userId: req.dbUser!.id, convId, failedPersonalisation }, "Personalisation context failed — user notified");
   }
+
+  // Tell the client which Project Brain entries were injected into the prompt
+  // this turn. Sent even when empty so stale "used" badges can be cleared.
+  res.write(`data: ${JSON.stringify({ usedBrainEntryIds })}\n\n`);
 
   let fullResponse = "";
 

@@ -152,6 +152,7 @@ vi.mock("../lib/project-brain.js", () => ({
   buildProjectBrainContext: vi.fn().mockResolvedValue(""),
   buildProjectBrainContextWithMeta: vi.fn().mockResolvedValue({ text: "", blocks: [] }),
   markProjectBrainUsed: vi.fn(),
+  getUsedProjectBrainIds: vi.fn().mockReturnValue([]),
 }));
 
 // ── 5. LLM — capture messages and stream a fake response ──────────────────────

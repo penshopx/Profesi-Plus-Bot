@@ -33,6 +33,7 @@ import {
   type QuizCoverageGap,
 } from '@/lib/api';
 import { parseExumDegradation } from '@/lib/exum-degradation';
+import { saveProjectBrainUsage } from '@/lib/project-brain-usage';
 import { Audio } from 'expo-av';
 import { useAuth } from '@clerk/expo';
 import { OfflineBanner } from '@/components/OfflineBanner';
@@ -1058,6 +1059,12 @@ export default function ChatScreen() {
           },
           () => {
             queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+          },
+          undefined,
+          (ids) => {
+            // Persist which Project Brain entries the AI read this turn so the
+            // Project Brain screen can badge them ("Digunakan AI").
+            saveProjectBrainUsage(ids);
           },
         );
 

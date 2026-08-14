@@ -81,7 +81,7 @@ export async function buildProjectBrainContextWithMeta(userId: number): Promise<
  * final combined context so trimmed/dropped entries are not falsely marked.
  * Fire-and-forget: a failure here must never block or degrade the chat request.
  */
-export function markProjectBrainUsed(meta: ProjectBrainContextMeta, finalContext: string): void {
+export function getUsedProjectBrainIds(meta: ProjectBrainContextMeta, finalContext: string): number[] {
   // Ordered scan with a moving cursor: each rendered block may only match one
   // occurrence in the final context, so duplicate-looking entries are not all
   // marked when only one copy survived the budget.
@@ -93,6 +93,11 @@ export function markProjectBrainUsed(meta: ProjectBrainContextMeta, finalContext
     usedIds.push(b.id);
     cursor = at + b.block.length;
   }
+  return usedIds;
+}
+
+export function markProjectBrainUsed(meta: ProjectBrainContextMeta, finalContext: string): void {
+  const usedIds = getUsedProjectBrainIds(meta, finalContext);
   if (!usedIds.length) return;
   void (async () => {
     await db

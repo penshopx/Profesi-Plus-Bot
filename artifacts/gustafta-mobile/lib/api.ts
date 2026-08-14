@@ -177,6 +177,7 @@ export async function streamMessage(
   onChunk: (text: string) => void,
   onPhaseAdvance?: () => void,
   onContextWarning?: () => void,
+  onUsedBrainEntries?: (ids: number[]) => void,
 ): Promise<void> {
   const headers = await buildHeaders({ Accept: 'text/event-stream' });
   const url = `${getBaseUrl()}/api/chat/conversations/${conversationId}/messages`;
@@ -213,6 +214,7 @@ export async function streamMessage(
       try {
         const parsed = JSON.parse(data);
         if (parsed.contextWarning) onContextWarning?.();
+        if (Array.isArray(parsed.usedBrainEntryIds)) onUsedBrainEntries?.(parsed.usedBrainEntryIds);
         const chunk = parsed.content ?? parsed.text ?? parsed.delta;
         if (chunk) onChunk(chunk);
       } catch {
