@@ -135,6 +135,32 @@ export class ObjectStorageService {
     });
   }
 
+  /**
+   * Returns a short-lived presigned GET URL for a private object so mobile
+   * clients can open the file in a native viewer.  Uses the same Replit sidecar
+   * signer as getObjectEntityUploadURL so it works with external-account creds.
+   */
+  async getObjectEntityDownloadURL(objectPath: string, ttlSec = 900): Promise<string> {
+    if (!objectPath.startsWith('/objects/')) {
+      throw new ObjectNotFoundError();
+    }
+
+    const parts = objectPath.slice(1).split('/');
+    if (parts.length < 2) {
+      throw new ObjectNotFoundError();
+    }
+
+    const entityId = parts.slice(1).join('/');
+    let entityDir = this.getPrivateObjectDir();
+    if (!entityDir.endsWith('/')) {
+      entityDir = `${entityDir}/`;
+    }
+    const objectEntityPath = `${entityDir}${entityId}`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+
+    return signObjectURL({ bucketName, objectName, method: 'GET', ttlSec });
+  }
+
   async getObjectEntityFile(objectPath: string): Promise<File> {
     if (!objectPath.startsWith('/objects/')) {
       throw new ObjectNotFoundError();

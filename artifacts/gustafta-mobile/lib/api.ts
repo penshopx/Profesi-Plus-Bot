@@ -632,6 +632,18 @@ export async function deleteKegiatanDoc(activityId: number, docId: number): Prom
   await apiFetch(`/kegiatan/${activityId}/docs/${docId}`, { method: 'DELETE' });
 }
 
+export async function getDocDownloadUrl(objectPath: string): Promise<string> {
+  const res = await apiFetch(
+    `/storage/downloads/request-url?objectPath=${encodeURIComponent(objectPath)}`,
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? 'Gagal membuat URL unduhan');
+  }
+  const { downloadURL } = await res.json();
+  return downloadURL as string;
+}
+
 // ─── Marketplace ──────────────────────────────────────────────────────────────
 
 export interface MarketplaceWatchRecord {

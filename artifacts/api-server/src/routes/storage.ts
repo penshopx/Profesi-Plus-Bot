@@ -46,6 +46,56 @@ router.post("/storage/uploads/request-url", requireAuth, async (req: Request, re
   }
 });
 
+// ─── GET /storage/downloads/request-url ──────────────────────────────────────
+// Returns a short-lived presigned GET URL so the mobile client can open the
+// file in a native viewer without streaming it through the API server.
+
+router.get("/storage/downloads/request-url", requireAuth, async (req: Request, res: Response) => {
+  const objectPath = req.query.objectPath as string | undefined;
+  if (!objectPath || typeof objectPath !== "string") {
+    res.status(400).json({ error: "objectPath query param is required" });
+    return;
+  }
+
+  try {
+    // Require a registered PKB document for this objectPath.
+    // Paths not recorded in pkbActivityDocs are never served — this scopes
+    // the endpoint exclusively to PKB documents and prevents leaking URLs
+    // for other private objects (voice notes, etc.) that share the namespace.
+    const [docRow] = await db
+      .select({ ownerId: pkbActivities.userId })
+      .from(pkbActivityDocs)
+      .innerJoin(pkbActivities, eq(pkbActivityDocs.activityId, pkbActivities.id))
+      .where(eq(pkbActivityDocs.objectPath, objectPath))
+      .limit(1);
+
+    if (!docRow) {
+      res.status(404).json({ error: "Document not found" });
+      return;
+    }
+
+    const userRole = req.dbUser!.role;
+    const canBypassOwnership = userRole === "admin";
+    if (docRow.ownerId !== req.dbUser!.id && !canBypassOwnership) {
+      res.status(403).json({ error: "Akses ditolak — dokumen ini bukan milik Anda." });
+      return;
+    }
+
+    // Sign via the Replit sidecar (same path as upload signing) so it works
+    // with external-account credentials that lack a service-account signing key.
+    const downloadURL = await objectStorageService.getObjectEntityDownloadURL(objectPath);
+
+    res.json({ downloadURL });
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      res.status(404).json({ error: "Object not found" });
+      return;
+    }
+    req.log?.error({ err: error }, "Error generating download URL");
+    res.status(500).json({ error: "Gagal membuat URL unduhan" });
+  }
+});
+
 // ─── GET /storage/public-objects/* ───────────────────────────────────────────
 
 router.get("/storage/public-objects/*filePath", async (req: Request, res: Response) => {

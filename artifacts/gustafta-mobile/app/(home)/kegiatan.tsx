@@ -17,10 +17,11 @@ import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as WebBrowser from 'expo-web-browser';
 import {
   listMyKegiatanPkb, createKegiatanPkb, updateKegiatanPkb, deleteKegiatanPkb,
   updateKegiatanSkk, ajukanKegiatanPkb, getKegiatanDetail,
-  requestUploadUrl, registerKegiatanDoc, deleteKegiatanDoc,
+  requestUploadUrl, registerKegiatanDoc, deleteKegiatanDoc, getDocDownloadUrl,
   type PkbActivity, type CreateKegiatanBody, type PkbSkkUnit,
   type PkbActivityDoc, type PkbJourneyEntry,
 } from '@/lib/api';
@@ -249,6 +250,7 @@ function DocUploadSection({ activityId, activityStatus, docs, onRefresh, colors 
 }) {
   const [uploading, setUploading] = useState<string | null>(null); // docType being uploaded
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [opening, setOpening] = useState<number | null>(null); // docId being opened
 
   /**
    * Core upload helper: fetches the local URI as a blob first so we always
@@ -330,6 +332,18 @@ function DocUploadSection({ activityId, activityStatus, docs, onRefresh, colors 
     const mimeType = asset.mimeType ?? 'application/octet-stream';
     const filename = asset.name ?? `${docType}-${Date.now()}`;
     await uploadLocalFile(docType, asset.uri, filename, mimeType);
+  }
+
+  async function handleOpen(doc: PkbActivityDoc) {
+    setOpening(doc.id);
+    try {
+      const downloadURL = await getDocDownloadUrl(doc.objectPath);
+      await WebBrowser.openBrowserAsync(downloadURL, { presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN });
+    } catch (err) {
+      Alert.alert('Gagal membuka dokumen', (err as Error).message);
+    } finally {
+      setOpening(null);
+    }
   }
 
   async function handleDelete(docId: number) {
@@ -422,26 +436,64 @@ function DocUploadSection({ activityId, activityStatus, docs, onRefresh, colors 
               </Text>
             ) : (
               <View style={{ gap: 6 }}>
-                {typeDocs.map((doc) => (
-                  <View key={doc.id} style={[s.docRow, { borderColor: colors.border, backgroundColor: colors.muted }]}>
-                    <Feather name="file" size={13} color={colors.mutedForeground} />
-                    <Text style={{ flex: 1, fontSize: 12, color: colors.foreground, fontFamily: 'PlusJakartaSans_400Regular' }} numberOfLines={1}>
-                      {doc.filename}
-                    </Text>
-                    {/* Hide delete button for verified activities */}
-                    {!isVerified && (
-                      <Pressable
-                        onPress={() => handleDelete(doc.id)}
-                        disabled={deleting === doc.id}
-                        hitSlop={8}
-                      >
-                        {deleting === doc.id
-                          ? <ActivityIndicator size="small" color={colors.destructive} />
-                          : <Feather name="trash-2" size={14} color={colors.destructive} />}
-                      </Pressable>
-                    )}
-                  </View>
-                ))}
+                {typeDocs.map((doc) => {
+                  const isImage = doc.mimeType?.startsWith('image/') ?? false;
+                  const isOpening = opening === doc.id;
+                  return (
+                    <View key={doc.id} style={[s.docRow, { borderColor: colors.border, backgroundColor: colors.muted, flexDirection: 'column', alignItems: 'stretch', gap: 6 }]}>
+                      {/* Row: icon + filename + action buttons */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Feather name={isImage ? 'image' : 'file'} size={13} color={colors.mutedForeground} />
+                        <Text style={{ flex: 1, fontSize: 12, color: colors.foreground, fontFamily: 'PlusJakartaSans_400Regular' }} numberOfLines={1}>
+                          {doc.filename}
+                        </Text>
+                        {/* Lihat / Open button */}
+                        <Pressable
+                          onPress={() => handleOpen(doc)}
+                          disabled={isOpening}
+                          hitSlop={8}
+                          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 3, opacity: pressed || isOpening ? 0.6 : 1, marginLeft: 4 })}
+                        >
+                          {isOpening
+                            ? <ActivityIndicator size="small" color={colors.primary} />
+                            : <Feather name="external-link" size={13} color={colors.primary} />}
+                          <Text style={{ fontSize: 11, color: colors.primary, fontFamily: 'PlusJakartaSans_600SemiBold' }}>
+                            {isOpening ? 'Membuka…' : 'Lihat'}
+                          </Text>
+                        </Pressable>
+                        {/* Hide delete button for verified activities */}
+                        {!isVerified && (
+                          <Pressable
+                            onPress={() => handleDelete(doc.id)}
+                            disabled={deleting === doc.id}
+                            hitSlop={8}
+                          >
+                            {deleting === doc.id
+                              ? <ActivityIndicator size="small" color={colors.destructive} />
+                              : <Feather name="trash-2" size={14} color={colors.destructive} />}
+                          </Pressable>
+                        )}
+                      </View>
+                      {/* Inline image thumbnail placeholder — tap opens the viewer */}
+                      {isImage && (
+                        <Pressable
+                          onPress={() => handleOpen(doc)}
+                          disabled={isOpening}
+                          style={({ pressed }) => ({
+                            height: 80, borderRadius: 6, backgroundColor: colors.border,
+                            alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6,
+                            opacity: pressed ? 0.7 : 1,
+                          })}
+                        >
+                          <Feather name="image" size={20} color={colors.mutedForeground} />
+                          <Text style={{ fontSize: 12, color: colors.mutedForeground, fontFamily: 'PlusJakartaSans_400Regular' }}>
+                            Ketuk untuk melihat foto
+                          </Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  );
+                })}
               </View>
             )}
           </View>
