@@ -61,6 +61,7 @@ function buildAplHtml(
   claims: import("@/lib/api-profile").CompetencyClaim[],
   userName: string,
   email: string,
+  signingDate: Date,
 ): string {
   const f = (v: string | number | null | undefined) => v ?? "—";
   const row = (label: string, val: string | number | null | undefined) =>
@@ -88,6 +89,7 @@ function buildAplHtml(
     </tr>`).join("");
 
   const now = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
+  const signedOn = signingDate.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
 
   return `<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">
 <title>APL 01 & APL 02 — ${userName}</title>
@@ -159,13 +161,13 @@ ${claims.length === 0 ? "<p><em>Belum ada unit kompetensi yang diklaim.</em></p>
   <tr>
     <td style="border:none;width:50%;padding:0 20pt 0 0;vertical-align:top;">
       <p style="font-weight:bold;margin:0 0 4pt;">Pemohon,</p>
-      <p style="margin:0 0 4pt;font-size:9pt;color:#555;">${profile.kotaKabupaten ?? "____________"}, _______________ ${new Date().getFullYear()}</p>
+      <p style="margin:0 0 4pt;font-size:9pt;color:#555;">${profile.kotaKabupaten ?? "____________"}, ${signedOn}</p>
       <div style="border:1pt dashed #bbb;height:72pt;margin:8pt 0 4pt;text-align:center;padding-top:28pt;font-size:8pt;color:#bbb;">[Tanda Tangan]</div>
       <p style="border-top:1pt solid #444;padding-top:4pt;font-size:9pt;text-align:center;margin:0;">(${userName})</p>
     </td>
     <td style="border:none;width:50%;padding:0 0 0 20pt;vertical-align:top;">
       <p style="font-weight:bold;margin:0 0 4pt;">Mengetahui, Lembaga Sertifikasi (LSP),</p>
-      <p style="margin:0 0 4pt;font-size:9pt;color:#555;">${profile.kotaKabupaten ?? "____________"}, _______________ ${new Date().getFullYear()}</p>
+      <p style="margin:0 0 4pt;font-size:9pt;color:#555;">${profile.kotaKabupaten ?? "____________"}, ${signedOn}</p>
       <div style="border:1pt dashed #bbb;height:72pt;margin:8pt 0 4pt;text-align:center;padding-top:18pt;font-size:8pt;color:#bbb;">[Tanda Tangan &amp; Stempel]</div>
       <p style="border-top:1pt solid #444;padding-top:4pt;font-size:9pt;text-align:center;margin:0;">(${profile.lembagaSertifikasi ?? "____________________________"})</p>
     </td>
@@ -183,8 +185,9 @@ function handlePrintAPL(
   claims: import("@/lib/api-profile").CompetencyClaim[],
   userName: string,
   email: string,
+  signingDate: Date,
 ) {
-  const html = buildAplHtml(profile, claims, userName, email);
+  const html = buildAplHtml(profile, claims, userName, email, signingDate);
   const w = window.open("", "_blank");
   if (!w) { alert("Pop-up diblokir. Izinkan pop-up untuk mencetak."); return; }
   w.document.write(html);
@@ -636,9 +639,21 @@ export default function ProfilPage() {
   const { data: claims = [] } = useQuery({ queryKey: ["my-claims"], queryFn: listMyClaims });
   const [saved, setSaved] = useState(false);
   const [missingFields, setMissingFields] = useState<string[] | null>(null);
+  const [dateDialogOpen, setDateDialogOpen] = useState(false);
+  const [signDate, setSignDate] = useState("");
 
   const userName = user?.fullName ?? "—";
   const email = user?.primaryEmailAddress?.emailAddress ?? "—";
+
+  function todayISO() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function openDateDialog() {
+    setSignDate(todayISO());
+    setDateDialogOpen(true);
+  }
 
   function onPrintClick() {
     if (!profile) return;
@@ -646,8 +661,16 @@ export default function ProfilPage() {
     if (missing.length > 0) {
       setMissingFields(missing);
     } else {
-      handlePrintAPL(profile, claims, userName, email);
+      openDateDialog();
     }
+  }
+
+  function confirmPrint() {
+    if (!profile) return;
+    setDateDialogOpen(false);
+    // Parse as local date to avoid UTC day-shift
+    const [y, m, d] = (signDate || todayISO()).split("-").map(Number);
+    handlePrintAPL(profile, claims, userName, email, new Date(y, m - 1, d));
   }
 
   return (
@@ -710,12 +733,47 @@ export default function ProfilPage() {
               <Button
                 onClick={() => {
                   setMissingFields(null);
-                  if (profile) handlePrintAPL(profile, claims, userName, email);
+                  openDateDialog();
                 }}
                 className="gap-1.5"
               >
                 <Printer className="h-3.5 w-3.5" />
                 Tetap Cetak
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Signing-date picker before print */}
+        <Dialog open={dateDialogOpen} onOpenChange={setDateDialogOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Printer className="h-5 w-5 text-primary" />
+                Tanggal Penandatanganan
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-2 py-1">
+              <p className="text-sm text-muted-foreground">
+                Tanggal ini akan tercetak pada blok tanda tangan formulir APL.
+              </p>
+              <div className="space-y-1.5">
+                <Label htmlFor="apl-sign-date">Tanggal</Label>
+                <Input
+                  id="apl-sign-date"
+                  type="date"
+                  value={signDate}
+                  onChange={(e) => setSignDate(e.target.value)}
+                />
+              </div>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={() => setDateDialogOpen(false)}>
+                Batal
+              </Button>
+              <Button onClick={confirmPrint} disabled={!signDate} className="gap-1.5">
+                <Printer className="h-3.5 w-3.5" />
+                Cetak
               </Button>
             </DialogFooter>
           </DialogContent>
