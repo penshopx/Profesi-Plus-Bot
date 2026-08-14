@@ -16,7 +16,7 @@ import {
 } from "@/lib/api";
 import { ExumOutlineEditor } from "@/components/ExumOutlineEditor";
 import { QuizSummaryPanel } from "@/components/QuizSummaryPanel";
-import { getMyUsage, getMyPlan } from "@/lib/api-profile";
+import { getMyUsage, getMyPlan, getQuizCoverage } from "@/lib/api-profile";
 
 // ─── Markdown → HTML helpers (module-level, used by print & HTML export) ──────
 function mdEsc(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -1181,6 +1181,10 @@ export default function ChatPage() {
   // Amber warning: quiz context failed to load during Exum generation — the
   // resulting Exum was written without quiz evidence. User may retry.
   const [exumQuizWarning, setExumQuizWarning] = useState(false);
+  // Quiz coverage gap banner (#133): collapsible list of claimed units without
+  // a passing quiz attempt, shown during synthesis/done phases.
+  const [gapsExpanded, setGapsExpanded] = useState(false);
+  const [gapBannerDismissed, setGapBannerDismissed] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
@@ -1254,6 +1258,19 @@ export default function ChatPage() {
     queryFn: getMyPlan,
     staleTime: 5 * 60 * 1000,
   });
+
+  // Quiz coverage gaps (#133) — fetched once the session reaches the synthesis
+  // phase (where Exum generation happens) so users see which claimed units lack
+  // passing quiz evidence before/after generating. Kept fresh after quiz
+  // attempts via the shared queryKey.
+  const inSynthesisOrDone = currentPhase === "synthesis" || currentPhase === "done";
+  const { data: quizCoverage } = useQuery({
+    queryKey: ["quiz-coverage"],
+    queryFn: getQuizCoverage,
+    enabled: inSynthesisOrDone,
+    staleTime: 60 * 1000,
+  });
+  const coverageGaps = quizCoverage?.gaps ?? [];
 
   // Studio Kompetensi nudge — server canonicalises the jabker via findJabkerGroup
   // so the match is always exact (by jabkerId). Gate banner only on success so we
@@ -1722,6 +1739,55 @@ export default function ChatPage() {
             <button onClick={() => setExumQuizWarning(false)} className="shrink-0 p-1.5 hover:opacity-70" title="Tutup peringatan">
               <X className="w-3.5 h-3.5 text-amber-700" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Quiz coverage gap banner (#133) — claimed units without passing quiz evidence */}
+      {inSynthesisOrDone && coverageGaps.length > 0 && !gapBannerDismissed && (
+        <div className="border-b border-amber-200 bg-amber-50/80 px-4 py-2.5 shrink-0">
+          <div className="max-w-3xl mx-auto">
+            <div className="flex items-center gap-2 flex-wrap">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <button
+                onClick={() => setGapsExpanded((v) => !v)}
+                className="flex items-center gap-1.5 text-sm text-amber-800 flex-1 min-w-[200px] text-left hover:opacity-80 transition-opacity"
+                title={gapsExpanded ? "Sembunyikan daftar unit" : "Tampilkan daftar unit"}
+              >
+                <strong>{coverageGaps.length} unit tanpa bukti kuis</strong>
+                <span className="hidden sm:inline">— diklaim di APL 02 tetapi belum ada percobaan kuis yang lulus.</span>
+                {gapsExpanded ? <ChevronUp className="w-3.5 h-3.5 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 shrink-0" />}
+              </button>
+              <button onClick={() => setGapBannerDismissed(true)} className="shrink-0 p-1.5 hover:opacity-70" title="Tutup peringatan">
+                <X className="w-3.5 h-3.5 text-amber-700" />
+              </button>
+            </div>
+            {gapsExpanded && (
+              <div className="mt-2 pl-6 space-y-2">
+                <p className="text-xs text-amber-700">
+                  Exum tetap bisa dibuat, namun bukti untuk unit-unit berikut mungkin lebih tipis.
+                  Ikuti kuis yang relevan agar bukti kompetensimu lebih kuat.
+                </p>
+                {coverageGaps.map((gap) => (
+                  <div key={gap.skkUnitCode} className="flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0 mt-1.5" />
+                    <div className="flex-1 min-w-0 text-sm">
+                      <span className="font-semibold text-amber-900">{gap.skkUnitCode}</span>{" "}
+                      <span className="text-amber-800">{gap.skkUnitName}</span>
+                      {gap.quizTitle && (
+                        <a
+                          href="/quiz"
+                          className="ml-2 inline-flex items-center gap-1 text-xs font-semibold text-amber-700 underline underline-offset-2 hover:text-amber-900"
+                          title={`Buka halaman kuis — ${gap.quizTitle}`}
+                        >
+                          <BookOpen className="w-3 h-3" /> Kuis tersedia: {gap.quizTitle}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

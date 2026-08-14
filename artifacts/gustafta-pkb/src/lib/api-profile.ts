@@ -240,6 +240,21 @@ export async function getMyAttempts(): Promise<QuizAttempt[]> {
   return (await f("/quizzes/my-attempts")).json();
 }
 
+// ─── Quiz coverage gaps ───────────────────────────────────────────────────────
+// Claimed APL 02 units with no passing quiz attempt. quizId/quizTitle are set
+// when an active quiz exists for that unit, so the UI can point the user to it.
+
+export interface QuizCoverageGap {
+  skkUnitCode: string;
+  skkUnitName: string;
+  quizId: number | null;
+  quizTitle: string | null;
+}
+
+export async function getQuizCoverage(): Promise<{ gaps: QuizCoverageGap[] }> {
+  return (await f("/profiles/me/quiz-coverage")).json();
+}
+
 // ─── Admin Quiz Management ────────────────────────────────────────────────────
 
 export interface QuizQuestionAdmin {
