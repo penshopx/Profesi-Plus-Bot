@@ -23,6 +23,7 @@ import {
   listStudioAnalyses,
   runStudioAnalysis,
   listJabkers,
+  getMyUsage,
   type StudioAnalysis,
 } from '@/lib/api';
 
@@ -353,11 +354,19 @@ export default function StudioScreen() {
   // Flag to show a "you're viewing cached data" notice.
   const showingCached = !liveAnalyses && cachedAnalyses.length > 0;
 
+  const { data: usage } = useQuery({
+    queryKey: ['my-usage'],
+    queryFn: getMyUsage,
+    staleTime: 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+  });
+
   const { mutate: runAnalysis, isPending: isAnalyzing, error: analyzeError } =
     useMutation({
       mutationFn: () => runStudioAnalysis(selectedJabker),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['studio-analyses'] });
+        queryClient.invalidateQueries({ queryKey: ['my-usage'] });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       },
     });
@@ -463,6 +472,26 @@ export default function StudioScreen() {
                 </Text>
               </View>
             )}
+
+            {/* Competency analysis quota */}
+            {usage?.competency && (() => {
+              const { remaining, limit } = usage.competency;
+              const exhausted = remaining <= 0;
+              const low = remaining <= 1;
+              const bg = exhausted ? '#FEF2F2' : low ? '#FFFBEB' : '#EEF2FF';
+              const border = exhausted ? '#FECACA' : low ? '#FDE68A' : '#C7D2FE';
+              const textColor = exhausted ? '#DC2626' : low ? '#D97706' : '#4338CA';
+              return (
+                <View style={[styles.quotaBadge, { backgroundColor: bg, borderColor: border }]}>
+                  <Feather name="zap" size={12} color={textColor} />
+                  <Text style={[styles.quotaText, { color: textColor }]}>
+                    {exhausted
+                      ? 'Batas analisis hari ini tercapai'
+                      : `${remaining}/${limit} analisis tersisa hari ini`}
+                  </Text>
+                </View>
+              );
+            })()}
 
             <Pressable
               style={[
@@ -618,6 +647,20 @@ const styles = StyleSheet.create({
   offlineHintText: {
     fontSize: 12,
     fontFamily: 'PlusJakartaSans_400Regular',
+    flex: 1,
+  },
+  quotaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  quotaText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_500Medium',
     flex: 1,
   },
   cacheBanner: {

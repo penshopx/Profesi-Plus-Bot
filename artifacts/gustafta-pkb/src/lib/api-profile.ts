@@ -13,16 +13,28 @@ export interface PlanInfo {
   canGenerate: boolean;
 }
 
-export interface UsageInfo {
+export interface UsageCounter {
   used: number;
   limit: number;
   remaining: number;
-  windowMs: number;
-  /** ISO timestamp of when the oldest in-window message expires — i.e. when the limit resets. */
+  resetAt: string | null;
+}
+
+export interface UsageInfo {
+  /** Chat-message quota (hourly). Top-level fields are retained for backwards compatibility. */
+  used: number;
+  limit: number;
+  remaining: number;
+  windowMs?: number;
+  /** ISO timestamp of when the current window resets. */
   resetAt: string | null;
   /** Server wall-clock at the moment of the response. Use to compute an accurate countdown
    *  that is independent of the client's device clock. */
   serverNow: string;
+  /** Per-limiter sub-objects for detailed usage display. */
+  chat?: UsageCounter;
+  exum?: UsageCounter;
+  competency?: UsageCounter;
 }
 
 export async function getMyPlan(): Promise<PlanInfo> {

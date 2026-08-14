@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, users, usageEvents, messages, conversations, payments } from "@workspace/db";
 import { eq, and, count, gte, desc, isNull, sql } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/auth";
-import { claimPaymentRateLimiter } from "../middlewares/rateLimiter";
+import { claimPaymentRateLimiter, isPro } from "../middlewares/rateLimiter";
 import { FREE_EXUM_LIFETIME } from "../lib/plans";
 import { sendCreditClaimEmail } from "../lib/email.js";
 import { sendPushNotification } from "../lib/push";
@@ -26,36 +26,70 @@ router.get("/users/me/plan", requireAuth, async (req, res) => {
 });
 
 /**
- * Returns how many chat messages the user has sent in the last hour,
- * plus the limit for their plan, so the frontend can show a usage indicator.
+ * Returns quota usage for:
+ *  - chat messages (hourly, Free=30 Pro=120)
+ *  - Exum generation (daily, Free=5 Pro=20)
+ *  - competency analysis (daily, Free=5 Pro=20)
  *
- * Note: counts outbound user messages in the DB (role='user'), which is a faithful
- * proxy for rate-limiter hits. The in-memory limiter resets independently but the
- * delta is negligible for a progress indicator.
+ * Every sub-object includes used / limit / remaining / resetAt so clients can
+ * show accurate indicators.  The top-level fields (used, limit, remaining,
+ * resetAt) are the chat-message counters retained for backwards compatibility.
+ *
+ * serverNow is included once at the top level so clients can compute accurate
+ * countdowns without relying on the device clock (#92 pattern).
  */
 router.get("/users/me/usage", requireAuth, async (req, res) => {
-  const userIsProPlan = req.dbUser!.plan === "pro" &&
-    (!req.dbUser!.planExpiresAt || new Date(req.dbUser!.planExpiresAt) > new Date());
-  const limit = userIsProPlan ? 120 : 30;
+  const { chatRateLimitStore, exumRateLimitStore, competencyRateLimitStore, userKey } =
+    await import("../middlewares/rateLimiter");
 
-  // ── Source of truth: the rate-limiter store ──────────────────────────────────
-  // Reading from the same MemoryStore that chatMessageRateLimiter uses guarantees
-  // the display counter can never diverge from the counter that controls enforcement
-  // (Task #40).  This eliminates the previous dual-counter approach where the DB
-  // query counted stored messages while the limiter counted requests — two values
-  // that could differ after server restarts, failed requests, or direct DB writes.
-  const { chatRateLimitStore, userKey } = await import("../middlewares/rateLimiter");
+  const userIsPro = isPro(req);
+
+  const chatLimit       = userIsPro ? 120 : 30;
+  const dailyLimit      = userIsPro ? 20  : 5;   // shared by exum & competency
+
   const key = userKey(req);
-  const storeInfo = await chatRateLimitStore.get(key).catch(() => null);
 
-  const used      = storeInfo?.totalHits ?? 0;
-  const remaining = Math.max(0, limit - used);
-  // resetTime is the moment the current window expires and the counter resets.
-  const resetAt   = storeInfo?.resetTime?.toISOString() ?? null;
+  // Read all three stores in parallel to keep latency low.
+  const [chatInfo, exumInfo, competencyInfo] = await Promise.all([
+    chatRateLimitStore.get(key).catch(() => null),
+    exumRateLimitStore.get(key).catch(() => null),
+    competencyRateLimitStore.get(key).catch(() => null),
+  ]);
 
-  // serverNow lets clients compute an accurate countdown regardless of device clock skew.
+  const chatUsed      = chatInfo?.totalHits ?? 0;
+  const exumUsed      = exumInfo?.totalHits ?? 0;
+  const competencyUsed = competencyInfo?.totalHits ?? 0;
+
   const serverNow = new Date().toISOString();
-  res.json({ used, limit, remaining, resetAt, serverNow });
+
+  res.json({
+    // ── Top-level chat fields (backwards-compatible) ──────────────────────────
+    used:      chatUsed,
+    limit:     chatLimit,
+    remaining: Math.max(0, chatLimit - chatUsed),
+    resetAt:   chatInfo?.resetTime?.toISOString() ?? null,
+    serverNow,
+
+    // ── Per-limiter sub-objects ───────────────────────────────────────────────
+    chat: {
+      used:      chatUsed,
+      limit:     chatLimit,
+      remaining: Math.max(0, chatLimit - chatUsed),
+      resetAt:   chatInfo?.resetTime?.toISOString() ?? null,
+    },
+    exum: {
+      used:      exumUsed,
+      limit:     dailyLimit,
+      remaining: Math.max(0, dailyLimit - exumUsed),
+      resetAt:   exumInfo?.resetTime?.toISOString() ?? null,
+    },
+    competency: {
+      used:      competencyUsed,
+      limit:     dailyLimit,
+      remaining: Math.max(0, dailyLimit - competencyUsed),
+      resetAt:   competencyInfo?.resetTime?.toISOString() ?? null,
+    },
+  });
 });
 
 // Credit balance + purchase history for the authenticated user.

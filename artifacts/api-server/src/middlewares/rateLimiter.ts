@@ -40,13 +40,20 @@ export function isPro(req: Request): boolean {
   return true;
 }
 
-// ── Shared store (exported so /users/me/usage reads the exact same counter) ───
+// ── Shared stores (exported so /users/me/usage reads the exact same counters) ──
 //
-// Backed by PostgreSQL so the counter survives server restarts.  A user who has
-// sent 29/30 messages will still see 29/30 after a deploy — the hour window
-// continues uninterrupted.  Tests that pass `overrides.store` bypass this
-// singleton cleanly by injecting their own MemoryStore.
-export const chatRateLimitStore = new PgRateLimitStore(pool);
+// Backed by PostgreSQL so counters survive server restarts.  Each limiter gets
+// its own prefixed store so they share one table without key collisions:
+//
+//   chatRateLimitStore      → keys like "user:5"            (no prefix, legacy)
+//   exumRateLimitStore      → keys like "exum:user:5"
+//   competencyRateLimitStore → keys like "competency:user:5"
+//
+// Tests that pass `overrides.store` bypass these singletons cleanly by
+// injecting their own MemoryStore.
+export const chatRateLimitStore        = new PgRateLimitStore(pool);
+export const exumRateLimitStore        = new PgRateLimitStore(pool, { prefix: "exum" });
+export const competencyRateLimitStore  = new PgRateLimitStore(pool, { prefix: "competency" });
 
 // ── Factory options type ──────────────────────────────────────────────────────
 
@@ -109,7 +116,8 @@ export function createExumRateLimiter(overrides: LimiterOverrides = {}) {
       code: "rate_limit_exum",
     },
     skip: overrides.skip ?? (() => process.env.NODE_ENV === "test"),
-    ...(overrides.store ? { store: overrides.store } : {}),
+    // Always use the shared singleton unless tests inject their own store.
+    store: overrides.store ?? exumRateLimitStore,
   });
 }
 
@@ -135,7 +143,8 @@ export function createCompetencyRateLimiter(overrides: LimiterOverrides = {}) {
       code: "rate_limit_competency",
     },
     skip: overrides.skip ?? (() => process.env.NODE_ENV === "test"),
-    ...(overrides.store ? { store: overrides.store } : {}),
+    // Always use the shared singleton unless tests inject their own store.
+    store: overrides.store ?? competencyRateLimitStore,
   });
 }
 

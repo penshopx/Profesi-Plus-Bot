@@ -15,6 +15,7 @@ import {
   type CompetencyAnalysisFull,
   type CompetencyUnitStatus,
 } from "@/lib/api";
+import { getMyUsage } from "@/lib/api-profile";
 import {
   Target, ArrowLeft, Sparkles, Brain, CheckCircle2, AlertTriangle,
   XCircle, Trash2, Loader2, Lightbulb, TrendingUp, ChevronDown, History, BookOpen,
@@ -51,6 +52,13 @@ export default function StudioPage() {
     return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
 
+  const { data: usage } = useQuery({
+    queryKey: ["my-usage"],
+    queryFn: getMyUsage,
+    staleTime: 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+  });
+
   const { data: jabkers = [] } = useQuery({ queryKey: ["jabkers"], queryFn: fetchJabkerList });
   const { data: modelData } = useQuery({ queryKey: ["models"], queryFn: listModels });
   const { data: brain = [] } = useQuery({ queryKey: ["project-brain"], queryFn: listProjectBrain });
@@ -79,6 +87,8 @@ export default function StudioPage() {
       setActive(data);
       setError(null);
       qc.invalidateQueries({ queryKey: ["competency-analyses"] });
+      // Refresh the quota indicator so the count drops immediately after each analysis.
+      qc.invalidateQueries({ queryKey: ["my-usage"] });
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -227,17 +237,40 @@ export default function StudioPage() {
             <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{error}</div>
           )}
 
-          <button
-            onClick={() => { setError(null); analyzeMut.mutate(); }}
-            disabled={!jabker || !hasBrain || analyzeMut.isPending}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50"
-          >
-            {analyzeMut.isPending ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Memetakan kompetensi…</>
-            ) : (
-              <><Sparkles className="w-4 h-4" /> Petakan Sekarang</>
-            )}
-          </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={() => { setError(null); analyzeMut.mutate(); }}
+              disabled={!jabker || !hasBrain || analyzeMut.isPending}
+              className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+            >
+              {analyzeMut.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Memetakan kompetensi…</>
+              ) : (
+                <><Sparkles className="w-4 h-4" /> Petakan Sekarang</>
+              )}
+            </button>
+
+            {/* Competency analysis quota pill */}
+            {usage?.competency && (() => {
+              const { remaining, limit, resetAt } = usage.competency;
+              const exhausted = remaining <= 0;
+              const low = remaining <= 1;
+              const resetStr = resetAt
+                ? new Date(resetAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })
+                : null;
+              return (
+                <span className={`text-[11px] px-2.5 py-1 rounded-full border font-medium ${
+                  exhausted ? "bg-red-50 border-red-200 text-red-600"
+                  : low     ? "bg-amber-50 border-amber-200 text-amber-700"
+                  :           "bg-indigo-50 border-indigo-200 text-indigo-600"
+                }`}>
+                  {exhausted
+                    ? `Batas analisis hari ini tercapai${resetStr ? ` · reset ${resetStr}` : ""}`
+                    : `${remaining}/${limit} analisis tersisa hari ini`}
+                </span>
+              );
+            })()}
+          </div>
         </div>
 
         {/* Result */}

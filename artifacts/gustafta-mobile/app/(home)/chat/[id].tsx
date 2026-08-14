@@ -271,6 +271,7 @@ function ExumModal({
   onClose,
   onGenerated,
   colors,
+  exumQuota,
 }: {
   visible: boolean;
   conversationId: number;
@@ -278,6 +279,8 @@ function ExumModal({
   onClose: () => void;
   onGenerated?: (content: string) => void;
   colors: ReturnType<typeof import('@/hooks/useColors').useColors>;
+  /** Daily Exum generation quota — shown so users know how many generations remain. */
+  exumQuota?: { remaining: number; limit: number } | null;
 }) {
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
@@ -440,6 +443,30 @@ function ExumModal({
           )}
         </View>
 
+        {/* ── Exum generation quota badge ─────────────────────────────── */}
+        {exumQuota && phase !== 'done' && (
+          <View style={[
+            em.quotaBadge,
+            {
+              backgroundColor: exumQuota.remaining <= 0 ? '#FEF2F2' : exumQuota.remaining <= 1 ? '#FFFBEB' : '#EEF2FF',
+              borderColor:     exumQuota.remaining <= 0 ? '#FECACA' : exumQuota.remaining <= 1 ? '#FDE68A' : '#C7D2FE',
+            },
+          ]}>
+            <Feather
+              name="zap"
+              size={12}
+              color={exumQuota.remaining <= 0 ? '#DC2626' : exumQuota.remaining <= 1 ? '#D97706' : '#4338CA'}
+            />
+            <Text style={[em.quotaText, {
+              color: exumQuota.remaining <= 0 ? '#DC2626' : exumQuota.remaining <= 1 ? '#D97706' : '#4338CA',
+            }]}>
+              {exumQuota.remaining <= 0
+                ? 'Batas Exum hari ini tercapai'
+                : `${exumQuota.remaining}/${exumQuota.limit} Exum tersisa hari ini`}
+            </Text>
+          </View>
+        )}
+
         {/* ── Checking coverage ───────────────────────────────────────── */}
         {phase === 'checking_coverage' && (
           <View style={em.center}>
@@ -561,6 +588,23 @@ const em = StyleSheet.create({
   errText: { fontSize: 14, fontFamily: 'PlusJakartaSans_400Regular', textAlign: 'center' },
   scrollContent: { padding: 20 },
   exumText: { fontSize: 15, fontFamily: 'PlusJakartaSans_400Regular', lineHeight: 26 },
+  // ── Quota badge ─────────────────────────────────────────────────────────────
+  quotaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  quotaText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    flex: 1,
+  },
   // ── Gap banner ──────────────────────────────────────────────────────────────
   gapBanner: {
     borderWidth: 1,
@@ -1467,8 +1511,11 @@ export default function ChatScreen() {
           setPhase('done');
           queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
           queryClient.invalidateQueries({ queryKey: ['conversations'] });
+          // Refresh the quota counter immediately so the remaining count drops.
+          queryClient.invalidateQueries({ queryKey: ['my-usage'] });
         }}
         colors={colors}
+        exumQuota={usageInfo?.exum ?? null}
       />
     </View>
   );

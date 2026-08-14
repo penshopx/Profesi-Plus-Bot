@@ -1388,6 +1388,8 @@ export default function ChatPage() {
       setExum(result.content);
       setCurrentPhase("done");
       qc.invalidateQueries({ queryKey: ["conversation", id] });
+      // Refresh the quota indicator so the Exum count drops immediately after generation.
+      qc.invalidateQueries({ queryKey: ["my-usage"] });
     } catch (err) {
       if (err instanceof PlanLimitError) {
         setPaywall({ msg: err.message, canUpgrade: true });
@@ -2036,6 +2038,26 @@ export default function ChatPage() {
                     · {plan.freeExumUsed ? `Exum: ${plan.exumCredits} kr` : "Exum gratis"}
                   </span>
                 )}
+                {/* Daily Exum generation quota */}
+                {usage?.exum && (() => {
+                  const { remaining: exumRem, limit: exumLim } = usage.exum;
+                  const exumLow = exumRem <= 1;
+                  return (
+                    <span className={`text-[11px] shrink-0 ${exumLow ? "text-rose-500 font-medium" : "text-muted-foreground"}`}>
+                      · {exumRem}/{exumLim} Exum/hari
+                    </span>
+                  );
+                })()}
+                {/* Daily competency analysis quota */}
+                {usage?.competency && (() => {
+                  const { remaining: compRem, limit: compLim } = usage.competency;
+                  const compLow = compRem <= 1;
+                  return (
+                    <span className={`text-[11px] shrink-0 ${compLow ? "text-rose-500 font-medium" : "text-muted-foreground"}`}>
+                      · {compRem}/{compLim} analisis/hari
+                    </span>
+                  );
+                })()}
               </div>
             </div>
           );

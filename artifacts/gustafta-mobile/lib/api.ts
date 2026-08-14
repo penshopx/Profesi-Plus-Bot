@@ -225,6 +225,13 @@ export async function streamMessage(
 
 // ─── Usage / quota ─────────────────────────────────────────────────────────
 
+export interface UsageCounter {
+  used: number;
+  limit: number;
+  remaining: number;
+  resetAt: string | null;
+}
+
 export interface UsageInfo {
   resetAt: string | null;
   /** Server wall-clock at response time. Use to compute accurate countdown
@@ -235,6 +242,10 @@ export interface UsageInfo {
   remaining: number;
   /** @deprecated use resetAt instead */
   windowMs?: number;
+  /** Per-limiter sub-objects for detailed usage display. */
+  chat?: UsageCounter;
+  exum?: UsageCounter;
+  competency?: UsageCounter;
 }
 
 export async function getMyUsage(): Promise<UsageInfo> {

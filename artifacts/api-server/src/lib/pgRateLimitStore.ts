@@ -12,6 +12,27 @@
 import type { Store, ClientRateLimitInfo, Options } from "express-rate-limit";
 import type { Pool } from "pg";
 
+// ── Module-level DDL singleton ────────────────────────────────────────────────
+//
+// All PgRateLimitStore instances share one table creation promise so that
+// multiple concurrent constructor calls (e.g. chat + exum + competency stores
+// all created at module load time) never race against each other and trigger
+// a PostgreSQL "duplicate key" error on pg_type.
+let tableReadyPromise: Promise<void> | null = null;
+
+function ensureTable(pool: Pool): Promise<void> {
+  if (!tableReadyPromise) {
+    tableReadyPromise = pool.query(`
+      CREATE TABLE IF NOT EXISTS rate_limit_counters (
+        key      TEXT        PRIMARY KEY,
+        hits     INTEGER     NOT NULL DEFAULT 0,
+        reset_at TIMESTAMPTZ NOT NULL
+      )
+    `).then(() => undefined);
+  }
+  return tableReadyPromise;
+}
+
 export class PgRateLimitStore implements Store {
   /**
    * Window length in milliseconds.  Set by express-rate-limit via `init()`.
@@ -23,8 +44,21 @@ export class PgRateLimitStore implements Store {
   /** Resolves once the DDL CREATE TABLE IF NOT EXISTS has completed. */
   private readyPromise: Promise<void>;
 
-  constructor(private readonly pool: Pool) {
-    this.readyPromise = this.createTable();
+  /**
+   * Optional key prefix.  All store operations prepend `<prefix>:` to the key
+   * so multiple limiters can share the same `rate_limit_counters` table without
+   * colliding.  For example prefix="exum" turns key "user:5" into "exum:user:5".
+   */
+  private readonly prefix: string;
+
+  constructor(pool: Pool, opts: { prefix?: string } = {}) {
+    this.prefix = opts.prefix ?? "";
+    this.readyPromise = ensureTable(pool);
+  }
+
+  /** Returns the storage key, optionally namespaced by the configured prefix. */
+  private k(key: string): string {
+    return this.prefix ? `${this.prefix}:${key}` : key;
   }
 
   // ── express-rate-limit Store interface ──────────────────────────────────────
@@ -63,7 +97,7 @@ export class PgRateLimitStore implements Store {
                   END
       RETURNING hits, reset_at
       `,
-      [key, resetAt],
+      [this.k(key), resetAt],
     );
 
     const row = result.rows[0];
@@ -77,7 +111,7 @@ export class PgRateLimitStore implements Store {
       `UPDATE rate_limit_counters
        SET hits = GREATEST(0, hits - 1)
        WHERE key = $1 AND reset_at > NOW()`,
-      [key],
+      [this.k(key)],
     );
   }
 
@@ -88,7 +122,7 @@ export class PgRateLimitStore implements Store {
       `SELECT hits, reset_at
        FROM rate_limit_counters
        WHERE key = $1 AND reset_at > NOW()`,
-      [key],
+      [this.k(key)],
     );
     if (result.rows.length === 0) return undefined;
     const row = result.rows[0];
@@ -98,7 +132,7 @@ export class PgRateLimitStore implements Store {
   /** Remove the stored record for `key` (used by express-rate-limit and tests). */
   async resetKey(key: string): Promise<void> {
     await this.readyPromise;
-    await this.pool.query(`DELETE FROM rate_limit_counters WHERE key = $1`, [key]);
+    await this.pool.query(`DELETE FROM rate_limit_counters WHERE key = $1`, [this.k(key)]);
   }
 
   /** Remove all stored records. */
@@ -107,15 +141,4 @@ export class PgRateLimitStore implements Store {
     await this.pool.query(`DELETE FROM rate_limit_counters`);
   }
 
-  // ── Private helpers ─────────────────────────────────────────────────────────
-
-  private async createTable(): Promise<void> {
-    await this.pool.query(`
-      CREATE TABLE IF NOT EXISTS rate_limit_counters (
-        key      TEXT        PRIMARY KEY,
-        hits     INTEGER     NOT NULL DEFAULT 0,
-        reset_at TIMESTAMPTZ NOT NULL
-      )
-    `);
-  }
 }
