@@ -958,6 +958,9 @@ export type QuizQuestionStats = {
   options: { id: string; text: string }[];
   correctId: string;
   optionCounts: Record<string, number>;
+  /** Answers referencing options that were edited/deleted after attempts were submitted */
+  staleAnswerCount: number;
+  staleAnswerNote: string | null;
   failRate: number;
 };
 
@@ -969,6 +972,10 @@ export type QuizAdminStats = {
   passRate: number;
   avgScore: number;
   questions: QuizQuestionStats[];
+  /** Questions deleted from the quiz after users had answered them */
+  removedQuestionCount: number;
+  removedAnswerCount: number;
+  removedQuestionNote: string | null;
 };
 
 export async function getAdminQuizStats(id: number): Promise<QuizAdminStats> {

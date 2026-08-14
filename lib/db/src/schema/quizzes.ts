@@ -61,6 +61,12 @@ export const quizAttempts = pgTable("quiz_attempts", {
   // answers: { [questionId]: selectedOptionId }
   answers: jsonb("answers").notNull().default({}),
 
+  // Snapshot of the quiz questions EXACTLY as the user saw them
+  // (id, text, options, correctId). Lets stats detect when an admin
+  // edited/deleted questions or options after this attempt was submitted.
+  // Null for attempts recorded before this column existed.
+  questionsSnapshot: jsonb("questions_snapshot"),
+
   score: integer("score").notNull().default(0),      // raw correct count
   totalQuestions: integer("total_questions").notNull().default(0),
   scorePercent: integer("score_percent").notNull().default(0), // 0–100

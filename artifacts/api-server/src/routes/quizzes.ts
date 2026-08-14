@@ -57,7 +57,8 @@ router.get("/quizzes/my-attempts", requireAuth, async (req, res): Promise<void> 
     .from(quizAttempts)
     .where(eq(quizAttempts.userId, req.dbUser!.id))
     .orderBy(desc(quizAttempts.completedAt));
-  res.json(attempts);
+  // Never expose questionsSnapshot to participants — it contains correctId
+  res.json(attempts.map(({ questionsSnapshot: _s, ...a }) => a));
 });
 
 /**
@@ -154,11 +155,22 @@ router.post("/quizzes/:id/attempt", requireAuth, async (req, res): Promise<void>
   if (!quiz) { res.status(404).json({ error: "Quiz tidak ditemukan" }); return; }
 
   const questions = quiz.questions as QuizQuestion[];
+
+  // Only keep answers for questions/options that actually exist in the quiz —
+  // invented keys would otherwise pollute admin statistics later.
+  const validAnswers: Record<string, string> = {};
+  for (const q of questions) {
+    const sel = answers[q.id];
+    if (typeof sel === "string" && q.options.some((o) => o.id === sel)) {
+      validAnswers[q.id] = sel;
+    }
+  }
+
   let correct = 0;
   const feedback: { questionId: string; correct: boolean; explanation?: string }[] = [];
 
   for (const q of questions) {
-    const isCorrect = answers[q.id] === q.correctId;
+    const isCorrect = validAnswers[q.id] === q.correctId;
     if (isCorrect) correct++;
     feedback.push({ questionId: q.id, correct: isCorrect, explanation: q.explanation });
   }
@@ -172,7 +184,14 @@ router.post("/quizzes/:id/attempt", requireAuth, async (req, res): Promise<void>
       userId,
       quizId,
       attemptType,
-      answers,
+      answers: validAnswers,
+      // Snapshot what the user actually saw, so stats can detect later edits
+      questionsSnapshot: questions.map((q) => ({
+        id: q.id,
+        text: q.text,
+        options: q.options,
+        correctId: q.correctId,
+      })),
       score: correct,
       totalQuestions: questions.length,
       scorePercent,
@@ -197,7 +216,9 @@ router.post("/quizzes/:id/attempt", requireAuth, async (req, res): Promise<void>
       );
   }
 
-  res.json({ attempt, feedback, scorePercent, passed, passingScore: quiz.passingScore });
+  // Never expose questionsSnapshot to participants — it contains correctId
+  const { questionsSnapshot: _snap, ...attemptPublic } = attempt;
+  res.json({ attempt: attemptPublic, feedback, scorePercent, passed, passingScore: quiz.passingScore });
 });
 
 // ─── Admin endpoints ──────────────────────────────────────────────────────────
@@ -373,13 +394,43 @@ router.get("/quizzes/admin/stats/:id", requireAuth, requireRole("admin"), async 
     q.options.forEach((o) => { optionCounts[o.id] = 0; });
 
     let incorrectCount = 0;
+    // Answers given against a version of this question that no longer matches
+    // the current one (admin edited/removed options, changed the correct
+    // answer, or reworded the question after users answered). Counted under
+    // an explicit "unknown" bucket instead of being silently dropped or —
+    // worse — relabelled under the edited option text.
+    let unknownCount = 0;
     for (const attempt of attempts) {
       const selected = (attempt.answers as Record<string, string>)?.[q.id];
-      if (selected !== undefined && optionCounts[selected] !== undefined) {
-        optionCounts[selected]++;
+      if (selected === undefined) continue;
+
+      // Snapshot of the question as the user saw it (null for legacy attempts)
+      const snapshot = (attempt.questionsSnapshot as QuizQuestion[] | null)
+        ?.find((sq) => sq.id === q.id);
+
+      let stale: boolean;
+      if (snapshot) {
+        const snapOpt = snapshot.options.find((o) => o.id === selected);
+        const curOpt = q.options.find((o) => o.id === selected);
+        stale =
+          !curOpt ||                                  // option deleted
+          !snapOpt ||                                 // answer doesn't match what was shown
+          snapOpt.text !== curOpt.text ||             // option text edited in place
+          snapshot.correctId !== q.correctId ||       // correct answer changed
+          snapshot.text !== q.text;                   // question reworded
+      } else {
+        // Legacy attempt without snapshot: we can only detect deleted IDs
+        stale = optionCounts[selected] === undefined;
       }
-      if (selected !== q.correctId) incorrectCount++;
+
+      if (stale) unknownCount++;
+      else optionCounts[selected]++;
+
+      // Judge correctness against the version the user actually answered
+      const effectiveCorrectId = snapshot?.correctId ?? q.correctId;
+      if (selected !== effectiveCorrectId) incorrectCount++;
     }
+    if (unknownCount > 0) optionCounts["unknown"] = unknownCount;
 
     return {
       id: q.id,
@@ -387,12 +438,47 @@ router.get("/quizzes/admin/stats/:id", requireAuth, requireRole("admin"), async 
       options: q.options,
       correctId: q.correctId,
       optionCounts,
+      staleAnswerCount: unknownCount,
+      staleAnswerNote: unknownCount > 0
+        ? `${unknownCount} jawaban merujuk opsi yang sudah diubah/dihapus setelah peserta mengerjakan.`
+        : null,
       failRate: totalAttempts > 0 ? Math.round((incorrectCount / totalAttempts) * 100) : 0,
     };
   });
 
   // Sort by failure rate descending so problem questions surface first
   questionStats.sort((a, b) => b.failRate - a.failRate);
+
+  // Questions that were deleted from the quiz entirely after users answered:
+  // their answers can't appear in per-question stats (the question is gone),
+  // so surface an explicit quiz-level count instead of hiding them.
+  //
+  // Removed IDs are derived from questionsSnapshot (what the user was actually
+  // served), NOT from raw answer keys — answer keys are participant input and
+  // could contain invented IDs. For legacy attempts without a snapshot we fall
+  // back (best-effort) to answer keys; those answers were validated against
+  // the quiz at submission time in current code, but very old rows may not be.
+  const currentIds = new Set(questions.map((q) => q.id));
+  const removedIds = new Set<string>();
+  let removedAnswerCount = 0;
+  for (const attempt of attempts) {
+    const answerKeys = Object.keys((attempt.answers as Record<string, string>) ?? {});
+    const snapshot = attempt.questionsSnapshot as QuizQuestion[] | null;
+    if (snapshot) {
+      for (const sq of snapshot) {
+        if (currentIds.has(sq.id)) continue;
+        removedIds.add(sq.id); // reported even if the user left it unanswered
+        if (answerKeys.includes(sq.id)) removedAnswerCount++;
+      }
+    } else {
+      for (const qid of answerKeys) {
+        if (!currentIds.has(qid)) {
+          removedIds.add(qid);
+          removedAnswerCount++;
+        }
+      }
+    }
+  }
 
   res.json({
     quizId,
@@ -402,6 +488,11 @@ router.get("/quizzes/admin/stats/:id", requireAuth, requireRole("admin"), async 
     passRate: totalAttempts > 0 ? Math.round((passCount / totalAttempts) * 100) : 0,
     avgScore,
     questions: questionStats,
+    removedQuestionCount: removedIds.size,
+    removedAnswerCount,
+    removedQuestionNote: removedIds.size > 0
+      ? `${removedIds.size} soal dihapus dari quiz setelah ${removedAnswerCount} jawaban peserta tercatat; jawaban tersebut tidak muncul di rincian per soal.`
+      : null,
   });
 });
 

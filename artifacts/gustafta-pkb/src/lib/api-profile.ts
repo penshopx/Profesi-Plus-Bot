@@ -310,6 +310,9 @@ export interface QuizQuestionStat {
   options: QuizOptionStat[];
   correctId: string;
   optionCounts: Record<string, number>;
+  /** Answers referencing options that were edited/deleted after attempts were submitted */
+  staleAnswerCount: number;
+  staleAnswerNote: string | null;
   failRate: number;
 }
 
@@ -321,6 +324,10 @@ export interface QuizStats {
   passRate: number;
   avgScore: number;
   questions: QuizQuestionStat[];
+  /** Questions deleted from the quiz after users had answered them */
+  removedQuestionCount: number;
+  removedAnswerCount: number;
+  removedQuestionNote: string | null;
 }
 
 export interface QuizBulkStat {

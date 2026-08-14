@@ -25,6 +25,7 @@ import {
   getAdminQuizStats, getAdminQuizAllStats,
   type QuizFullAdmin, type QuizQuestionAdmin, type QuizCreateInput, type QuizStats, type QuizBulkStat,
 } from "@/lib/api-profile";
+import { buildQuizStatsCsv } from "@/lib/quiz-stats-csv";
 
 const ROLE_LABELS: Record<string, string> = {
   user: "Peserta",
@@ -912,34 +913,6 @@ function CourseModal({
 
 // ─── Quiz Stats Modal ─────────────────────────────────────────────────────────
 
-function csvEscape(value: string | number): string {
-  const s = String(value);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-function buildQuizStatsCsv(stats: QuizStats): string {
-  const maxOptions = Math.max(0, ...stats.questions.map((q) => q.options.length));
-  const header = [
-    "No", "Pertanyaan", "Persen Salah (%)", "Jawaban Benar", "Teks Jawaban Benar", "Total Percobaan",
-  ];
-  for (let i = 0; i < maxOptions; i++) {
-    header.push(`Opsi ${i + 1} ID`, `Opsi ${i + 1} Teks`, `Opsi ${i + 1} Jumlah`);
-  }
-  const rows = stats.questions.map((q, idx) => {
-    const correct = q.options.find((o) => o.id === q.correctId);
-    const row: (string | number)[] = [
-      idx + 1, q.text, q.failRate, q.correctId.toUpperCase(), correct?.text ?? "", stats.totalAttempts,
-    ];
-    for (let i = 0; i < maxOptions; i++) {
-      const opt = q.options[i];
-      if (opt) row.push(opt.id.toUpperCase(), opt.text, q.optionCounts[opt.id] ?? 0);
-      else row.push("", "", "");
-    }
-    return row;
-  });
-  return [header, ...rows].map((r) => r.map(csvEscape).join(",")).join("\r\n");
-}
-
 function downloadQuizStatsCsv(stats: QuizStats) {
   // BOM so Excel opens UTF-8 correctly
   const blob = new Blob(["\uFEFF" + buildQuizStatsCsv(stats)], { type: "text/csv;charset=utf-8;" });
@@ -1023,6 +996,12 @@ function QuizStatsModal({ quizId, onClose }: { quizId: number; onClose: () => vo
                 </p>
               )}
 
+              {stats.removedQuestionNote && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+                  {stats.removedQuestionNote}
+                </p>
+              )}
+
               {/* Per-question breakdown */}
               {stats.totalAttempts > 0 && (
                 <div className="space-y-4">
@@ -1071,7 +1050,25 @@ function QuizStatsModal({ quizId, onClose }: { quizId: number; onClose: () => vo
                               </div>
                             );
                           })}
+                          {(q.staleAnswerCount ?? 0) > 0 && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-mono w-5 shrink-0 text-amber-600">?</span>
+                              <div className="flex-1 relative h-5 rounded-md bg-amber-50 border border-amber-200 overflow-hidden">
+                                <span className="absolute inset-y-0 left-2 flex items-center text-[11px] text-amber-700 truncate pr-2">
+                                  Opsi sudah diubah/dihapus
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-amber-700 w-12 text-right shrink-0">
+                                {q.staleAnswerCount}× ({total > 0 ? Math.round((q.staleAnswerCount / total) * 100) : 0}%)
+                              </span>
+                            </div>
+                          )}
                         </div>
+                        {q.staleAnswerNote && (
+                          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+                            {q.staleAnswerNote}
+                          </p>
+                        )}
                       </div>
                     );
                   })}

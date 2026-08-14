@@ -27,7 +27,7 @@ function failColor(rate: number, colors: ReturnType<typeof useColors>): string {
   return colors.primary;
 }
 
-function QuestionStatCard({
+export function QuestionStatCard({
   q,
   index,
   totalAttempts,
@@ -102,7 +102,29 @@ function QuestionStatCard({
             </View>
           );
         })}
+        {(q.staleAnswerCount ?? 0) > 0 && (
+          <View
+            style={[
+              qs.option,
+              { backgroundColor: '#F59E0B18', borderColor: '#F59E0B55' },
+            ]}
+          >
+            <Text
+              style={[
+                qs.optLabel,
+                { flex: 1, color: '#B45309', fontFamily: 'PlusJakartaSans_400Regular' },
+              ]}
+            >
+              ?. Opsi sudah diubah/dihapus
+            </Text>
+            <Text style={[qs.optCount, { color: '#B45309' }]}>{q.staleAnswerCount}×</Text>
+          </View>
+        )}
       </View>
+
+      {q.staleAnswerNote ? (
+        <Text style={[qs.noData, { color: '#B45309' }]}>{q.staleAnswerNote}</Text>
+      ) : null}
 
       {totalAttempts === 0 ? (
         <Text style={[qs.noData, { color: colors.mutedForeground }]}>
@@ -202,6 +224,22 @@ export default function QuizStatsScreen() {
             </View>
           ) : (
             <>
+              {stats.removedQuestionNote ? (
+                <View
+                  style={{
+                    backgroundColor: '#F59E0B18',
+                    borderColor: '#F59E0B55',
+                    borderWidth: 1,
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, lineHeight: 17, color: '#B45309' }}>
+                    {stats.removedQuestionNote}
+                  </Text>
+                </View>
+              ) : null}
               <Text style={[st.sectionLabel, { color: colors.mutedForeground }]}>
                 Tingkat kegagalan per soal — tertinggi di atas
               </Text>
