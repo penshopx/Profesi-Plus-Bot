@@ -869,6 +869,35 @@ export async function getQuizCoverage(): Promise<QuizCoverageResult> {
   return res.json();
 }
 
+// ─── Quiz summary ("Data Quiz Saya") ─────────────────────────────────────────
+
+export interface QuizAttemptBest {
+  score: number;
+  passed: boolean;
+  completedAt: string;
+}
+
+export interface MyQuizSummaryEntry {
+  quizId: number;
+  quizTitle: string;
+  jabker: string | null;
+  skkUnitCode: string | null;
+  quizType: string; // "learning" | "proficiency"
+  passingScore: number;
+  pre?: QuizAttemptBest;
+  post?: QuizAttemptBest;
+  proficiency?: QuizAttemptBest;
+}
+
+/**
+ * Best score per attempt type (pre/post/proficiency) per quiz — used by the
+ * "Data Quiz Saya" panel shown before Exum generation.
+ */
+export async function getMyQuizSummary(): Promise<MyQuizSummaryEntry[]> {
+  const res = await apiFetch('/quizzes/my-summary');
+  return res.json();
+}
+
 export async function getMyPayments(): Promise<PaymentRecord[]> {
   const res = await apiFetch('/users/me/payments');
   return res.json();

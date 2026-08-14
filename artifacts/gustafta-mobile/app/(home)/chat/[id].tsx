@@ -35,6 +35,7 @@ import {
 import { Audio } from 'expo-av';
 import { useAuth } from '@clerk/expo';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { QuizSummaryPanel } from '@/components/QuizSummaryPanel';
 import { useNetworkState } from '@/hooks/useNetworkState';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1325,6 +1326,10 @@ export default function ChatScreen() {
                 </>
               )}
             </Pressable>
+          )}
+
+          {phase === 'synthesis' && !isStreaming && !exumContent && isOnline && (
+            <QuizSummaryPanel jabker={jabker} colors={colors} />
           )}
 
           {phase === 'synthesis' && !isStreaming && !exumContent && isOnline && (
