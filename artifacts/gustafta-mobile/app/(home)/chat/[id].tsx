@@ -259,6 +259,7 @@ const mb = StyleSheet.create({
  */
 type ExumPhase =
   | 'checking_coverage'
+  | 'no_claims'
   | 'gap_warning'
   | 'coverage_error'
   | 'generating'
@@ -291,6 +292,8 @@ function ExumModal({
   const [content, setContent] = useState(existingContent || '');
   const [genError, setGenError] = useState('');
   const [coverageGaps, setCoverageGaps] = useState<QuizCoverageGap[]>([]);
+  /** Total APL 02 claims; null until the coverage response arrives. */
+  const [claimsCount, setClaimsCount] = useState<number | null>(null);
   const [gapsExpanded, setGapsExpanded] = useState(false);
   /** True while the background coverage check for an already-generated Exum is in flight.
    * Refresh is disabled until this resolves so the gap gate cannot be bypassed. */
@@ -318,7 +321,11 @@ function ExumModal({
     try {
       const result = await getQuizCoverage();
       setCoverageGaps(result.gaps);
-      if (result.gaps.length > 0) {
+      setClaimsCount(result.claimsCount ?? null);
+      if (result.claimsCount === 0) {
+        // No claims at all — nudge the user to fill in APL 02 first
+        setPhase('no_claims');
+      } else if (result.gaps.length > 0) {
         setPhase('gap_warning');
       } else {
         // No gaps — proceed straight to generation
@@ -357,12 +364,16 @@ function ExumModal({
       // gap gate cannot be bypassed by tapping refresh before data arrives.
       setCoverageLoading(true);
       getQuizCoverage()
-        .then((r) => setCoverageGaps(r.gaps))
+        .then((r) => {
+          setCoverageGaps(r.gaps);
+          setClaimsCount(r.claimsCount ?? null);
+        })
         .catch(() => {/* informational only — ignore */})
         .finally(() => setCoverageLoading(false));
     } else {
       setContent('');
       setCoverageGaps([]);
+      setClaimsCount(null);
       setGapsExpanded(false);
       checkCoverage();
     }
@@ -494,6 +505,50 @@ function ExumModal({
           </View>
         )}
 
+        {/* ── No claims yet — informational nudge to fill APL 02 first ──── */}
+        {phase === 'no_claims' && (
+          <ScrollView contentContainerStyle={em.scrollContent}>
+            <View style={em.center}>
+              <Feather name="info" size={44} color="#1D4ED8" />
+              <Text style={[em.gapWarningTitle, { color: colors.foreground }]}>
+                Belum ada klaim kompetensi
+              </Text>
+              <Text style={[em.gapWarningBody, { color: colors.mutedForeground }]}>
+                Kamu belum menambahkan klaim kompetensi (APL 02). Tambahkan dulu di
+                profilmu agar Exum bisa disesuaikan dengan unit kompetensi yang kamu klaim.
+              </Text>
+            </View>
+            <View style={em.gapActions}>
+              <Pressable
+                onPress={() => {
+                  onClose();
+                  router.push('/(home)/(tabs)/profile' as never);
+                }}
+                style={[em.gapActionBtn, { backgroundColor: '#1D4ED8' }]}
+                accessibilityRole="button"
+                accessibilityLabel="Buka profil untuk menambahkan klaim kompetensi"
+              >
+                <Text style={[em.gapActionBtnText, { color: '#fff' }]}>
+                  Isi APL 02 di Profil
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={doGenerate}
+                style={[em.gapActionBtn, { backgroundColor: colors.primary }]}
+              >
+                <Text style={[em.gapActionBtnText, { color: colors.primaryForeground }]}>
+                  Buat Exum tetap
+                </Text>
+              </Pressable>
+              <Pressable onPress={onClose} style={em.gapCancelBtn}>
+                <Text style={[em.gapCancelText, { color: colors.mutedForeground }]}>
+                  Kembali
+                </Text>
+              </Pressable>
+            </View>
+          </ScrollView>
+        )}
+
         {/* ── Gap warning — user must acknowledge before generation ─────── */}
         {phase === 'gap_warning' && (
           <ScrollView contentContainerStyle={em.scrollContent}>
@@ -577,6 +632,25 @@ function ExumModal({
         {/* ── Done — content with optional informational gap banner ────── */}
         {phase === 'done' && (
           <ScrollView contentContainerStyle={em.scrollContent}>
+            {claimsCount === 0 && (
+              <View style={[em.gapBanner, { backgroundColor: '#DBEAFE', borderColor: '#93C5FD' }]}>
+                <Pressable
+                  onPress={() => {
+                    onClose();
+                    router.push('/(home)/(tabs)/profile' as never);
+                  }}
+                  style={em.gapBannerHeader}
+                  accessibilityRole="button"
+                  accessibilityLabel="Buka profil untuk menambahkan klaim kompetensi"
+                >
+                  <Feather name="info" size={16} color="#1D4ED8" />
+                  <Text style={[em.gapBannerTitle, { color: '#1D4ED8' }]}>
+                    Belum ada klaim kompetensi — isi APL 02 di profilmu
+                  </Text>
+                  <Feather name="chevron-right" size={16} color="#1D4ED8" />
+                </Pressable>
+              </View>
+            )}
             {coverageGaps.length > 0 && <GapList />}
             <Text style={[em.exumText, { color: colors.foreground }]}>
               {content || 'Tidak ada konten.'}

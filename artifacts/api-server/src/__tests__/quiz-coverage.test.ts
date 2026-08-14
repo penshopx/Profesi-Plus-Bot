@@ -145,7 +145,7 @@ describe("GET /profiles/me/quiz-coverage", () => {
       .set(AUTH);
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ gaps: [] });
+    expect(res.body).toEqual({ gaps: [], claimsCount: 0 });
   });
 
   // ── 3. Passing attempt exists → unit not flagged ──────────────────────────
@@ -237,5 +237,6 @@ describe("GET /profiles/me/quiz-coverage", () => {
     expect(res.body.gaps).toHaveLength(1);
     expect(res.body.gaps[0].skkUnitCode).toBe("K3.02");
     expect(res.body.gaps[0].quizId).toBe(8);
+    expect(res.body.claimsCount).toBe(2);
   });
 });

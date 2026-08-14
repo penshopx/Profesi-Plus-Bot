@@ -858,6 +858,8 @@ export interface QuizCoverageGap {
 
 export interface QuizCoverageResult {
   gaps: QuizCoverageGap[];
+  /** Total number of APL 02 competency claims the user has (0 = none yet). */
+  claimsCount: number;
 }
 
 /**

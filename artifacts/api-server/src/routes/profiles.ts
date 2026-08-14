@@ -141,7 +141,7 @@ router.get("/profiles/me/quiz-coverage", requireAuth, async (req, res): Promise<
     .where(eq(competencyClaims.userId, userId));
 
   if (claims.length === 0) {
-    res.json({ gaps: [] });
+    res.json({ gaps: [], claimsCount: 0 });
     return;
   }
 
@@ -183,7 +183,7 @@ router.get("/profiles/me/quiz-coverage", requireAuth, async (req, res): Promise<
       };
     });
 
-  res.json({ gaps });
+  res.json({ gaps, claimsCount: claims.length });
 });
 
 export default router;
