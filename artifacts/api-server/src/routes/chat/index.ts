@@ -12,6 +12,7 @@ import { findJabkerGroup } from "../../lib/skk-data";
 import { requireAuth } from "../../middlewares/auth";
 import { chatMessageRateLimiter, exumRateLimiter } from "../../middlewares/rateLimiter";
 import { applySharedContextBudget } from "../../lib/context-budget";
+import { buildChatContextBlocks } from "../../lib/chat-context-blocks";
 import { sendPushNotification } from "../../lib/push";
 
 const router: IRouter = Router();
@@ -287,18 +288,20 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
     req.log.warn({ userId: req.dbUser!.id, convId }, "All personalisation context blocks are empty — AI will give generic advice");
   }
   // Enforce a shared character budget across all context blocks.
-  // Priority (higher = preserved first when budget is tight):
-  //   7 profile, 6 competency, 5 quiz, 4.5 watchedModules, 4 kegiatan, 3 knowledge, 2 projectBrain, 1 historical
-  const combinedContext = applySharedContextBudget([
-    { content: profileContext,         priority: 7 },
-    { content: competencyContext,      priority: 6 },
-    { content: quizContext,            priority: 5 },
-    { content: watchedModulesContext,  priority: 4.5 },
-    { content: kegiatanContext,        priority: 4 },
-    { content: knowledgeContext,       priority: 3 },
-    { content: projectBrainContext,    priority: 2 },
-    { content: historicalPKBContext,   priority: 1 },
-  ]);
+  // Priority table lives in lib/chat-context-blocks.ts so the integration tests
+  // can import and exercise the same wiring without maintaining a duplicate.
+  const combinedContext = applySharedContextBudget(
+    buildChatContextBlocks({
+      profileContext,
+      competencyContext,
+      quizContext,
+      watchedModulesContext,
+      kegiatanContext,
+      knowledgeContext,
+      projectBrainContext,
+      historicalPKBContext,
+    }),
+  );
   // Mark only entries whose block survived the shared budget (fire-and-forget).
   markProjectBrainUsed(pbMeta, combinedContext);
   const systemPrompt = buildSystemPrompt(
