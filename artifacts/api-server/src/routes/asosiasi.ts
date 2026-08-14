@@ -22,6 +22,7 @@ import {
   pkbActivities, pkbActivitySkk, pkbActivityDocs, pkbActivityJourney, pkbActivityChecklist,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
+import { sendPushNotification } from "../lib/push";
 
 const router = Router();
 
@@ -171,6 +172,23 @@ router.post("/asosiasi/submissions/:id/checklist", requireAuth, requireAsosiasi,
       : "Dokumen perlu perbaikan — catatan dari Asosiasi",
     metadata: { suratUndangan, daftarHadir, foto, penyelenggaraValid, catatan, verifierId },
   });
+
+  // Non-blocking push notification to activity owner
+  const [owner] = await db
+    .select({ id: users.id, expoPushToken: users.expoPushToken })
+    .from(users)
+    .where(eq(users.id, act.userId))
+    .limit(1);
+  if (owner?.expoPushToken) {
+    sendPushNotification(owner.id, owner.expoPushToken!, {
+      title: allClear ? "Dokumen Lengkap ✅" : "Dokumen Perlu Perbaikan ⚠️",
+      body: allClear
+        ? "✅ Dokumen kegiatan Anda dinyatakan lengkap"
+        : "⚠️ Asosiasi menemukan kekurangan dokumen — tap untuk lihat catatan",
+      data: { activityId: String(id) },
+      channelId: "kegiatan",
+    }, req.log).catch(() => {/* already logged inside helper */});
+  }
 
   res.json({ success: true, status: newStatus });
 });
