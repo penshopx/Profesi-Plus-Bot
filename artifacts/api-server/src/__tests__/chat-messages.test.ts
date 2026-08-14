@@ -526,6 +526,71 @@ describe("POST /api/chat/generate-exum", () => {
     expect(vi.mocked(buildProfileContext)).toHaveBeenCalledWith(42);
   });
 
+  it("includes quiz context in the Exum LLM prompt", async () => {
+    dbState.push([FAKE_CONV], [], [], [], undefined, undefined);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    expect(res.status).toBe(200);
+
+    const prompt = capturedLLMMessages[0];
+    expect(prompt.role).toBe("user");
+
+    // Quiz context from buildQuizContext must appear so the Exum references
+    // the user's measured competency scores — not generic descriptions.
+    expect(prompt.content).toContain("DATA QUIZ PKB TKK");
+    expect(prompt.content).toContain("SKK.01.001");
+    expect(prompt.content).toContain("Pre=55%");
+    expect(prompt.content).toContain("Post=85%");
+    expect(prompt.content).toContain("SKK.02.003");
+  });
+
+  it("does not return 500 and still returns 200 when buildProfileContext throws during Exum generation", async () => {
+    const { buildProfileContext } = await import("../lib/historical-pkb.js");
+    vi.mocked(buildProfileContext).mockRejectedValueOnce(new Error("Profile DB unreachable"));
+
+    dbState.push([FAKE_CONV], [], [], [], undefined, undefined);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    // safeExumCtx must absorb the exception — a profile DB failure must never
+    // crash the entire Exum generation and cost the user their credit.
+    expect(res.status).toBe(200);
+
+    // The Exum should still be generated; other context (e.g. competency) must
+    // still reach the prompt even when profile is unavailable.
+    const prompt = capturedLLMMessages[0];
+    expect(prompt.role).toBe("user");
+    expect(prompt.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+  });
+
+  it("does not return 500 and still returns 200 when buildQuizContext throws during Exum generation", async () => {
+    const { buildQuizContext } = await import("../lib/historical-pkb.js");
+    vi.mocked(buildQuizContext).mockRejectedValueOnce(new Error("Quiz table unavailable"));
+
+    // When quiz context throws AND user has zero attempts the footer is suppressed.
+    // Pass 0 for the count so we get a clean 200 without the footer complicating the assertion.
+    dbState.push([FAKE_CONV], [], [], [], [{ total: 0 }], undefined, undefined);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    // safeExumCtx must absorb the exception — a quiz DB failure must not crash
+    // Exum generation and must not charge the user a credit.
+    expect(res.status).toBe(200);
+
+    // Profile and competency context must still reach the prompt.
+    const prompt = capturedLLMMessages[0];
+    expect(prompt.role).toBe("user");
+    expect(prompt.content).toContain("PROFIL APL 01 TKK");
+    expect(prompt.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+  });
+
   it("refunds the reserved credit and returns 503 when the LLM call fails", async () => {
     // Queue items consumed before the LLM call: conv, messages, evidenceItems, exumOutlines
     dbState.push([FAKE_CONV], [], [], []);
