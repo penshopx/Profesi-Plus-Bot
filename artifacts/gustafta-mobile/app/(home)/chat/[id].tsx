@@ -285,6 +285,7 @@ function ExumModal({
 }) {
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
+  const router = useRouter();
 
   const [phase, setPhase] = useState<ExumPhase>('checking_coverage');
   const [content, setContent] = useState(existingContent || '');
@@ -400,6 +401,21 @@ function ExumModal({
                 <Text style={em.gapName}>{gap.skkUnitName}</Text>
                 {gap.quizTitle && (
                   <Text style={em.gapQuizHint}>Kuis tersedia: {gap.quizTitle}</Text>
+                )}
+                {gap.quizId != null && (
+                  <Pressable
+                    onPress={() => {
+                      // Close the modal first, then navigate to the quiz screen.
+                      onClose();
+                      router.push(`/(home)/quiz/${gap.quizId}` as never);
+                    }}
+                    style={em.gapQuizBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Mulai kuis ${gap.quizTitle ?? gap.skkUnitCode}`}
+                  >
+                    <Feather name="play" size={12} color="#92400E" />
+                    <Text style={em.gapQuizBtnText}>Mulai kuis</Text>
+                  </Pressable>
                 )}
               </View>
             </View>
@@ -659,6 +675,24 @@ const em = StyleSheet.create({
     color: '#B45309',
     marginTop: 2,
     fontStyle: 'italic',
+  },
+  gapQuizBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 5,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    backgroundColor: '#FDE68A',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  gapQuizBtnText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: '#92400E',
   },
   // ── Gap warning phase (full-screen confirmation before generation) ────────────
   gapWarningTitle: {

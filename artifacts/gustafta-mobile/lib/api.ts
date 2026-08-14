@@ -869,6 +869,58 @@ export async function getQuizCoverage(): Promise<QuizCoverageResult> {
   return res.json();
 }
 
+// ─── Quiz taking (user-facing) ───────────────────────────────────────────────
+
+export interface QuizPublicQuestion {
+  id: string;
+  text: string;
+  options: { id: string; text: string }[];
+}
+
+export interface QuizFull {
+  id: number;
+  title: string;
+  description?: string | null;
+  jabker?: string | null;
+  skkUnitCode?: string | null;
+  skkUnitName?: string | null;
+  quizType: 'learning' | 'proficiency';
+  passingScore: number;
+  questions: QuizPublicQuestion[];
+}
+
+/** Fetches one active quiz with its questions (answers stripped server-side). */
+export async function getQuiz(id: number): Promise<QuizFull> {
+  const res = await apiFetch(`/quizzes/${id}`);
+  return res.json();
+}
+
+export interface QuizAttemptFeedback {
+  questionId: string;
+  correct: boolean;
+  explanation?: string;
+}
+
+export interface QuizAttemptResult {
+  scorePercent: number;
+  passed: boolean;
+  passingScore: number;
+  feedback: QuizAttemptFeedback[];
+}
+
+/** Submits answers ({ questionId: selectedOptionId }) and returns score + feedback. */
+export async function submitQuizAttempt(
+  quizId: number,
+  answers: Record<string, string>,
+  attemptType: 'pre' | 'post' | 'proficiency',
+): Promise<QuizAttemptResult> {
+  const res = await apiFetch(`/quizzes/${quizId}/attempt`, {
+    method: 'POST',
+    body: JSON.stringify({ answers, attemptType }),
+  });
+  return res.json();
+}
+
 // ─── Quiz summary ("Data Quiz Saya") ─────────────────────────────────────────
 
 export interface QuizAttemptBest {
