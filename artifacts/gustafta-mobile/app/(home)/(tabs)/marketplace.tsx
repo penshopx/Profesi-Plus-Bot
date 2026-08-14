@@ -23,6 +23,7 @@ import {
   Platform,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -55,6 +56,30 @@ async function loadCachedCatalog(): Promise<MarketplaceCatalogCourse[]> {
 async function saveCatalogCache(data: MarketplaceCatalogCourse[]): Promise<void> {
   try {
     await AsyncStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(data));
+  } catch {}
+}
+
+// ─── Offline watched-courses cache ───────────────────────────────────────────
+//
+// The key is scoped to the authenticated user so that two accounts sharing a
+// device never read each other's watch history from disk.
+
+function watchedCacheKey(userId: string): string {
+  return `GUSTAFTA_MARKETPLACE_WATCHED_CACHE_${userId}`;
+}
+
+async function loadCachedWatched(userId: string): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem(watchedCacheKey(userId));
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveWatchedCache(userId: string, ids: string[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(watchedCacheKey(userId), JSON.stringify(ids));
   } catch {}
 }
 
@@ -624,6 +649,7 @@ export default function MarketplaceScreen() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const { isOnline } = useNetworkState();
+  const { userId } = useAuth();
 
   const [search, setSearch] = useState('');
   const [filterJabker, setFilterJabker] = useState('');
@@ -634,12 +660,25 @@ export default function MarketplaceScreen() {
   const [cachedCatalog, setCachedCatalog] = useState<MarketplaceCatalogCourse[]>([]);
   const [cacheLoaded, setCacheLoaded] = useState(false);
 
+  // ── Offline watched-courses cache ─────────────────────────────────────────
+  const [cachedWatchedIds, setCachedWatchedIds] = useState<string[]>([]);
+  const [watchedCacheLoaded, setWatchedCacheLoaded] = useState(false);
+
   useEffect(() => {
     loadCachedCatalog().then((data) => {
       setCachedCatalog(data);
       setCacheLoaded(true);
     });
-  }, []);
+    if (userId) {
+      loadCachedWatched(userId).then((ids) => {
+        setCachedWatchedIds(ids);
+        setWatchedCacheLoaded(true);
+      });
+    } else {
+      // No authenticated user — skip disk read, allow query to proceed unfenced
+      setWatchedCacheLoaded(true);
+    }
+  }, [userId]);
 
   // Fetch catalog from backend; stale time 10 min (catalog changes rarely)
   const {
@@ -675,16 +714,26 @@ export default function MarketplaceScreen() {
     [courses],
   );
 
-  // Fetch watched status from backend
+  // Fetch watched status from backend (wait for cache to load first)
   const { data: watchedData, isLoading: watchedLoading, refetch: refetchWatched } = useQuery({
     queryKey: ['marketplace-watched'],
     queryFn: getWatchedCourses,
     staleTime: 1000 * 60,
+    enabled: watchedCacheLoaded,
   });
 
+  // Persist successful watched fetches to AsyncStorage
+  useEffect(() => {
+    if (watchedData?.watchedIds && userId) {
+      setCachedWatchedIds(watchedData.watchedIds);
+      saveWatchedCache(userId, watchedData.watchedIds);
+    }
+  }, [watchedData, userId]);
+
+  // Use live data when available; fall back to cached list when offline
   const watchedIds = useMemo(
-    () => new Set(watchedData?.watchedIds ?? []),
-    [watchedData],
+    () => new Set(watchedData?.watchedIds ?? cachedWatchedIds),
+    [watchedData, cachedWatchedIds],
   );
 
   const toggleWatch = useMutation({
@@ -711,6 +760,18 @@ export default function MarketplaceScreen() {
     },
     onError: (_err, _vars, ctx: any) => {
       if (ctx?.prev) queryClient.setQueryData(['marketplace-watched'], ctx.prev);
+    },
+    onSuccess: (_data, { course, isWatched }) => {
+      // Keep AsyncStorage in sync after a successful toggle
+      if (userId) {
+        setCachedWatchedIds((prev) => {
+          const newIds = isWatched
+            ? prev.filter((id) => id !== course.id)
+            : [...prev, course.id];
+          saveWatchedCache(userId, newIds);
+          return newIds;
+        });
+      }
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['marketplace-watched'] });
