@@ -132,6 +132,15 @@ function primeActivity(
 describe("Role guard — only admin may access verification routes", () => {
   // All non-admin roles including the removed "askom" role must receive 403
   for (const role of ["user", "instruktur", "lembaga_diklat", "asosiasi", "askom"]) {
+    it(`returns 403 for role=${role} on list`, async () => {
+      selectCallCount = 0;
+      selectResponses.length = 0;
+      selectResponses.push([]); // empty list
+      const app = await buildApp(role);
+      const res = await request(app).get("/api/askom/submissions");
+      expect(res.status).toBe(403);
+    });
+
     it(`returns 403 for role=${role} on verify`, async () => {
       primeActivity("diajukan");
       const app = await buildApp(role);
