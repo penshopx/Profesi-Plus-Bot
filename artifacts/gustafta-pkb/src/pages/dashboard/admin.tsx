@@ -5,7 +5,7 @@ import { useState } from "react";
 import {
   LayoutDashboard, LogOut, Users, Video, MessageSquare,
   CheckCircle2, ChevronDown, Search, BookOpen, Plus, Pencil, Trash2, X, Sparkles, Award,
-  ClipboardList, ChevronUp, ToggleLeft, ToggleRight, AlertCircle, BarChart2, Loader2, ShoppingBag,
+  ClipboardList, ChevronUp, ToggleLeft, ToggleRight, AlertCircle, BarChart2, Loader2, ShoppingBag, Download,
   Star,
 } from "lucide-react";
 import {
@@ -912,6 +912,48 @@ function CourseModal({
 
 // ─── Quiz Stats Modal ─────────────────────────────────────────────────────────
 
+function csvEscape(value: string | number): string {
+  const s = String(value);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function buildQuizStatsCsv(stats: QuizStats): string {
+  const maxOptions = Math.max(0, ...stats.questions.map((q) => q.options.length));
+  const header = [
+    "No", "Pertanyaan", "Persen Salah (%)", "Jawaban Benar", "Teks Jawaban Benar", "Total Percobaan",
+  ];
+  for (let i = 0; i < maxOptions; i++) {
+    header.push(`Opsi ${i + 1} ID`, `Opsi ${i + 1} Teks`, `Opsi ${i + 1} Jumlah`);
+  }
+  const rows = stats.questions.map((q, idx) => {
+    const correct = q.options.find((o) => o.id === q.correctId);
+    const row: (string | number)[] = [
+      idx + 1, q.text, q.failRate, q.correctId.toUpperCase(), correct?.text ?? "", stats.totalAttempts,
+    ];
+    for (let i = 0; i < maxOptions; i++) {
+      const opt = q.options[i];
+      if (opt) row.push(opt.id.toUpperCase(), opt.text, q.optionCounts[opt.id] ?? 0);
+      else row.push("", "", "");
+    }
+    return row;
+  });
+  return [header, ...rows].map((r) => r.map(csvEscape).join(",")).join("\r\n");
+}
+
+function downloadQuizStatsCsv(stats: QuizStats) {
+  // BOM so Excel opens UTF-8 correctly
+  const blob = new Blob(["\uFEFF" + buildQuizStatsCsv(stats)], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const safeTitle = stats.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "quiz";
+  a.href = url;
+  a.download = `statistik-quiz-${safeTitle}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function QuizStatsModal({ quizId, onClose }: { quizId: number; onClose: () => void }) {
   const { data: stats, isLoading, error } = useQuery<QuizStats>({
     queryKey: ["admin-quiz-stats", quizId],
@@ -929,9 +971,20 @@ function QuizStatsModal({ quizId, onClose }: { quizId: number; onClose: () => vo
               {stats?.title ?? "Statistik Quiz"}
             </h2>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {stats && stats.questions.length > 0 && (
+              <button
+                onClick={() => downloadQuizStatsCsv(stats)}
+                className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-foreground"
+                title="Unduh data statistik sebagai CSV"
+              >
+                <Download className="w-3.5 h-3.5" /> Export CSV
+              </button>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="px-6 py-5 space-y-5">
