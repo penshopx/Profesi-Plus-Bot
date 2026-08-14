@@ -540,12 +540,40 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [tab, setTab] = useState<"info"|"dokumen"|"journey">("info");
+  // Auto-mapping runs fire-and-forget on the server after create/update, so
+  // SKK results land in the DB a few seconds after the API responds. Poll the
+  // detail endpoint for ~30s while the SKK list is still empty so the mapped
+  // units appear without a manual refresh.
+  const SKK_POLL_WINDOW_MS = 30_000;
+  const SKK_POLL_INTERVAL_MS = 3_000;
+  const skkPollStartRef = useRef(Date.now());
   const { data: full, refetch } = useQuery<Activity>({
     queryKey: ["kegiatan-detail", activity.id],
     queryFn: () => apiFetch(`/kegiatan/${activity.id}`),
     initialData: activity,
     staleTime: 30 * 1000,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data || (data.skk ?? []).length > 0) return false;
+      if (["diajukan", "diverifikasi"].includes(data.status)) return false;
+      if (Date.now() - skkPollStartRef.current > SKK_POLL_WINDOW_MS) return false;
+      return SKK_POLL_INTERVAL_MS;
+    },
   });
+
+  // Restart the polling window whenever the activity is edited (updatedAt
+  // changes) — an edit may retrigger auto-mapping on the server.
+  useEffect(() => {
+    skkPollStartRef.current = Date.now();
+  }, [full.updatedAt]);
+
+  // When auto-mapped SKK arrives, sync the list view (SKK count badge).
+  const skkCount = (full.skk ?? []).length;
+  useEffect(() => {
+    if (skkCount > 0) {
+      queryClient.invalidateQueries({ queryKey: ["kegiatan"] });
+    }
+  }, [skkCount, queryClient]);
 
   const s = STATUS_META[full.status] ?? STATUS_META.draft;
   const SIcon = s.icon;

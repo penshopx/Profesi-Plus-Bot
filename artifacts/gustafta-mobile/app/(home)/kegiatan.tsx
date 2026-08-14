@@ -881,11 +881,42 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
   const [showEdit, setShowEdit] = useState(false);
   const qc = useQueryClient();
 
+  // Auto-mapping runs fire-and-forget on the server after create/update, so
+  // SKK results land in the DB a few seconds after the API responds. Poll the
+  // detail endpoint for ~30s while the SKK list is still empty so the mapped
+  // units appear without a manual refresh.
+  const SKK_POLL_WINDOW_MS = 30_000;
+  const SKK_POLL_INTERVAL_MS = 3_000;
+  const skkPollStartRef = useRef(Date.now());
   const { data: detail, isLoading: loadingDetail, refetch: refetchDetail } = useQuery({
     queryKey: ['kegiatan-detail', activity.id],
     queryFn: () => getKegiatanDetail(activity.id),
     staleTime: 15 * 1000,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return SKK_POLL_INTERVAL_MS; // still loading — keep the window alive
+      if ((data.skk ?? []).length > 0) return false;
+      if (['diajukan', 'diverifikasi'].includes(data.status)) return false;
+      if (Date.now() - skkPollStartRef.current > SKK_POLL_WINDOW_MS) return false;
+      return SKK_POLL_INTERVAL_MS;
+    },
   });
+
+  // Restart the polling window whenever the activity is edited (updatedAt
+  // changes) — an edit may retrigger auto-mapping on the server.
+  useEffect(() => {
+    skkPollStartRef.current = Date.now();
+  }, [detail?.updatedAt]);
+
+  // When the detail query returns auto-mapped SKK and the local list is still
+  // empty, adopt the server result and refresh the activity list badge.
+  const detailSkk = detail?.skk;
+  useEffect(() => {
+    if (detailSkk && detailSkk.length > 0) {
+      setSkk((prev) => (prev.length === 0 ? detailSkk : prev));
+      qc.invalidateQueries({ queryKey: ['kegiatan'] });
+    }
+  }, [detailSkk, qc]);
 
   const docs = detail?.docs ?? [];
   const journey = detail?.journey ?? [];
@@ -1078,7 +1109,15 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
           visible={showEdit}
           initial={activity}
           onClose={() => setShowEdit(false)}
-          onSaved={(updated) => { setShowEdit(false); onEdited(updated); }}
+          onSaved={(updated) => {
+            setShowEdit(false);
+            // The edit may retrigger server-side auto-mapping — restart the
+            // polling window and refetch the detail so results appear without
+            // a manual refresh, even if the initial window already expired.
+            skkPollStartRef.current = Date.now();
+            qc.invalidateQueries({ queryKey: ['kegiatan-detail', activity.id] });
+            onEdited(updated);
+          }}
           colors={colors}
         />
       )}
@@ -1228,7 +1267,13 @@ export default function KegiatanScreen({ isTab = false }: KegiatanScreenProps) {
           visible={showCreate}
           prefill={marketplacePrefill}
           onClose={() => { setShowCreate(false); setMarketplacePrefill(null); }}
-          onSaved={() => { setShowCreate(false); setMarketplacePrefill(null); }}
+          onSaved={(act) => {
+            setShowCreate(false);
+            setMarketplacePrefill(null);
+            // Open the new activity's detail right away so its SKK polling
+            // picks up the server's fire-and-forget auto-mapping result.
+            setSelectedActivity(act);
+          }}
           colors={colors}
         />
       )}
