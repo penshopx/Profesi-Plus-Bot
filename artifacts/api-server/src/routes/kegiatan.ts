@@ -16,6 +16,7 @@ import {
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { consumeUploadToken, issueUploadToken } from "../lib/uploadTokenStore";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { sendPushNotification } from "../lib/push";
 
 const router = Router();
 
@@ -605,7 +606,25 @@ router.post("/kegiatan/:id/ajukan", requireAuth, async (req, res) => {
       : "Dokumentasi diajukan untuk verifikasi",
     act.status === "ditolak" ? { resubmitted: true, checklistReset: true } : undefined,
   );
+
   res.json({ success: true });
+
+  // Non-blocking push confirmation to the owner — fired after the response is
+  // committed. Uses the shared helper so DeviceNotRegistered cleanup applies.
+  const { users } = await import("@workspace/db/schema");
+  const [owner] = await db
+    .select({ id: users.id, expoPushToken: users.expoPushToken })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (owner?.expoPushToken) {
+    sendPushNotification(owner.id, owner.expoPushToken, {
+      title: "Dokumentasi PKB Diajukan 📤",
+      body: `"${act.namaKegiatan}" masuk antrian verifikasi. Kami akan memberi tahu Anda saat hasilnya keluar.`,
+      data: { activityId: String(id) },
+      channelId: "kegiatan",
+    }, req.log).catch(() => {/* already logged inside helper */});
+  }
 });
 
 export default router;
