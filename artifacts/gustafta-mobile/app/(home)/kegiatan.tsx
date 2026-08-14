@@ -5,7 +5,7 @@
  * Mendukung 11 field standar BNSP/LPJK termasuk upload dokumen dari galeri/kamera.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, Pressable, ScrollView, StyleSheet, TextInput, Alert,
   Modal, ActivityIndicator, FlatList,
@@ -615,28 +615,74 @@ interface MarketplacePrefill {
   courseSkkTagsList: string[];
 }
 
+function buildInitialForm(initial?: PkbActivity | null, prefill?: MarketplacePrefill | null): FormData {
+  return initial
+    ? {
+        namaKegiatan: initial.namaKegiatan, tanggalMulai: initial.tanggalMulai,
+        tanggalSelesai: initial.tanggalSelesai ?? '', tempatKegiatan: initial.tempatKegiatan ?? '',
+        modePelaksanaan: initial.modePelaksanaan ?? '', namaMateri: initial.namaMateri ?? '',
+        penyelenggara: initial.penyelenggara ?? '', namaInstruktur: initial.namaInstruktur ?? '',
+        uraianSingkat: initial.uraianSingkat ?? '', linkRekaman: initial.linkRekaman ?? '',
+        jenisPkb: initial.jenisPkb ?? '', jpPkb: initial.jpPkb ?? undefined,
+      }
+    : {
+        namaKegiatan: prefill?.courseTitle ?? '',
+        namaMateri: prefill?.courseTitle ?? '',
+        penyelenggara: prefill?.courseProvider ?? '',
+        jenisPkb: prefill ? 'Kursus Online' : '',
+        tanggalMulai: '',
+      };
+}
+
 function ActivityFormModal({ visible, initial, prefill, onClose, onSaved, colors }: {
   visible: boolean; initial?: PkbActivity | null; prefill?: MarketplacePrefill | null;
   onClose: () => void; onSaved: (act: PkbActivity) => void; colors: ReturnType<typeof useColors>;
 }) {
-  const [form, setForm] = useState<FormData>(() =>
-    initial
-      ? {
-          namaKegiatan: initial.namaKegiatan, tanggalMulai: initial.tanggalMulai,
-          tanggalSelesai: initial.tanggalSelesai ?? '', tempatKegiatan: initial.tempatKegiatan ?? '',
-          modePelaksanaan: initial.modePelaksanaan ?? '', namaMateri: initial.namaMateri ?? '',
-          penyelenggara: initial.penyelenggara ?? '', namaInstruktur: initial.namaInstruktur ?? '',
-          uraianSingkat: initial.uraianSingkat ?? '', linkRekaman: initial.linkRekaman ?? '',
-          jenisPkb: initial.jenisPkb ?? '', jpPkb: initial.jpPkb ?? undefined,
-        }
-      : {
-          namaKegiatan: prefill?.courseTitle ?? '',
-          namaMateri: prefill?.courseTitle ?? '',
-          penyelenggara: prefill?.courseProvider ?? '',
-          jenisPkb: prefill ? 'Kursus Online' : '',
-          tanggalMulai: '',
-        }
-  );
+  const [form, setForm] = useState<FormData>(() => buildInitialForm(initial, prefill));
+
+  // Track what the form looked like when it was first opened so we can detect
+  // unsaved changes without comparing to server data.
+  const initialFormRef = useRef<FormData>(form);
+
+  // Recompute form and baseline whenever the modal (re)opens with new data.
+  useEffect(() => {
+    if (visible) {
+      const fresh = buildInitialForm(initial, prefill);
+      setForm(fresh);
+      initialFormRef.current = fresh;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  /** True when the user has modified at least one field compared to the baseline. */
+  function hasUnsavedChanges(): boolean {
+    const base = initialFormRef.current;
+    const keys: (keyof FormData)[] = [
+      'namaKegiatan', 'tanggalMulai', 'tanggalSelesai', 'tempatKegiatan',
+      'modePelaksanaan', 'namaMateri', 'penyelenggara', 'namaInstruktur',
+      'uraianSingkat', 'linkRekaman', 'jenisPkb', 'jpPkb',
+    ];
+    return keys.some((k) => (form[k] ?? '') !== (base[k] ?? ''));
+  }
+
+  /**
+   * Attempt to close the modal. If the user has unsaved changes, show a
+   * confirmation alert first so they can cancel the close.
+   */
+  function confirmClose() {
+    if (!hasUnsavedChanges()) {
+      onClose();
+      return;
+    }
+    Alert.alert(
+      'Buang perubahan?',
+      'Perubahan yang belum disimpan akan hilang.',
+      [
+        { text: 'Batal', style: 'cancel' },
+        { text: 'Buang', style: 'destructive', onPress: onClose },
+      ],
+    );
+  }
 
   const qc = useQueryClient();
   const createMut = useMutation({
@@ -686,10 +732,10 @@ function ActivityFormModal({ visible, initial, prefill, onClose, onSaved, colors
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={confirmClose}>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <View style={[s.modalHeader, { borderBottomColor: colors.border }]}>
-          <Pressable onPress={onClose} hitSlop={8}>
+          <Pressable onPress={confirmClose} hitSlop={8}>
             <Text style={{ fontSize: 15, color: colors.mutedForeground, fontFamily: 'PlusJakartaSans_400Regular' }}>Batal</Text>
           </Pressable>
           <Text style={[s.modalTitle, { color: colors.foreground }]}>{initial ? 'Edit Kegiatan' : 'Kegiatan Baru'}</Text>
