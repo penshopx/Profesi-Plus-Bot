@@ -54,6 +54,17 @@ function kindMeta(kind: string) {
   return KINDS.find((k) => k.value === kind) ?? KINDS[0];
 }
 
+/** Indonesian relative time, mirrors web dashboard's relTime(). */
+function relTime(iso: string): string {
+  const mins = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 1) return 'baru saja';
+  if (mins < 60) return `${mins} mnt lalu`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} jam lalu`;
+  const days = Math.floor(hrs / 24);
+  return `${days} hari lalu`;
+}
+
 // ─── Entry card ───────────────────────────────────────────────────────────────
 
 function EntryCard({
@@ -77,12 +88,17 @@ function EntryCard({
             <Text style={[card.title, { color: colors.foreground, flexShrink: 1 }]} numberOfLines={2}>
               {entry.title}
             </Text>
-            {usedByAI && (
+            {entry.lastUsedAt ? (
+              <View style={[card.usedBadge, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
+                <Feather name="check-circle" size={10} color="#047857" />
+                <Text style={card.usedBadgeText}>Dibaca AI {relTime(entry.lastUsedAt)}</Text>
+              </View>
+            ) : usedByAI ? (
               <View style={[card.usedBadge, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
                 <Feather name="check-circle" size={10} color="#047857" />
                 <Text style={card.usedBadgeText}>Digunakan AI</Text>
               </View>
-            )}
+            ) : null}
           </View>
           <Text style={[card.sub, { color: colors.mutedForeground }]}>
             {entry.isPinned ? '📌 Disematkan · ' : ''}{meta.label}{entry.organization ? ` · ${entry.organization}` : ''}{entry.period ? ` · ${entry.period}` : ''}

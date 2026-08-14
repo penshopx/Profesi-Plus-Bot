@@ -403,6 +403,8 @@ export type ProjectBrainEntry = {
   highlights: string | null;
   isActive: boolean;
   isPinned: boolean;
+  /** Set when the AI last injected this entry into a chat prompt. */
+  lastUsedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
