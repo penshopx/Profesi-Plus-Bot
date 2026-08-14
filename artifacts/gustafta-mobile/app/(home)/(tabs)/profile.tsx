@@ -7,6 +7,7 @@ import {
   ScrollView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useUser, useClerk } from '@clerk/expo';
@@ -176,6 +177,10 @@ export default function ProfileScreen() {
       }
     } catch (err) {
       console.error('APL print error:', err);
+      Alert.alert(
+        'Gagal membuat PDF',
+        'Coba lagi atau periksa penyimpanan perangkat.'
+      );
     } finally {
       setPrintingApl(false);
     }
