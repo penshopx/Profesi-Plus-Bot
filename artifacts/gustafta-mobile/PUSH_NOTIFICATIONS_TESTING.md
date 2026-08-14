@@ -10,17 +10,24 @@ blocks them on simulators and emulators. Use Expo Go or a standalone EAS develop
 | Requirement | Notes |
 |---|---|
 | Physical iOS or Android device | Not a simulator/emulator |
-| EAS project configured | Run `eas init` once (requires `npm i -g eas-cli` and an Expo account), then paste the UUID into `app.json > extra.eas.projectId` |
+| EAS project configured | `eas-cli` is already installed globally on this Replit. Just run `eas init` once (requires an Expo account), then paste the UUID into `app.json > extra.eas.projectId` |
 | Gustafta API server reachable | Use the `.replit.dev` dev URL or a deployed instance |
 | Clerk account signed in | Needed for authenticated token registration |
 | At least one conversation in "synthesis" phase | Required to trigger Exum generation |
 
-> **One-time EAS setup**:
-> 1. `npm i -g eas-cli` (if not already installed)
-> 2. `cd artifacts/gustafta-mobile && eas init`
-> 3. Copy the UUID printed by `eas init` into `app.json > expo.extra.eas.projectId`.
+> **One-time EAS setup** (`eas-cli` is already installed globally on this Replit):
+> 1. `cd artifacts/gustafta-mobile && eas init`  ← log in with your Expo account when prompted
+> 2. Copy the UUID printed by `eas init` (or find it at expo.dev → project → Settings).
+> 3. Open `app.json` and replace the empty string in `expo.extra.eas.projectId` with that UUID.
 >
-> The `extra.eas.projectId` slot already exists in `app.json` — just replace the empty string with your UUID.
+> Example result in `app.json`:
+> ```json
+> "extra": {
+>   "eas": {
+>     "projectId": "1b2c3d4e-5f60-7a8b-9c0d-1e2f3a4b5c6d"
+>   }
+> }
+> ```
 
 ---
 
