@@ -127,50 +127,60 @@ router.post("/asosiasi/submissions/:id/checklist", requireAuth, requireAsosiasi,
   const newStatus = allClear ? "diverifikasi" : "ditolak";
   const now = new Date();
 
-  // Upsert checklist (one record per activity)
-  const existing = await db.select({ id: pkbActivityChecklist.id })
-    .from(pkbActivityChecklist).where(eq(pkbActivityChecklist.activityId, id)).limit(1);
-
-  if (existing.length > 0) {
-    await db.update(pkbActivityChecklist).set({
-      checkedBy: verifierId,
-      suratUndangan: !!suratUndangan,
-      daftarHadir: !!daftarHadir,
-      foto: !!foto,
-      penyelenggaraValid: !!penyelenggaraValid,
-      catatan: catatan ?? null,
-      checkedAt: now,
-      updatedAt: now,
-    }).where(eq(pkbActivityChecklist.activityId, id));
-  } else {
-    await db.insert(pkbActivityChecklist).values({
-      activityId: id,
-      checkedBy: verifierId,
-      suratUndangan: !!suratUndangan,
-      daftarHadir: !!daftarHadir,
-      foto: !!foto,
-      penyelenggaraValid: !!penyelenggaraValid,
-      catatan: catatan ?? null,
-      checkedAt: now,
-    });
+  // Rejection must include a note so the owner knows what to fix.
+  if (!allClear && (typeof catatan !== "string" || catatan.trim().length === 0)) {
+    return res.status(400).json({ error: "Catatan wajib diisi jika ada item checklist yang belum lengkap." });
   }
 
-  // Transition status + journey
-  await db.update(pkbActivities).set({
-    status: newStatus,
-    askomNote: catatan ?? null,
-    askomVerifiedAt: allClear ? now : null,
-    askomVerifiedBy: allClear ? verifierId : null,
-    updatedAt: now,
-  }).where(eq(pkbActivities.id, id));
+  // All three writes (checklist upsert, status transition, journey entry) run
+  // in ONE transaction: a crash between any two would otherwise leave the
+  // activity in an inconsistent state (e.g. checklist saved but status stale).
+  await db.transaction(async (tx) => {
+    // Upsert checklist (one record per activity)
+    const existing = await tx.select({ id: pkbActivityChecklist.id })
+      .from(pkbActivityChecklist).where(eq(pkbActivityChecklist.activityId, id)).limit(1);
 
-  await db.insert(pkbActivityJourney).values({
-    activityId: id,
-    event: newStatus,
-    label: allClear
-      ? "Dokumen diverifikasi lengkap oleh Asosiasi"
-      : "Dokumen perlu perbaikan — catatan dari Asosiasi",
-    metadata: { suratUndangan, daftarHadir, foto, penyelenggaraValid, catatan, verifierId },
+    if (existing.length > 0) {
+      await tx.update(pkbActivityChecklist).set({
+        checkedBy: verifierId,
+        suratUndangan: !!suratUndangan,
+        daftarHadir: !!daftarHadir,
+        foto: !!foto,
+        penyelenggaraValid: !!penyelenggaraValid,
+        catatan: catatan ?? null,
+        checkedAt: now,
+        updatedAt: now,
+      }).where(eq(pkbActivityChecklist.activityId, id));
+    } else {
+      await tx.insert(pkbActivityChecklist).values({
+        activityId: id,
+        checkedBy: verifierId,
+        suratUndangan: !!suratUndangan,
+        daftarHadir: !!daftarHadir,
+        foto: !!foto,
+        penyelenggaraValid: !!penyelenggaraValid,
+        catatan: catatan ?? null,
+        checkedAt: now,
+      });
+    }
+
+    // Transition status + journey
+    await tx.update(pkbActivities).set({
+      status: newStatus,
+      askomNote: catatan ?? null,
+      askomVerifiedAt: allClear ? now : null,
+      askomVerifiedBy: allClear ? verifierId : null,
+      updatedAt: now,
+    }).where(eq(pkbActivities.id, id));
+
+    await tx.insert(pkbActivityJourney).values({
+      activityId: id,
+      event: newStatus,
+      label: allClear
+        ? "Dokumen diverifikasi lengkap oleh Asosiasi"
+        : "Dokumen perlu perbaikan — catatan dari Asosiasi",
+      metadata: { suratUndangan, daftarHadir, foto, penyelenggaraValid, catatan, verifierId },
+    });
   });
 
   // Non-blocking push notification to activity owner
