@@ -121,14 +121,28 @@ function QuestionCard({
   q,
   index,
   colors,
+  onEdit,
 }: {
   q: QuizQuestionAdmin;
   index: number;
   colors: ReturnType<typeof useColors>;
+  onEdit?: () => void;
 }) {
   return (
     <View style={[qc.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <Text style={[qc.num, { color: colors.mutedForeground }]}>Soal {index + 1}</Text>
+      <View style={qc.headerRow}>
+        <Text style={[qc.num, { color: colors.mutedForeground }]}>Soal {index + 1}</Text>
+        {onEdit ? (
+          <Pressable
+            onPress={onEdit}
+            hitSlop={8}
+            style={({ pressed }) => [qc.editBtn, { opacity: pressed ? 0.6 : 1 }]}
+          >
+            <Feather name="edit-2" size={13} color={colors.primary} />
+            <Text style={[qc.editText, { color: colors.primary }]}>Edit</Text>
+          </Pressable>
+        ) : null}
+      </View>
       <Text style={[qc.text, { color: colors.foreground }]}>{q.text}</Text>
       <View style={{ gap: 6, marginTop: 8 }}>
         {q.options.map((opt) => (
@@ -178,6 +192,22 @@ const qc = StyleSheet.create({
     padding: 14,
     gap: 4,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  editText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+  },
   num: {
     fontSize: 11,
     fontFamily: 'PlusJakartaSans_500Medium',
@@ -205,6 +235,237 @@ const qc = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 6,
     lineHeight: 17,
+  },
+});
+
+// ─── Inline question edit form ─────────────────────────────────────────────────
+
+function QuestionEditForm({
+  q,
+  index,
+  colors,
+  onSave,
+  onCancel,
+}: {
+  q: QuizQuestionAdmin;
+  index: number;
+  colors: ReturnType<typeof useColors>;
+  onSave: (updated: QuizQuestionAdmin) => void;
+  onCancel: () => void;
+}) {
+  const [text, setText] = useState(q.text);
+  const [options, setOptions] = useState(q.options.map((o) => ({ ...o })));
+  const [correctId, setCorrectId] = useState(q.correctId);
+  const [explanation, setExplanation] = useState(q.explanation ?? '');
+
+  const setOptionText = (id: string, value: string) => {
+    setOptions((opts) => opts.map((o) => (o.id === id ? { ...o, text: value } : o)));
+  };
+
+  const handleSave = () => {
+    if (!text.trim()) {
+      Alert.alert('Soal Tidak Valid', 'Teks soal tidak boleh kosong.');
+      return;
+    }
+    for (const opt of options) {
+      if (!opt.text.trim()) {
+        Alert.alert('Soal Tidak Valid', `Opsi ${opt.id.toUpperCase()} tidak boleh kosong.`);
+        return;
+      }
+    }
+    if (!correctId || !options.some((o) => o.id === correctId)) {
+      Alert.alert('Soal Tidak Valid', 'Pilih jawaban yang benar.');
+      return;
+    }
+    onSave({
+      ...q,
+      text: text.trim(),
+      options: options.map((o) => ({ ...o, text: o.text.trim() })),
+      correctId,
+      explanation: explanation.trim() || undefined,
+    });
+  };
+
+  return (
+    <View style={[qe.card, { backgroundColor: colors.card, borderColor: colors.primary + '66' }]}>
+      <Text style={[qe.num, { color: colors.primary }]}>Edit Soal {index + 1}</Text>
+
+      <Text style={[qe.label, { color: colors.mutedForeground }]}>Teks Soal</Text>
+      <TextInput
+        value={text}
+        onChangeText={setText}
+        multiline
+        style={[qe.input, qe.multiline, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]}
+        placeholder="Teks soal..."
+        placeholderTextColor={colors.mutedForeground}
+      />
+
+      <Text style={[qe.label, { color: colors.mutedForeground, marginTop: 10 }]}>
+        Pilihan Jawaban — ketuk huruf untuk menandai jawaban benar
+      </Text>
+      {options.map((opt) => {
+        const isCorrect = opt.id === correctId;
+        return (
+          <View key={opt.id} style={qe.optRow}>
+            <Pressable
+              onPress={() => setCorrectId(opt.id)}
+              hitSlop={6}
+              style={[
+                qe.optBadge,
+                {
+                  backgroundColor: isCorrect ? colors.primary : colors.muted,
+                  borderColor: isCorrect ? colors.primary : colors.border,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  qe.optBadgeText,
+                  { color: isCorrect ? '#fff' : colors.mutedForeground },
+                ]}
+              >
+                {opt.id.toUpperCase()}
+              </Text>
+            </Pressable>
+            <TextInput
+              value={opt.text}
+              onChangeText={(v) => setOptionText(opt.id, v)}
+              multiline
+              style={[
+                qe.input,
+                {
+                  flex: 1,
+                  color: colors.foreground,
+                  backgroundColor: colors.muted,
+                  borderColor: isCorrect ? colors.primary + '66' : colors.border,
+                },
+              ]}
+              placeholder={`Opsi ${opt.id.toUpperCase()}...`}
+              placeholderTextColor={colors.mutedForeground}
+            />
+          </View>
+        );
+      })}
+
+      <Text style={[qe.label, { color: colors.mutedForeground, marginTop: 10 }]}>
+        Penjelasan (opsional)
+      </Text>
+      <TextInput
+        value={explanation}
+        onChangeText={setExplanation}
+        multiline
+        style={[qe.input, qe.multiline, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]}
+        placeholder="Penjelasan mengapa jawaban tersebut benar..."
+        placeholderTextColor={colors.mutedForeground}
+      />
+
+      <View style={qe.btnRow}>
+        <Pressable
+          onPress={onCancel}
+          style={({ pressed }) => [
+            qe.cancelBtn,
+            { borderColor: colors.border, opacity: pressed ? 0.6 : 1 },
+          ]}
+        >
+          <Text style={[qe.cancelText, { color: colors.mutedForeground }]}>Batal</Text>
+        </Pressable>
+        <Pressable
+          onPress={handleSave}
+          style={({ pressed }) => [
+            qe.saveBtn,
+            { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
+          ]}
+        >
+          <Feather name="check" size={14} color="#fff" />
+          <Text style={qe.saveText}>Terapkan</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const qe = StyleSheet.create({
+  card: {
+    borderRadius: 12,
+    borderWidth: 1.5,
+    padding: 14,
+    gap: 4,
+  },
+  num: {
+    fontSize: 11,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  label: {
+    fontSize: 11,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  input: {
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_400Regular',
+    lineHeight: 18,
+  },
+  multiline: {
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  optRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 6,
+  },
+  optBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  optBadgeText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+  },
+  btnRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  cancelBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  cancelText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
+  },
+  saveBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  saveText: {
+    color: '#fff',
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
   },
 });
 
@@ -289,6 +550,7 @@ export default function KelolaQuizScreen() {
     count: 10,
   });
   const [generatedQuestions, setGeneratedQuestions] = useState<QuizQuestionAdmin[]>([]);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [suggestedTitle, setSuggestedTitle] = useState('');
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
 
@@ -338,6 +600,7 @@ export default function KelolaQuizScreen() {
     onSuccess: (data) => {
       setGeneratedQuestions(data.questions);
       setSuggestedTitle(data.suggestedTitle);
+      setEditingIndex(null);
       setView('preview');
     },
     onError: (err: Error) => {
@@ -361,6 +624,7 @@ export default function KelolaQuizScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin-quizzes'] });
       setView('list');
       setGeneratedQuestions([]);
+      setEditingIndex(null);
       setSuggestedTitle('');
       setForm({ jabker: '', skkUnitCode: '', skkUnitName: '', quizType: 'learning', count: 10 });
       Alert.alert('Berhasil', 'Quiz berhasil disimpan dan diaktifkan.');
@@ -742,9 +1006,29 @@ export default function KelolaQuizScreen() {
         </View>
 
         {/* Questions */}
-        {generatedQuestions.map((q, i) => (
-          <QuestionCard key={q.id} q={q} index={i} colors={colors} />
-        ))}
+        {generatedQuestions.map((q, i) =>
+          editingIndex === i ? (
+            <QuestionEditForm
+              key={q.id}
+              q={q}
+              index={i}
+              colors={colors}
+              onSave={(updated) => {
+                setGeneratedQuestions((qs) => qs.map((x, j) => (j === i ? updated : x)));
+                setEditingIndex(null);
+              }}
+              onCancel={() => setEditingIndex(null)}
+            />
+          ) : (
+            <QuestionCard
+              key={q.id}
+              q={q}
+              index={i}
+              colors={colors}
+              onEdit={() => setEditingIndex(i)}
+            />
+          ),
+        )}
 
         {/* Save */}
         <Pressable
