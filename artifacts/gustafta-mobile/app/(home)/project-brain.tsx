@@ -164,6 +164,15 @@ function FormModal({
     return keys.some((k) => form[k] !== initial[k]);
   }
 
+  function discardAndClose() {
+    if (isNew) {
+      if (draftTimer.current) clearTimeout(draftTimer.current);
+      AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
+      setForm(EMPTY);
+    }
+    onClose();
+  }
+
   function handleClose() {
     if (isDirty()) {
       Alert.alert(
@@ -171,7 +180,7 @@ function FormModal({
         'Keluar?',
         [
           { text: 'Batal', style: 'cancel' },
-          { text: 'Keluar', style: 'destructive', onPress: onClose },
+          { text: 'Keluar', style: 'destructive', onPress: discardAndClose },
         ],
       );
     } else {
