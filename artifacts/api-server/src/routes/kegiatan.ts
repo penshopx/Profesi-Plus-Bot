@@ -581,9 +581,30 @@ router.post("/kegiatan/:id/ajukan", requireAuth, async (req, res) => {
     askomVerifiedBy: null,
     updatedAt: new Date(),
   }).where(eq(pkbActivities.id, id));
-  await addJourney(id, "diajukan", act.status === "ditolak"
-    ? "Dokumentasi diajukan ulang setelah koreksi"
-    : "Dokumentasi diajukan untuk verifikasi");
+
+  // Resubmission after rejection: reset the Asosiasi checklist so the verifier
+  // starts fresh instead of seeing the stale (rejected) checklist result.
+  if (act.status === "ditolak") {
+    await db.update(pkbActivityChecklist).set({
+      suratUndangan: false,
+      daftarHadir: false,
+      foto: false,
+      penyelenggaraValid: false,
+      catatan: null,
+      checkedBy: null,
+      checkedAt: null,
+      updatedAt: new Date(),
+    }).where(eq(pkbActivityChecklist.activityId, id));
+  }
+
+  await addJourney(
+    id,
+    "diajukan",
+    act.status === "ditolak"
+      ? "Dokumentasi diajukan ulang setelah koreksi"
+      : "Dokumentasi diajukan untuk verifikasi",
+    act.status === "ditolak" ? { resubmitted: true, checklistReset: true } : undefined,
+  );
   res.json({ success: true });
 });
 
