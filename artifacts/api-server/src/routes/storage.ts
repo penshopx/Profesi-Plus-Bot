@@ -184,10 +184,27 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
 
-    // Ownership check for PKB documents: if this objectPath belongs to a
-    // pkbActivityDoc, only the activity owner may download it. Other private
-    // objects (e.g. voice note transcripts) are not in this table and pass
-    // through to the normal auth-only gate below.
+    const userRole = req.dbUser!.role;
+    const canBypassOwnership = userRole === "admin";
+
+    // ── Path-based ownership check ────────────────────────────────────────────
+    // Upload paths are structured as /objects/uploads/<userId>/<uuid>.
+    // If the requested path matches this pattern, the embedded userId must
+    // match the requester's id.  This covers private objects (e.g. voice note
+    // transcripts) that are NOT recorded in pkbActivityDocs.
+    const uploadsOwnerMatch = objectPath.match(/^\/objects\/uploads\/(\d+)\//);
+    if (uploadsOwnerMatch) {
+      const pathOwnerId = parseInt(uploadsOwnerMatch[1], 10);
+      if (pathOwnerId !== req.dbUser!.id && !canBypassOwnership) {
+        res.status(403).json({ error: "Akses ditolak — objek ini bukan milik Anda." });
+        return;
+      }
+    }
+
+    // ── DB-based ownership check for PKB documents ────────────────────────────
+    // If this objectPath belongs to a pkbActivityDoc, only the activity owner
+    // may download it.  This covers documents that may not use the user-scoped
+    // upload path (legacy or admin-uploaded files).
     const [docRow] = await db
       .select({ ownerId: pkbActivities.userId })
       .from(pkbActivityDocs)
@@ -195,8 +212,6 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
       .where(eq(pkbActivityDocs.objectPath, objectPath))
       .limit(1);
 
-    const userRole = req.dbUser!.role;
-    const canBypassOwnership = userRole === "admin";
     if (docRow && docRow.ownerId !== req.dbUser!.id && !canBypassOwnership) {
       res.status(403).json({ error: "Akses ditolak — dokumen ini bukan milik Anda." });
       return;
