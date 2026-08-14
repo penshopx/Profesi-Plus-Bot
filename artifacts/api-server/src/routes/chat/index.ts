@@ -579,6 +579,9 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
     // confirm the user has zero attempts (nothing to lose). If the confirmation
     // query itself fails we fail conservatively and keep the notice.
     let finalExumResponse = exumResponse;
+    // Surfaced to the client so it can show a visible warning banner and offer
+    // a retry — mirrors the SSE contextWarning pattern used in the chat stream.
+    let quizContextUnavailable = false;
     if (exumContextErrors.includes("exum:quiz")) {
       let shouldAppendFooter = true;
       try {
@@ -592,6 +595,7 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       } catch (_err) {
         // Cannot confirm zero attempts — fail conservatively and keep the notice
       }
+      quizContextUnavailable = shouldAppendFooter;
       if (shouldAppendFooter) {
         finalExumResponse +=
           "\n\n---\n*Catatan sistem: Data skor quiz tidak dapat dimuat saat Exum ini dibuat. " +
@@ -623,7 +627,7 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       }, req.log).catch(() => {/* already logged inside helper */});
     }
 
-    res.json({ content, conversationId });
+    res.json({ content, conversationId, quizContextUnavailable });
   } catch (err) {
     await refundReservation();
     req.log.error({ err }, "Generate Exum error");

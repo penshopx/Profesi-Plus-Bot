@@ -213,7 +213,7 @@ export async function patchEvidence(
 
 export async function generateExum(
   conversationId: number
-): Promise<{ content: string; conversationId: number }> {
+): Promise<{ content: string; conversationId: number; quizContextUnavailable?: boolean }> {
   const r = await fetch(`${BASE}/chat/generate-exum`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

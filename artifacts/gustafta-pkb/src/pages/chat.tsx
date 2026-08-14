@@ -1178,6 +1178,9 @@ export default function ChatPage() {
   const [copied, setCopied] = useState(false);
   const [paywall, setPaywall] = useState<{ msg: string; canUpgrade: boolean } | null>(null);
   const [contextFailureBanner, setContextFailureBanner] = useState(false);
+  // Amber warning: quiz context failed to load during Exum generation — the
+  // resulting Exum was written without quiz evidence. User may retry.
+  const [exumQuizWarning, setExumQuizWarning] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
@@ -1385,6 +1388,7 @@ export default function ChatPage() {
     setGenerating(true);
     try {
       const result = await generateExum(id);
+      setExumQuizWarning(result.quizContextUnavailable === true);
       setExum(result.content);
       setCurrentPhase("done");
       qc.invalidateQueries({ queryKey: ["conversation", id] });
@@ -1698,6 +1702,26 @@ export default function ChatPage() {
                 <ReactMarkdown>{exum}</ReactMarkdown>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Exum quiz-context warning — quiz data failed to load during generation */}
+      {exum && exumQuizWarning && (
+        <div className="border-b border-amber-200 bg-amber-50/80 px-4 py-2.5 shrink-0">
+          <div className="max-w-3xl mx-auto flex items-start gap-2 flex-wrap">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <span className="text-sm text-amber-800 flex-1 min-w-[200px]">
+              <strong>Data quiz tidak dapat dimuat</strong> saat Exum ini dibuat — hasil quiz Anda mungkin tidak tercermin dalam ringkasan. Anda bisa membuat ulang Exum sebelum menggunakannya (menggunakan 1 kredit).
+            </span>
+            <button onClick={handleGenerateExum} disabled={generating}
+              className="flex items-center gap-1.5 bg-white border border-amber-300 text-amber-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-amber-100 transition-colors disabled:opacity-60">
+              {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+              {generating ? "Membuat ulang..." : "Generate Ulang"}
+            </button>
+            <button onClick={() => setExumQuizWarning(false)} className="shrink-0 p-1.5 hover:opacity-70" title="Tutup peringatan">
+              <X className="w-3.5 h-3.5 text-amber-700" />
+            </button>
           </div>
         </div>
       )}
