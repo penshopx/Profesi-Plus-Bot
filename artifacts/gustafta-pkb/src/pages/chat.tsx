@@ -71,22 +71,33 @@ const AUTO_GREETING = "Halo Pak Budi, saya siap memulai.";
 // Read + consume the marketplace context set by the DetailPanel.
 // Returns null if no context is stored. Clears the key on first read
 // so the context is only applied to the conversation it was created for.
-function consumeMarketplaceInterviewCtx(): { namaMateri: string; penyelenggara: string; isWatched: boolean } | null {
+interface MarketplaceInterviewCtx {
+  namaMateri: string;
+  penyelenggara: string;
+  isWatched: boolean;
+  skkTags?: { code: string; name: string }[];
+}
+
+function consumeMarketplaceInterviewCtx(): MarketplaceInterviewCtx | null {
   try {
     const raw = sessionStorage.getItem("INTERVIEW_FROM_MARKETPLACE");
     if (!raw) return null;
     sessionStorage.removeItem("INTERVIEW_FROM_MARKETPLACE");
-    return JSON.parse(raw) as { namaMateri: string; penyelenggara: string; isWatched: boolean };
+    return JSON.parse(raw) as MarketplaceInterviewCtx;
   } catch {
     return null;
   }
 }
 
-function buildMarketplaceGreeting(ctx: { namaMateri: string; penyelenggara: string; isWatched: boolean }): string {
+function buildMarketplaceGreeting(ctx: MarketplaceInterviewCtx): string {
   const watchedPhrase = ctx.isWatched
     ? `saya baru selesai menonton **${ctx.namaMateri}** dari **${ctx.penyelenggara}**`
     : `saya baru membuka modul **${ctx.namaMateri}** dari **${ctx.penyelenggara}** di marketplace PKB`;
-  return `Halo Pak Budi, ${watchedPhrase} dan ingin membahasnya sebagai bukti PKB saya. Bisa kita mulai?`;
+  const tags = (ctx.skkTags ?? []).filter((t) => t?.code);
+  const skkPhrase = tags.length > 0
+    ? ` Materi ini mencakup unit SKK: ${tags.map((t) => `${t.code} (${t.name})`).join(", ")}.`
+    : "";
+  return `Halo Pak Budi, ${watchedPhrase} dan ingin membahasnya sebagai bukti PKB saya.${skkPhrase} Bisa kita mulai?`;
 }
 
 // ─── Phase config ─────────────────────────────────────────────────────────────

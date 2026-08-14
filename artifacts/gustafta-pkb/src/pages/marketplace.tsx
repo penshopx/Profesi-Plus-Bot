@@ -769,6 +769,7 @@ function DetailPanel({
                     namaMateri:     course.title,
                     penyelenggara:  course.provider,
                     jabker:         course.jabker[0] ?? "",
+                    skkTags:        course.skkTags.map((t) => ({ code: t.code, name: t.name })),
                     isWatched,
                   }));
                 } catch {}
