@@ -229,6 +229,8 @@ function RootLayoutNav() {
     // `addNotificationResponseReceivedListener` does NOT fire — the OS launches
     // the app fresh. `getLastNotificationResponseAsync` retrieves that initial
     // response so the deep-link still works after a cold launch.
+    // Not available on web — skip to avoid a dev-overlay crash in the browser preview.
+    if (Platform.OS === 'web') return;
     Notifications.getLastNotificationResponseAsync().then((response) => {
       if (!response) return;
       const data = response.notification.request.content.data as Record<string, unknown>;

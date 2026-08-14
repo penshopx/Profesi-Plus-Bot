@@ -847,6 +847,17 @@ export async function getMyAplProfile(): Promise<AplProfile> {
   return res.json();
 }
 
+/** Upserts APL 01 fields via PATCH /profiles/me (same endpoint as web). */
+export async function updateMyAplProfile(
+  data: Partial<Omit<AplProfile, 'id' | 'userId' | 'isComplete'>>,
+): Promise<AplProfile> {
+  const res = await apiFetch('/profiles/me', {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
 /** Returns the user's APL 02 competency claims. */
 export async function getMyAplClaims(): Promise<AplClaim[]> {
   const res = await apiFetch('/profiles/me/claims');

@@ -287,6 +287,24 @@ export default function ProfileScreen() {
         />
       </Pressable>
 
+      {/* APL 01 edit */}
+      <Pressable
+        testID="btn-edit-apl"
+        onPress={() => router.push('/(home)/apl-edit' as any)}
+        style={({ pressed }) => [
+          styles.infoCard,
+          { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+        ]}
+      >
+        <InfoRow
+          icon="edit-3"
+          label="Edit Profil APL 01"
+          value="Isi / Perbarui →"
+          colors={colors}
+          chevron
+        />
+      </Pressable>
+
       {/* APL form print */}
       <Pressable
         onPress={handlePrintApl}
