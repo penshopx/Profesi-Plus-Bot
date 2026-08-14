@@ -121,6 +121,24 @@ describe("validateQuestions — blank content", () => {
     const qs = [makeQuestion({ options: [] })];
     expect(validateQuestions(qs)).toMatch(/pilihan jawaban tidak boleh kosong/i);
   });
+
+  it("rejects a question with only 1 option", () => {
+    const qs = [makeQuestion({ options: [{ id: "a", text: "Satu-satunya opsi" }], correctId: "a" })];
+    const err = validateQuestions(qs);
+    expect(err).toMatch(/minimal harus ada 2 pilihan jawaban/i);
+    expect(err).toMatch(/Soal #1/);
+  });
+
+  it("accepts a question with exactly 2 options", () => {
+    const qs = [makeQuestion({
+      options: [
+        { id: "a", text: "Benar" },
+        { id: "b", text: "Salah" },
+      ],
+      correctId: "a",
+    })];
+    expect(validateQuestions(qs)).toBeNull();
+  });
 });
 
 // ── duplicate IDs ─────────────────────────────────────────────────────────────

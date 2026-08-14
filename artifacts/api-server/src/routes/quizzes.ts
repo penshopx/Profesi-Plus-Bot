@@ -254,7 +254,7 @@ export function validateQuestions(questions: unknown, requireNonEmpty = false): 
     }
     normalizedTexts.push(normalizedText);
 
-    // Options
+    // Options — a multiple-choice question needs at least 2 options
     if (!Array.isArray(qObj["options"]) || (qObj["options"] as unknown[]).length === 0) {
       return `Soal #${num}: pilihan jawaban tidak boleh kosong.`;
     }
@@ -267,6 +267,10 @@ export function validateQuestions(questions: unknown, requireNonEmpty = false): 
         const optId = typeof optObj["id"] === "string" ? optObj["id"].toUpperCase() : "?";
         return `Soal #${num}: opsi ${optId} tidak boleh kosong.`;
       }
+    }
+    // A multiple-choice question needs at least 2 options
+    if ((qObj["options"] as unknown[]).length < 2) {
+      return `Soal #${num}: minimal harus ada 2 pilihan jawaban.`;
     }
 
     // correctId

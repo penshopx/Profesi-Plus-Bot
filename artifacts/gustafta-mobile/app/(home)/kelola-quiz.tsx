@@ -220,6 +220,55 @@ interface GenForm {
   count: number;
 }
 
+// ─── Client-side question validation ───────────────────────────────────────────
+//
+// Mirrors the server-side rules (POST /quizzes) so admins get instant, clear
+// feedback before saving: no blank question text, at least 2 non-blank options,
+// a chosen correct answer, and no duplicate question IDs or duplicate text.
+
+export function validateQuizQuestions(questions: QuizQuestionAdmin[]): string | null {
+  if (!questions.length) return 'Quiz harus memiliki minimal 1 soal.';
+
+  const ids: string[] = [];
+  const normalizedTexts: string[] = [];
+
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    const num = i + 1;
+
+    if (!q.text || !q.text.trim()) {
+      return `Soal #${num}: teks soal tidak boleh kosong.`;
+    }
+    const normalized = q.text.trim().replace(/\s+/g, ' ').toLowerCase();
+    const dupIdx = normalizedTexts.indexOf(normalized);
+    if (dupIdx !== -1) {
+      return `Soal #${num}: teks soal sama dengan soal #${dupIdx + 1} (duplikat).`;
+    }
+    normalizedTexts.push(normalized);
+
+    if (!Array.isArray(q.options) || q.options.length < 2) {
+      return `Soal #${num}: minimal harus ada 2 pilihan jawaban.`;
+    }
+    for (const opt of q.options) {
+      if (!opt.text || !opt.text.trim()) {
+        return `Soal #${num}: opsi ${(opt.id || '?').toUpperCase()} tidak boleh kosong.`;
+      }
+    }
+
+    if (!q.correctId) {
+      return `Soal #${num}: jawaban benar belum dipilih.`;
+    }
+
+    if (q.id) {
+      if (ids.includes(q.id)) {
+        return `Soal #${num}: ID soal "${q.id}" duplikat.`;
+      }
+      ids.push(q.id);
+    }
+  }
+  return null;
+}
+
 // ─── Main screen ───────────────────────────────────────────────────────────────
 
 export default function KelolaQuizScreen() {
@@ -338,6 +387,11 @@ export default function KelolaQuizScreen() {
   const handleSave = () => {
     if (!suggestedTitle.trim()) {
       Alert.alert('Judul Quiz', 'Judul tidak boleh kosong.');
+      return;
+    }
+    const validationError = validateQuizQuestions(generatedQuestions);
+    if (validationError) {
+      Alert.alert('Soal Tidak Valid', validationError);
       return;
     }
     saveMut.mutate(suggestedTitle);
