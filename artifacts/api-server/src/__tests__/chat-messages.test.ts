@@ -391,6 +391,48 @@ describe("POST /api/chat/conversations/:id/messages", () => {
     expect(systemMessage.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
   });
 
+  it("does not return 500 and falls back to empty string when buildKnowledgeContext throws", async () => {
+    const { buildKnowledgeContext } = await import("../lib/knowledge-base.js");
+    vi.mocked(buildKnowledgeContext).mockRejectedValueOnce(new Error("KB file I/O error"));
+
+    dbState.push([FAKE_CONV], undefined, [FAKE_USER_MSG], [], undefined);
+
+    const res = await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({ content: "Halo" });
+
+    // A knowledge-base failure must not crash the chat — the user's session must continue.
+    expect(res.status).toBe(200);
+
+    // Competency and profile context must still appear in the system prompt even
+    // though the knowledge block failed.
+    const systemMessage = capturedLLMMessages[0];
+    expect(systemMessage.role).toBe("system");
+    expect(systemMessage.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+    expect(systemMessage.content).toContain("PROFIL APL 01 TKK");
+  });
+
+  it("does not return 500 and falls back to empty string when buildProjectBrainContext throws", async () => {
+    const { buildProjectBrainContextWithMeta } = await import("../lib/project-brain.js");
+    vi.mocked(buildProjectBrainContextWithMeta).mockRejectedValueOnce(new Error("Project brain DB schema change"));
+
+    dbState.push([FAKE_CONV], undefined, [FAKE_USER_MSG], [], undefined);
+
+    const res = await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({ content: "Halo" });
+
+    // A project-brain failure must not crash the chat — the user's session must continue.
+    expect(res.status).toBe(200);
+
+    // Competency and profile context must still appear in the system prompt even
+    // though the project-brain block failed.
+    const systemMessage = capturedLLMMessages[0];
+    expect(systemMessage.role).toBe("system");
+    expect(systemMessage.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+    expect(systemMessage.content).toContain("PROFIL APL 01 TKK");
+  });
+
   it("returns 404 when the conversation does not belong to the user", async () => {
     // loadOwnedConversation returns a conversation owned by a different user
     dbState.push([{ ...FAKE_CONV, userId: 999 }]);
