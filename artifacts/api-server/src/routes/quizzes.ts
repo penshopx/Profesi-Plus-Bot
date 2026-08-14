@@ -277,6 +277,13 @@ export function validateQuestions(questions: unknown, requireNonEmpty = false): 
     if (typeof qObj["correctId"] !== "string" || !qObj["correctId"]) {
       return `Soal #${num}: jawaban benar belum dipilih.`;
     }
+    // correctId must reference an existing option
+    const optionIds = (qObj["options"] as { id?: unknown }[]).map((o) =>
+      typeof o.id === "string" ? o.id : "",
+    );
+    if (!optionIds.includes(qObj["correctId"])) {
+      return `Soal #${num}: jawaban benar ("${qObj["correctId"]}") tidak cocok dengan opsi yang ada.`;
+    }
 
     // Duplicate IDs
     if (typeof qObj["id"] === "string") {

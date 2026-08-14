@@ -196,6 +196,29 @@ describe("validateQuestions — duplicate question text", () => {
   });
 });
 
+// ── correctId must match an option ────────────────────────────────────────────
+
+describe("validateQuestions — correctId matches an option", () => {
+  it("rejects a question whose correctId points to a non-existent option", () => {
+    const qs = [makeQuestion({ correctId: "z" })];
+    const err = validateQuestions(qs);
+    expect(err).toMatch(/Soal #1/);
+    expect(err).toMatch(/tidak cocok dengan opsi/i);
+  });
+
+  it("reports the correct question number for a later mismatch", () => {
+    const qs = [
+      makeQuestion({ id: "q1", text: "Soal pertama?" }),
+      makeQuestion({ id: "q2", text: "Soal kedua?", correctId: "x" }),
+    ];
+    expect(validateQuestions(qs)).toMatch(/Soal #2/);
+  });
+
+  it("accepts a question whose correctId matches an option id", () => {
+    expect(validateQuestions([makeQuestion({ correctId: "b" })])).toBeNull();
+  });
+});
+
 // ── malformed shapes ──────────────────────────────────────────────────────────
 
 describe("validateQuestions — malformed shapes", () => {

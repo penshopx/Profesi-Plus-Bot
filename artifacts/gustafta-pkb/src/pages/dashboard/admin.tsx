@@ -1239,6 +1239,16 @@ function QuizModal({
         setExpandedQ(q.id);
         return;
       }
+      if (!q.correctId) {
+        setSaveError(`Soal #${i + 1}: jawaban benar belum dipilih.`);
+        setExpandedQ(q.id);
+        return;
+      }
+      if (!q.options.some((o) => o.id === q.correctId)) {
+        setSaveError(`Soal #${i + 1}: jawaban benar ("${q.correctId}") tidak cocok dengan opsi yang ada. Pilih ulang jawaban yang benar.`);
+        setExpandedQ(q.id);
+        return;
+      }
     }
 
     // Check for duplicate question IDs
@@ -1514,7 +1524,15 @@ function QuestionEditor({
   };
 
   const previewText = question.text || "(belum ada teks soal)";
-  const isComplete = question.text.trim() && question.options.every((o) => o.text.trim()) && question.correctId;
+  // correctId must reference an existing option; a stale/imported value that
+  // doesn't match any option means the question can never be answered correctly
+  const correctIdInvalid =
+    !!question.correctId && !question.options.some((o) => o.id === question.correctId);
+  const isComplete =
+    question.text.trim() &&
+    question.options.every((o) => o.text.trim()) &&
+    question.correctId &&
+    !correctIdInvalid;
 
   return (
     <div className="border border-border rounded-xl overflow-hidden">
@@ -1530,7 +1548,9 @@ function QuestionEditor({
         <div className="flex items-center gap-2 shrink-0">
           {isComplete
             ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600">lengkap</span>
-            : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600">belum lengkap</span>
+            : correctIdInvalid
+              ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-600">jawaban tidak valid</span>
+              : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600">belum lengkap</span>
           }
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
@@ -1586,6 +1606,12 @@ function QuestionEditor({
                   )}
                 </div>
               ))}
+              {correctIdInvalid && (
+                <div className="flex items-center gap-1.5 text-[11px] text-red-600 bg-red-50 px-2.5 py-1.5 rounded-lg">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  Jawaban benar ("{question.correctId}") tidak cocok dengan opsi mana pun. Pilih ulang jawaban yang benar.
+                </div>
+              )}
               <p className="text-[10px] text-muted-foreground">
                 Klik radio button di kiri untuk menandai jawaban yang benar.
               </p>
