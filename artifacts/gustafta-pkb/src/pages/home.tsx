@@ -72,6 +72,10 @@ function readMarketplaceCtx(): MarketplaceCtx | null {
   }
 }
 
+function clearMarketplaceCtxStorage() {
+  try { sessionStorage.removeItem("INTERVIEW_FROM_MARKETPLACE"); } catch {}
+}
+
 export default function Home() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
@@ -91,6 +95,22 @@ export default function Home() {
 
   // Marketplace context: set by DetailPanel when user clicks "Ceritakan ke Pak Budi"
   const [marketplaceCtx, setMarketplaceCtx] = useState<MarketplaceCtx | null>(null);
+  // True once a session was successfully created — the key must survive the
+  // navigation to /chat so chat.tsx can consume it there.
+  const sessionCreatedRef = useRef(false);
+
+  // If the user leaves the new-session form without creating a session
+  // (Batal, closing the form, or navigating away), clear the stored context
+  // so it can't leak into a later, unrelated new session.
+  useEffect(() => {
+    if (!showNew) return;
+    return () => {
+      if (!sessionCreatedRef.current) {
+        clearMarketplaceCtxStorage();
+        setMarketplaceCtx(null);
+      }
+    };
+  }, [showNew]);
 
   useEffect(() => {
     const ctx = readMarketplaceCtx();
@@ -178,6 +198,7 @@ export default function Home() {
         ...(personaId ? { personaId } : {}),
       }),
     onSuccess: (conv) => {
+      sessionCreatedRef.current = true;
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       navigate(`/chat/${conv.id}`);
       // sessionStorage is left intact so chat.tsx can read it on mount
@@ -454,7 +475,7 @@ export default function Home() {
                   </p>
                 </div>
                 <button
-                  onClick={() => { setMarketplaceCtx(null); try { sessionStorage.removeItem("INTERVIEW_FROM_MARKETPLACE"); } catch {} }}
+                  onClick={() => { setMarketplaceCtx(null); clearMarketplaceCtxStorage(); }}
                   className="p-1 rounded-lg hover:bg-blue-200/60 transition-colors shrink-0"
                   title="Hapus konteks kursus"
                 >
@@ -661,7 +682,7 @@ export default function Home() {
 
             <div className="flex gap-3">
               <button
-                onClick={() => setShowNew(false)}
+                onClick={() => { clearMarketplaceCtxStorage(); setMarketplaceCtx(null); setShowNew(false); }}
                 className="flex-1 rounded-xl border border-border bg-card px-6 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors"
               >
                 Batal
