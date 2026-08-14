@@ -7,7 +7,12 @@ const MAX_PAST_EXUMS = 3;
 const MAX_EXUM_TEASER_CHARS = 600;   // per past Exum document
 const MAX_PAST_EVIDENCE = 8;
 const MAX_PAST_EVIDENCE_DESC = 200;  // per evidence item
-const MAX_TOTAL_CHARS = 3200;
+/**
+ * Hard cap on the total character length of the historicalPKBContext block.
+ * Exported so context-budget tests can reference it directly without
+ * repeating the magic number.
+ */
+export const MAX_HISTORICAL_PKB_CHARS = 3200;
 
 // Competency snapshot budget
 const MAX_COMPETENCY_ANALYSES = 3;  // most recent analyses per user
@@ -321,8 +326,8 @@ export async function buildHistoricalPKBContext(
 
   // Guard total token budget
   const combined = parts.join("");
-  return combined.length > MAX_TOTAL_CHARS
-    ? combined.slice(0, MAX_TOTAL_CHARS) + "\n…[riwayat terpotong]"
+  return combined.length > MAX_HISTORICAL_PKB_CHARS
+    ? combined.slice(0, MAX_HISTORICAL_PKB_CHARS) + "\n…[riwayat terpotong]"
     : combined;
 }
 

@@ -90,6 +90,7 @@ import {
   buildCompetencyAnalysisContext,
   buildHistoricalPKBContext,
   buildProfileContext,
+  MAX_HISTORICAL_PKB_CHARS,
 } from "../lib/historical-pkb.js";
 
 // ─── Helpers / Fixtures ───────────────────────────────────────────────────────
@@ -458,9 +459,10 @@ describe("buildHistoricalPKBContext", () => {
     expect(result).toContain("Mengelola proyek jembatan");
   });
 
-  it("caps total output at MAX_TOTAL_CHARS (3200) and appends a truncation marker", async () => {
-    // The implementation slices at MAX_TOTAL_CHARS then appends the marker,
-    // so the final length is 3200 + len(marker) — not strictly ≤ 3200.
+  it("caps total output at MAX_HISTORICAL_PKB_CHARS and appends a truncation marker", async () => {
+    // The implementation slices at MAX_HISTORICAL_PKB_CHARS then appends the
+    // marker, so the final length is MAX_HISTORICAL_PKB_CHARS + len(marker)
+    // — not strictly ≤ MAX_HISTORICAL_PKB_CHARS.
     const MARKER = "\n…[riwayat terpotong]";
     const bigExum = { ...FIXTURE_EXUM, exumContent: "E".repeat(700) };
     const manyExums = Array.from({ length: 3 }, () => bigExum);
@@ -470,7 +472,7 @@ describe("buildHistoricalPKBContext", () => {
     }));
     dbState.push(manyExums, manyEvidence);
     const result = await buildHistoricalPKBContext(1, 99);
-    expect(result.length).toBeLessThanOrEqual(3200 + MARKER.length);
+    expect(result.length).toBeLessThanOrEqual(MAX_HISTORICAL_PKB_CHARS + MARKER.length);
     expect(result).toMatch(/\[riwayat terpotong\]$/);
   });
 
