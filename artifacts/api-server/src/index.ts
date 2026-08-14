@@ -82,16 +82,39 @@ function validateEmailConfig(): void {
 
 validateEmailConfig();
 
+/** Run stale push-token cleanup once, then every 24 hours. */
+const PUSH_TOKEN_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+let pushTokenCleanupInterval: NodeJS.Timeout | undefined;
+
+function schedulePushTokenCleanup(): void {
+  pushTokenCleanupInterval = setInterval(() => {
+    void clearStalePushTokens(logger);
+  }, PUSH_TOKEN_CLEANUP_INTERVAL_MS);
+  // Don't let the timer keep the process alive on its own.
+  pushTokenCleanupInterval.unref?.();
+}
+
 migrateAskomRoleToUser()
   .then(() => backfillCreditsGranted())
   .then(() => clearStalePushTokens(logger))
   .then(() => {
-    app.listen(port, (err) => {
+    schedulePushTokenCleanup();
+    const server = app.listen(port, (err) => {
       if (err) {
         logger.error({ err }, "Error listening on port");
         process.exit(1);
       }
 
       logger.info({ port }, "Server listening");
+    });
+
+    process.on("SIGTERM", () => {
+      if (pushTokenCleanupInterval) {
+        clearInterval(pushTokenCleanupInterval);
+      }
+      // Close the HTTP server so the process exits cleanly, with a bounded
+      // fallback in case connections don't drain in time.
+      server.close(() => process.exit(0));
+      setTimeout(() => process.exit(0), 10_000).unref();
     });
   });
