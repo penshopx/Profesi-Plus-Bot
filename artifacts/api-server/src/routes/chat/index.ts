@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and, asc, count, gte, inArray, sql } from "drizzle-orm";
-import { db, conversations, messages, evidenceItems, usageEvents, users, exumOutlines, quizAttempts, type Conversation } from "@workspace/db";
+import { db, conversations, messages, evidenceItems, usageEvents, users, exumOutlines, quizAttempts, profiles, competencyAnalysis, pkbActivities, type Conversation } from "@workspace/db";
 import { logger } from "../../lib/logger";
 import { getClientForModel, listModels, isKnownModel, DEFAULT_MODEL, callWithFallback } from "../../lib/llm";
 import { buildSystemPrompt, getPhaseInstruction } from "../../lib/pkb-system-prompt";
@@ -515,9 +515,16 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
         .catch((err) => { req.log.warn({ err }, "Failed to load approved outline — proceeding without it"); return null; }),
     ]);
 
-    // Emit a structured alert when the quiz context failed so it can be monitored.
-    if (exumContextErrors.includes("exum:quiz")) {
-      req.log.warn({ userId: req.dbUser!.id, convId, context_block_failed: "quiz" }, "Quiz context block failed for Exum — generation will proceed without quiz data");
+    // Emit a structured alert for each monitored personalisation block that
+    // failed so it can be monitored (quiz, profile, competency, kegiatan).
+    const MONITORED_EXUM_BLOCKS = ["quiz", "profile", "competency", "kegiatan"] as const;
+    for (const block of MONITORED_EXUM_BLOCKS) {
+      if (exumContextErrors.includes(`exum:${block}`)) {
+        req.log.warn(
+          { userId: req.dbUser!.id, convId, context_block_failed: block },
+          `${block} context block failed for Exum — generation will proceed without ${block} data`,
+        );
+      }
     }
 
     // Build outline context — inject user-approved structure when present
@@ -574,34 +581,72 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       return;
     }
 
-    // If the quiz context builder threw, the Exum was written without quiz data.
-    // Show a visible footer notice. We suppress it only when we can positively
-    // confirm the user has zero attempts (nothing to lose). If the confirmation
-    // query itself fails we fail conservatively and keep the notice.
+    // If a personalisation context builder threw, the Exum was written without
+    // that data. Show a visible footer notice naming what could not be loaded.
+    // For each failed block we suppress its notice only when we can positively
+    // confirm the user has zero relevant rows (nothing was lost). If the
+    // confirmation query itself fails we fail conservatively and keep the notice.
     let finalExumResponse = exumResponse;
     // Surfaced to the client so it can show a visible warning banner and offer
     // a retry — mirrors the SSE contextWarning pattern used in the chat stream.
     let quizContextUnavailable = false;
-    if (exumContextErrors.includes("exum:quiz")) {
-      let shouldAppendFooter = true;
+
+    /** True when the user actually has data for the block (or we can't confirm otherwise). */
+    const userLikelyHasData = async (countQuery: () => Promise<number>): Promise<boolean> => {
       try {
-        const [quizCountRow] = await db
-          .select({ total: count() })
-          .from(quizAttempts)
-          .where(eq(quizAttempts.userId, req.dbUser!.id));
-        if ((quizCountRow?.total ?? 1) === 0) {
-          shouldAppendFooter = false; // confirmed: no attempts — no data was lost
-        }
+        return (await countQuery()) > 0;
       } catch (_err) {
-        // Cannot confirm zero attempts — fail conservatively and keep the notice
+        return true; // cannot confirm zero rows — fail conservatively
       }
-      quizContextUnavailable = shouldAppendFooter;
-      if (shouldAppendFooter) {
-        finalExumResponse +=
-          "\n\n---\n*Catatan sistem: Data skor quiz tidak dapat dimuat saat Exum ini dibuat. " +
-          "Hasil quiz Anda mungkin tidak tercermin dalam ringkasan di atas.*";
-        req.log.info({ userId: req.dbUser!.id, convId }, "Appended quiz-unavailable footer to Exum response");
+    };
+
+    // Human-readable labels for the footer note (Indonesian, matching the Exum language).
+    const FOOTER_LABELS: Record<string, string> = {
+      quiz: "data skor quiz",
+      profile: "data profil APL 01",
+      competency: "hasil analisis kompetensi (Studio Kompetensi)",
+      kegiatan: "catatan kegiatan PKB",
+    };
+
+    const countFor = async (block: string): Promise<number> => {
+      const uid = req.dbUser!.id;
+      switch (block) {
+        case "quiz": {
+          const [row] = await db.select({ total: count() }).from(quizAttempts).where(eq(quizAttempts.userId, uid));
+          return Number(row?.total ?? 1);
+        }
+        case "profile": {
+          const [row] = await db.select({ total: count() }).from(profiles).where(eq(profiles.userId, uid));
+          return Number(row?.total ?? 1);
+        }
+        case "competency": {
+          const [row] = await db.select({ total: count() }).from(competencyAnalysis).where(eq(competencyAnalysis.userId, uid));
+          return Number(row?.total ?? 1);
+        }
+        case "kegiatan": {
+          const [row] = await db.select({ total: count() }).from(pkbActivities).where(eq(pkbActivities.userId, uid));
+          return Number(row?.total ?? 1);
+        }
+        default:
+          return 1;
       }
+    };
+
+    const lostBlocks: string[] = [];
+    for (const block of MONITORED_EXUM_BLOCKS) {
+      if (!exumContextErrors.includes(`exum:${block}`)) continue;
+      if (await userLikelyHasData(() => countFor(block))) {
+        lostBlocks.push(block);
+      }
+    }
+
+    quizContextUnavailable = lostBlocks.includes("quiz");
+    if (lostBlocks.length > 0) {
+      const labels = lostBlocks.map((b) => FOOTER_LABELS[b] ?? b).join(", ");
+      finalExumResponse +=
+        `\n\n---\n*Catatan sistem: ${labels.charAt(0).toUpperCase() + labels.slice(1)} tidak dapat dimuat saat Exum ini dibuat. ` +
+        "Informasi tersebut mungkin tidak tercermin dalam ringkasan di atas.*";
+      req.log.info({ userId: req.dbUser!.id, convId, lostBlocks }, "Appended context-unavailable footer to Exum response");
     }
 
     const content = finalExumResponse;
