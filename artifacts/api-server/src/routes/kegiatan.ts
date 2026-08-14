@@ -271,17 +271,25 @@ router.put("/kegiatan/:id/skk", requireAuth, async (req, res) => {
   if (!userId) return res.status(401).json({ error: "user not found" });
 
   const id = parseInt(req.params.id, 10);
-  const [existing] = await db.select({ id: pkbActivities.id })
-    .from(pkbActivities).where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
+  const [existing] = await db.select().from(pkbActivities)
+    .where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
   if (!existing) return res.status(404).json({ error: "not found" });
 
   const items: { skkCode: string; skkName: string; jabkerId?: string; jabkerName?: string }[] = req.body.skk ?? [];
   await db.delete(pkbActivitySkk).where(eq(pkbActivitySkk.activityId, id));
   if (items.length > 0) {
-    await db.insert(pkbActivitySkk).values(items.map((s) => ({ activityId: id, ...s })));
+    // Entries set via this endpoint are considered manual edits.
+    await db.insert(pkbActivitySkk).values(items.map((s) => ({ activityId: id, ...s, autoMapped: false })));
   }
   await addJourney(id, "skk_dipetakan", `${items.length} unit SKK dipetakan`, { count: items.length });
   const status = await recomputeStatus(id);
+
+  // User explicitly cleared all SKK — retrigger auto-mapping so suggestions
+  // are not permanently lost (fire-and-forget, does not block the response).
+  if (items.length === 0) {
+    void autoMapSkk(id, existing, req.log);
+  }
+
   res.json({ success: true, status, skk: items });
 });
 
@@ -465,6 +473,7 @@ Balas HANYA dengan JSON (tidak ada teks lain): {"suggestions":[{"skkCode":"...",
       skkName: s.skkName,
       jabkerId: null,
       jabkerName: s.jabkerName ?? null,
+      autoMapped: true,
     }));
 
     await db.insert(pkbActivitySkk).values(items);

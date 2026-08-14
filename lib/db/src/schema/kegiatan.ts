@@ -101,6 +101,9 @@ export const pkbActivitySkk = pgTable("pkb_activity_skk", {
   skkName:     text("skk_name").notNull(),
   jabkerId:    text("jabker_id"),            // e.g. "ahli_k3_konstruksi"
   jabkerName:  text("jabker_name"),
+  // true = dipetakan otomatis oleh platform; false = ditambahkan/diedit manual oleh user.
+  // Memungkinkan auto-mapping dijalankan ulang saat user menghapus semua SKK.
+  autoMapped:  boolean("auto_mapped").notNull().default(false),
 });
 
 // ─── Field 6, 7, 9 — Dokumen (surat undangan, daftar hadir, foto) ─────────────
