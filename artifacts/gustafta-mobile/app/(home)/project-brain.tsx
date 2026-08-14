@@ -56,16 +56,17 @@ function kindMeta(kind: string) {
 // ─── Entry card ───────────────────────────────────────────────────────────────
 
 function EntryCard({
-  entry, colors, onEdit, onDelete,
+  entry, colors, onEdit, onDelete, onTogglePin,
 }: {
   entry: ProjectBrainEntry;
   colors: ReturnType<typeof useColors>;
   onEdit: () => void;
   onDelete: () => void;
+  onTogglePin: () => void;
 }) {
   const meta = kindMeta(entry.kind);
   return (
-    <View style={[card.wrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View style={[card.wrap, { backgroundColor: colors.card, borderColor: entry.isPinned ? colors.primary : colors.border }]}>
       <View style={card.top}>
         <Text style={card.emoji}>{meta.emoji}</Text>
         <View style={{ flex: 1 }}>
@@ -73,10 +74,21 @@ function EntryCard({
             {entry.title}
           </Text>
           <Text style={[card.sub, { color: colors.mutedForeground }]}>
-            {meta.label}{entry.organization ? ` · ${entry.organization}` : ''}{entry.period ? ` · ${entry.period}` : ''}
+            {entry.isPinned ? '📌 Disematkan · ' : ''}{meta.label}{entry.organization ? ` · ${entry.organization}` : ''}{entry.period ? ` · ${entry.period}` : ''}
           </Text>
         </View>
         <View style={card.actions}>
+          <Pressable
+            onPress={onTogglePin}
+            accessibilityLabel={entry.isPinned ? 'Lepas sematan' : 'Sematkan'}
+            style={({ pressed }) => [card.btn, { opacity: pressed ? 0.5 : 1 }]}
+          >
+            <Feather
+              name="bookmark"
+              size={15}
+              color={entry.isPinned ? colors.primary : colors.mutedForeground}
+            />
+          </Pressable>
           <Pressable onPress={onEdit} style={({ pressed }) => [card.btn, { opacity: pressed ? 0.5 : 1 }]}>
             <Feather name="edit-2" size={15} color={colors.primary} />
           </Pressable>
@@ -353,6 +365,16 @@ export default function ProjectBrainScreen() {
     onError: () => Alert.alert('Gagal', 'Tidak dapat menghapus entri.'),
   });
 
+  const pinMut = useMutation({
+    mutationFn: (entry: ProjectBrainEntry) =>
+      updateProjectBrainEntry(entry.id, { isPinned: !entry.isPinned }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project-brain'] });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    },
+    onError: () => Alert.alert('Gagal', 'Tidak dapat mengubah sematan entri.'),
+  });
+
   function confirmDelete(entry: ProjectBrainEntry) {
     Alert.alert(
       'Hapus Entri',
@@ -406,6 +428,7 @@ export default function ProjectBrainScreen() {
             colors={colors}
             onEdit={() => { setEditTarget(entry); setShowForm(true); }}
             onDelete={() => confirmDelete(entry)}
+            onTogglePin={() => pinMut.mutate(entry)}
           />
         )}
         ListHeaderComponent={

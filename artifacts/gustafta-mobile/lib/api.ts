@@ -400,6 +400,7 @@ export type ProjectBrainEntry = {
   jenjang: string | null;
   highlights: string | null;
   isActive: boolean;
+  isPinned: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -438,6 +439,8 @@ export async function updateProjectBrainEntry(
     role: string | null;
     period: string | null;
     location: string | null;
+    highlights: string | null;
+    isPinned: boolean;
   }>,
 ): Promise<ProjectBrainEntry> {
   const res = await apiFetch(`/project-brain/${id}`, {
