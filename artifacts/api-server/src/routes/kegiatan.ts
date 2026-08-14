@@ -14,7 +14,7 @@ import {
   KEGIATAN_STATUS, type KegiatanStatus, type JourneyEvent,
 } from "@workspace/db/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { consumeUploadToken } from "../lib/uploadTokenStore";
+import { consumeUploadToken, issueUploadToken } from "../lib/uploadTokenStore";
 import { ObjectStorageService } from "../lib/objectStorage";
 
 const router = Router();
@@ -311,10 +311,21 @@ router.post("/kegiatan/:id/docs", requireAuth, async (req, res) => {
     return res.status(403).json({ error: "objectPath tidak valid atau sudah kadaluarsa — silakan upload ulang." });
   }
 
-  const [doc] = await db.insert(pkbActivityDocs).values({
-    activityId: id, docType, filename, objectPath, mimeType: mimeType ?? null,
-    sizeBytes: sizeBytes ?? null, caption: caption ?? null,
-  }).returning();
+  // The token has been consumed. If the DB insert fails below we re-issue it so
+  // the client can retry registration without having to re-upload the file.
+  let doc: typeof pkbActivityDocs.$inferSelect;
+  try {
+    [doc] = await db.insert(pkbActivityDocs).values({
+      activityId: id, docType, filename, objectPath, mimeType: mimeType ?? null,
+      sizeBytes: sizeBytes ?? null, caption: caption ?? null,
+    }).returning();
+  } catch (dbErr) {
+    // Re-issue the token so the client can retry this registration call.
+    // TTL is short (5 min) — enough for backoff retries but not open-ended.
+    issueUploadToken(objectPath, userId, 5 * 60 * 1000);
+    req.log?.error({ err: dbErr }, "DB insert failed for doc registration — token re-issued");
+    return res.status(500).json({ error: "Gagal menyimpan dokumen — silakan coba lagi." });
+  }
 
   const journeyEventMap: Record<string, JourneyEvent> = {
     surat_undangan: "surat_undangan_diunggah",

@@ -217,6 +217,22 @@ export class ObjectStorageService {
     }
   }
 
+  /**
+   * Delete a GCS object, propagating real storage errors to the caller.
+   * Unlike `deleteObjectEntity`, this method only swallows ObjectNotFoundError
+   * (file already gone = success); all other errors (network, auth, quota) are
+   * re-thrown so the caller can handle them and alert the operator.
+   */
+  async deleteObjectEntityStrict(objectPath: string): Promise<void> {
+    try {
+      const objectFile = await this.getObjectEntityFile(objectPath);
+      await objectFile.delete({ ignoreNotFound: true });
+    } catch (err) {
+      if (err instanceof ObjectNotFoundError) return; // already gone — fine
+      throw err; // real GCS error — propagate
+    }
+  }
+
   async trySetObjectEntityAclPolicy(
     rawPath: string,
     aclPolicy: ObjectAclPolicy,

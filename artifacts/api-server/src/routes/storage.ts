@@ -96,6 +96,63 @@ router.get("/storage/downloads/request-url", requireAuth, async (req: Request, r
   }
 });
 
+// ─── DELETE /storage/uploads/abort ───────────────────────────────────────────
+// Called by the client when document registration fails terminally after all
+// retries are exhausted.  Deletes the already-uploaded GCS object so it does
+// not remain orphaned in storage.
+//
+// Authorization is DB-based and survives server restarts / horizontal scaling:
+//   1. The objectPath must start with /objects/uploads/{userId}/ — the server
+//      encodes the uploading userId into the path when issuing presigned URLs.
+//   2. The path must not exist in pkbActivityDocs — guards against deleting a
+//      file that was actually registered (e.g. client retry succeeded on a
+//      parallel attempt after this abort was already in-flight).
+
+router.delete("/storage/uploads/abort", requireAuth, async (req: Request, res: Response) => {
+  const { objectPath } = req.body ?? {};
+  if (!objectPath || typeof objectPath !== "string") {
+    res.status(400).json({ error: "objectPath required" });
+    return;
+  }
+
+  const userId = req.dbUser!.id;
+
+  // Ownership check: the presigned-URL endpoint embeds the userId in the path
+  // as /objects/uploads/{userId}/{uuid}.  Verify the caller owns the prefix.
+  const expectedPrefix = `/objects/uploads/${userId}/`;
+  if (!objectPath.startsWith(expectedPrefix)) {
+    res.status(403).json({ error: "Tidak diizinkan — objectPath bukan milik Anda." });
+    return;
+  }
+
+  // Registration check: if the path is already in pkbActivityDocs the upload
+  // succeeded (possibly on a concurrent retry) — do not delete a live file.
+  const [docRow] = await db
+    .select({ id: pkbActivityDocs.id })
+    .from(pkbActivityDocs)
+    .where(eq(pkbActivityDocs.objectPath, objectPath))
+    .limit(1);
+
+  if (docRow) {
+    // File is registered — treat as a no-op (registration won the race).
+    res.status(409).json({ error: "Dokumen sudah terdaftar — tidak dapat dihapus via abort." });
+    return;
+  }
+
+  // Delete the unregistered GCS object.  Use the strict variant so real GCS
+  // errors (network, auth, quota) surface as 500 rather than being swallowed.
+  // ObjectNotFoundError (already gone) is treated as success.
+  try {
+    await objectStorageService.deleteObjectEntityStrict(objectPath);
+  } catch (err) {
+    req.log?.error({ err, objectPath }, "GCS delete failed during upload abort");
+    res.status(500).json({ error: "Gagal menghapus file dari penyimpanan — silakan hubungi dukungan." });
+    return;
+  }
+
+  res.json({ success: true });
+});
+
 // ─── GET /storage/public-objects/* ───────────────────────────────────────────
 
 router.get("/storage/public-objects/*filePath", async (req: Request, res: Response) => {

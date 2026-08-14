@@ -9,6 +9,11 @@
  * Tokens expire after UPLOAD_TOKEN_TTL_MS regardless of whether they are
  * consumed.  A periodic sweep removes stale entries so memory doesn't grow
  * unboundedly.
+ *
+ * NOTE: This store is intentionally in-memory only — it gates a single
+ * registration attempt.  Abort authorization is handled separately by the
+ * storage route which checks the objectPath prefix (which encodes the userId)
+ * and the pkbActivityDocs table (to prevent deleting already-registered files).
  */
 
 const UPLOAD_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -21,15 +26,21 @@ interface UploadToken {
 
 const store = new Map<string, UploadToken>();
 
-/** Register a newly-issued presigned upload path for the given user. */
-export function issueUploadToken(objectPath: string, userId: number): void {
-  store.set(objectPath, { userId, expiresAt: Date.now() + UPLOAD_TOKEN_TTL_MS });
+/**
+ * Register a newly-issued presigned upload path for the given user.
+ * @param ttlMs  Optional override for the token lifetime (defaults to UPLOAD_TOKEN_TTL_MS).
+ *               Pass a shorter TTL when re-issuing a token after a failed DB write so it
+ *               can only be used for backoff retries, not indefinitely.
+ */
+export function issueUploadToken(objectPath: string, userId: number, ttlMs = UPLOAD_TOKEN_TTL_MS): void {
+  store.set(objectPath, { userId, expiresAt: Date.now() + ttlMs });
 }
 
 /**
  * Validate and consume the token for `objectPath`.
  * Returns `true` and removes the token if it exists, belongs to `userId`, and
  * has not expired.  Returns `false` otherwise.
+ * Always deletes the entry so a bad actor cannot retry with a different userId.
  */
 export function consumeUploadToken(objectPath: string, userId: number): boolean {
   const token = store.get(objectPath);

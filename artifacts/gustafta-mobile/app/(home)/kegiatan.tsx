@@ -22,6 +22,7 @@ import {
   listMyKegiatanPkb, createKegiatanPkb, updateKegiatanPkb, deleteKegiatanPkb,
   updateKegiatanSkk, ajukanKegiatanPkb, getKegiatanDetail,
   requestUploadUrl, registerKegiatanDoc, deleteKegiatanDoc, getDocDownloadUrl,
+  abortUpload, ApiError,
   type PkbActivity, type CreateKegiatanBody, type PkbSkkUnit,
   type PkbActivityDoc, type PkbJourneyEntry,
 } from '@/lib/api';
@@ -253,9 +254,42 @@ function DocUploadSection({ activityId, activityStatus, docs, onRefresh, colors 
   const [opening, setOpening] = useState<number | null>(null); // docId being opened
 
   /**
+   * Retry an async operation up to `maxAttempts` times with exponential backoff.
+   * Stops immediately on ApiError with a 4xx status — those are definitive
+   * rejections (bad token, auth, not-found) that re-trying won't fix.
+   * Network errors and 5xx responses are retried.
+   */
+  async function retryWithBackoff<T>(
+    fn: () => Promise<T>,
+    maxAttempts = 3,
+    baseDelayMs = 1000,
+  ): Promise<T> {
+    let lastErr: Error = new Error('Unknown error');
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        lastErr = err as Error;
+        // ApiError with 4xx = permanent rejection; bail out immediately.
+        if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+          throw err;
+        }
+        if (attempt < maxAttempts) {
+          await new Promise<void>((resolve) => setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)));
+        }
+      }
+    }
+    throw lastErr;
+  }
+
+  /**
    * Core upload helper: fetches the local URI as a blob first so we always
    * have a real byte-length before requesting the presigned URL (the server
    * rejects size=0). If the blob cannot be read or is empty, throws early.
+   *
+   * If the GCS upload succeeds but registration fails, we retry registration
+   * up to 3 times with backoff before giving up. The server re-issues the
+   * upload token on DB failure so retries are always possible.
    */
   async function uploadLocalFile(
     docType: string,
@@ -285,11 +319,36 @@ function DocUploadSection({ activityId, activityStatus, docs, onRefresh, colors 
       });
       if (!putRes.ok) throw new Error('Upload ke server gagal — coba lagi');
 
-      // Step 4: register document in database
-      await registerKegiatanDoc(activityId, docType, filename, objectPath, mimeType, blob.size);
+      // Step 4: register document in database — retry with backoff so a
+      // transient network drop or momentary server hiccup doesn't permanently
+      // orphan the file that already landed in GCS.
+      try {
+        await retryWithBackoff(
+          () => registerKegiatanDoc(activityId, docType, filename, objectPath, mimeType, blob.size),
+          3,
+          1000,
+        );
+      } catch {
+        // Registration failed terminally after all retries.  Ask the server to
+        // delete the GCS object so it doesn't remain orphaned in storage.
+        let cleaned = false;
+        try {
+          await abortUpload(objectPath);
+          cleaned = true;
+        } catch {
+          // Abort also failed — the file may still be in GCS.
+          // A scheduled cleanup job will handle any true orphans (task #190).
+        }
+        throw new Error(
+          cleaned
+            ? 'Upload gagal didaftarkan — file sudah dibersihkan. Silakan coba unggah kembali.'
+            : 'Upload gagal didaftarkan. Silakan coba unggah kembali.',
+        );
+      }
+
       onRefresh();
     } catch (err) {
-      Alert.alert('Upload gagal', (err as Error).message);
+      Alert.alert('Upload tidak lengkap', (err as Error).message);
     } finally {
       setUploading(null);
     }

@@ -609,6 +609,14 @@ export async function requestUploadUrl(
   return res.json();
 }
 
+/** Error thrown when `registerKegiatanDoc` receives a non-2xx response. */
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 export async function registerKegiatanDoc(
   activityId: number,
   docType: string,
@@ -623,9 +631,24 @@ export async function registerKegiatanDoc(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error ?? 'Gagal mendaftarkan dokumen');
+    throw new ApiError(
+      (err as { error?: string }).error ?? 'Gagal mendaftarkan dokumen',
+      res.status,
+    );
   }
   return res.json();
+}
+
+/**
+ * Abort an in-progress upload by asking the server to delete the already-uploaded
+ * GCS object.  Call this when registration fails terminally so the file does not
+ * remain orphaned in storage.
+ */
+export async function abortUpload(objectPath: string): Promise<void> {
+  await apiFetch('/storage/uploads/abort', {
+    method: 'DELETE',
+    body: JSON.stringify({ objectPath }),
+  });
 }
 
 export async function deleteKegiatanDoc(activityId: number, docId: number): Promise<void> {
