@@ -242,6 +242,38 @@ router.patch("/kegiatan/:id", requireAuth, async (req, res) => {
   const effectiveMarketplaceId = "marketplaceId" in req.body
     ? req.body.marketplaceId
     : existing.marketplaceId;
+
+  // Reconcile watch entries when the course link changes: remove the old
+  // course's watch entries if no other PKB activity by this user still
+  // references it, so a stale "Sudah Ditonton" badge can't get stuck.
+  const oldMarketplaceId = existing.marketplaceId;
+  if (
+    "marketplaceId" in req.body &&
+    oldMarketplaceId &&
+    req.body.marketplaceId !== oldMarketplaceId
+  ) {
+    const [stillReferenced] = await db
+      .select({ id: pkbActivities.id })
+      .from(pkbActivities)
+      .where(and(
+        eq(pkbActivities.userId, userId),
+        eq(pkbActivities.marketplaceId, oldMarketplaceId),
+      ))
+      .limit(1);
+    if (!stillReferenced) {
+      await Promise.all([
+        db.delete(marketplaceWatches).where(and(
+          eq(marketplaceWatches.userId, userId),
+          eq(marketplaceWatches.courseId, oldMarketplaceId),
+        )),
+        db.delete(marketplaceWatched).where(and(
+          eq(marketplaceWatched.userId, userId),
+          eq(marketplaceWatched.courseId, oldMarketplaceId),
+        )),
+      ]);
+    }
+  }
+
   if (effectiveMarketplaceId) {
     await autoWatchMarketplaceCourse(userId, effectiveMarketplaceId);
   }
