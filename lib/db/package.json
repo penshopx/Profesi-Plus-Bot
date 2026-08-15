@@ -10,7 +10,8 @@
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts",
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
-    "seed": "tsx src/seed-marketplace.ts"
+    "seed": "tsx src/seed-marketplace.ts",
+    "backfill:watches": "tsx src/backfill-marketplace-watches.ts"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",
