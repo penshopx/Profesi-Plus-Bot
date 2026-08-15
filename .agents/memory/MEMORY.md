@@ -16,4 +16,5 @@
 - [Context usage bookkeeping](context-usage-bookkeeping.md) — mark "AI read this entry" only after the shared prompt budget, via ordered block scan; never inside the context builder.
 - [Context failure detection](context-failure-detection.md) — contextErrors array + SSE contextWarning event + client amber banner when personalisation blocks throw.
 - [Quiz attempt snapshots](quiz-attempt-snapshots.md) — snapshot question content at attempt time; ID-only staleness checks silently relabel answers after in-place option edits.
+- [Unique index on live data](unique-index-live-data.md) — adding a unique index via db push fails on legacy duplicates; run an idempotent dedupe script in post-merge BEFORE push, then rely on onConflictDoNothing→409.
 - [React Native Jest setup](react-native-jest-setup.md) — bypass RNTL + test-renderer ConcurrentRoot act() leakage; use react-test-renderer directly for mutation tests; two-phase act() required.

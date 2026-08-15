@@ -130,6 +130,10 @@ function buildApp(dbUser: { role: string } | null) {
           error: "reviewerName, credential, institution, rating, relevanceScore, recommendation, comment, reviewedAt wajib diisi.",
         });
       }
+      // Mirrors the DB unique index on course_id: one ASKOM review per course.
+      if (askomReviews.some((r: any) => r.courseId === req.params.id)) {
+        return res.status(409).json({ error: "Kursus ini sudah punya ASKOM review. Edit review yang ada." });
+      }
       const created = {
         id: nextId++,
         courseId: req.params.id,
@@ -282,17 +286,18 @@ describe("validation — askom-reviews POST", () => {
     expect(r.status).toBe(400);
   });
 
-  it("accepts a fully valid body and supports multiple endorsements per course", async () => {
+  it("accepts a fully valid body but rejects a second ASKOM review for the same course", async () => {
     const r1 = await request(adminApp).post(`/marketplace/admin/courses/${COURSE_ID}/askom-reviews`).send(VALID_ASKOM_BODY);
     const r2 = await request(adminApp).post(`/marketplace/admin/courses/${COURSE_ID}/askom-reviews`).send({
       ...VALID_ASKOM_BODY,
       reviewerName: "Ir. Siti Rahayu",
     });
     expect(r1.status).toBe(201);
-    expect(r2.status).toBe(201);
-    expect(r2.body.review.reviewerName).toBe("Ir. Siti Rahayu");
+    expect(r2.status).toBe(409);
     const count = askomReviews.filter((r: any) => r.courseId === COURSE_ID).length;
-    expect(count).toBeGreaterThanOrEqual(2);
+    expect(count).toBe(1);
+    // cleanup so later CRUD-cycle tests can create their own review
+    askomReviews = askomReviews.filter((r: any) => r.courseId !== COURSE_ID);
   });
 });
 
@@ -375,20 +380,21 @@ describe("full CRUD cycle — ai-reviews", () => {
 
 describe("full CRUD cycle — askom-reviews", () => {
   it("create → update → delete", async () => {
+    const CRUD_COURSE_ID = "crud-course-test";
     const create = await request(adminApp)
-      .post(`/marketplace/admin/courses/${COURSE_ID}/askom-reviews`)
+      .post(`/marketplace/admin/courses/${CRUD_COURSE_ID}/askom-reviews`)
       .send(VALID_ASKOM_BODY);
     expect(create.status).toBe(201);
     const { id } = create.body.review;
 
     const patch = await request(adminApp)
-      .patch(`/marketplace/admin/courses/${COURSE_ID}/askom-reviews/${id}`)
+      .patch(`/marketplace/admin/courses/${CRUD_COURSE_ID}/askom-reviews/${id}`)
       .send({ recommendation: "direkomendasikan_dengan_catatan" });
     expect(patch.status).toBe(200);
     expect(patch.body.review.recommendation).toBe("direkomendasikan_dengan_catatan");
 
     const del = await request(adminApp)
-      .delete(`/marketplace/admin/courses/${COURSE_ID}/askom-reviews/${id}`);
+      .delete(`/marketplace/admin/courses/${CRUD_COURSE_ID}/askom-reviews/${id}`);
     expect(del.status).toBe(200);
     expect(askomReviews.find((r: any) => r.id === id)).toBeUndefined();
   });

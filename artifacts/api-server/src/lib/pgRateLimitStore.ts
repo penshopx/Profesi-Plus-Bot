@@ -28,7 +28,15 @@ function ensureTable(pool: Pool): Promise<void> {
         hits     INTEGER     NOT NULL DEFAULT 0,
         reset_at TIMESTAMPTZ NOT NULL
       )
-    `).then(() => undefined);
+    `).then(() => undefined)
+      .catch((err: any) => {
+        // Two PROCESSES (e.g. parallel vitest workers) can still race this DDL:
+        // "CREATE TABLE IF NOT EXISTS" is not atomic across sessions and loses
+        // with a 23505 duplicate-key error on pg_type. The table exists in that
+        // case, so treat it as success; rethrow anything else.
+        if (err?.code === "23505") return undefined;
+        throw err;
+      });
   }
   return tableReadyPromise;
 }

@@ -345,6 +345,9 @@ router.post("/marketplace/admin/courses/:id/askom-reviews", requireAuth, require
     res.status(400).json({ error: "reviewerName, credential, institution, rating, relevanceScore, recommendation, comment, reviewedAt wajib diisi." });
     return;
   }
+  // Satu ASKOM review per kursus — ditegakkan lewat unique index di DB
+  // (marketplace_askom_reviews_course_uidx). Insert atomik: konflik → tidak
+  // ada row yang dikembalikan → 409. Gunakan PATCH untuk mengubah yang ada.
   const [created] = await db.insert(marketplaceAskomReviews).values({
     courseId: id,
     reviewerName:     String(body.reviewerName),
@@ -358,7 +361,11 @@ router.post("/marketplace/admin/courses/:id/askom-reviews", requireAuth, require
     strengths:        Array.isArray(body.strengths) ? body.strengths.map(String) : [],
     notes:            body.notes ? String(body.notes) : null,
     reviewedAt:       String(body.reviewedAt),
-  }).returning();
+  }).onConflictDoNothing({ target: marketplaceAskomReviews.courseId }).returning();
+  if (!created) {
+    res.status(409).json({ error: "Kursus ini sudah punya ASKOM review. Edit review yang ada." });
+    return;
+  }
   res.status(201).json({ review: created });
 });
 

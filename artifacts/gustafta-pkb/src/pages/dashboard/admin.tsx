@@ -610,12 +610,14 @@ export default function DashboardAdmin() {
                               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
                                 <Award className="w-3 h-3 text-violet-500" /> ASKOM Reviews
                               </p>
-                              <button
-                                onClick={() => setAskomReviewModal({ courseId: c.id, review: null })}
-                                className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100 font-medium"
-                              >
-                                <Plus className="w-3 h-3" /> Tambah
-                              </button>
+                              {(c.askomReviews?.length ?? 0) === 0 && (
+                                <button
+                                  onClick={() => setAskomReviewModal({ courseId: c.id, review: null })}
+                                  className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100 font-medium"
+                                >
+                                  <Plus className="w-3 h-3" /> Tambah
+                                </button>
+                              )}
                             </div>
                             {(c.askomReviews ?? []).length === 0 ? (
                               <p className="text-[11px] text-muted-foreground italic">Belum ada ASKOM review.</p>

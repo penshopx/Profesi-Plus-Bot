@@ -112,7 +112,9 @@ export type MarketplaceAiReview = typeof marketplaceAiReviews.$inferSelect;
 /**
  * marketplace_askom_reviews — penilaian resmi dari Asesor Kompetensi BNSP
  */
-export const marketplaceAskomReviews = pgTable("marketplace_askom_reviews", {
+export const marketplaceAskomReviews = pgTable(
+  "marketplace_askom_reviews",
+  {
   id:               serial("id").primaryKey(),
   courseId:         text("course_id").notNull().references(() => marketplaceCourses.id, { onDelete: "cascade" }),
   reviewerName:     text("reviewer_name").notNull(),
@@ -127,6 +129,11 @@ export const marketplaceAskomReviews = pgTable("marketplace_askom_reviews", {
   notes:            text("notes"),
   reviewedAt:       text("reviewed_at").notNull(),
   createdAt:        timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+  },
+  (t) => [
+    // Satu ASKOM review per kursus — invariant ditegakkan di level database.
+    uniqueIndex("marketplace_askom_reviews_course_uidx").on(t.courseId),
+  ],
+);
 
 export type MarketplaceAskomReview = typeof marketplaceAskomReviews.$inferSelect;
