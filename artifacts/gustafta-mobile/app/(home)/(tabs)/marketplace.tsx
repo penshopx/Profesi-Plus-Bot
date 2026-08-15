@@ -776,6 +776,15 @@ export default function MarketplaceScreen() {
     [watchedData, cachedWatchedIds],
   );
 
+  // Map courseId → watchedAt ISO timestamp (only available from live data)
+  const watchedAtByCourse = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const rec of watchedData?.watched ?? []) {
+      if (rec.watchedAt) map.set(rec.courseId, rec.watchedAt);
+    }
+    return map;
+  }, [watchedData]);
+
   // Courses with a linked Kegiatan PKB record ("Dicatat PKB")
   const pkbLoggedIds = useMemo(
     () => new Set(watchedData?.pkbLoggedIds ?? cachedPkbLoggedIds),
@@ -1059,6 +1068,7 @@ export default function MarketplaceScreen() {
                 courseProvider:   c.provider,
                 courseJabkerList: JSON.stringify(c.jabker),
                 courseSkkTagsList: JSON.stringify(c.skkTags.map((t) => t.code)),
+                courseWatchedAt:   watchedAtByCourse.get(c.id) ?? '',
               },
             } as any);
           }}

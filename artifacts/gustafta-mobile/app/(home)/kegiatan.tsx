@@ -613,6 +613,8 @@ interface MarketplacePrefill {
   courseProvider: string;
   courseJabkerList: string[];
   courseSkkTagsList: string[];
+  /** Watch date (YYYY-MM-DD) used to pre-fill tanggalMulai; empty when unknown */
+  watchedAt?: string;
 }
 
 function buildInitialForm(initial?: PkbActivity | null, prefill?: MarketplacePrefill | null): FormData {
@@ -630,7 +632,7 @@ function buildInitialForm(initial?: PkbActivity | null, prefill?: MarketplacePre
         namaMateri: prefill?.courseTitle ?? '',
         penyelenggara: prefill?.courseProvider ?? '',
         jenisPkb: prefill ? 'Kursus Online' : '',
-        tanggalMulai: '',
+        tanggalMulai: prefill?.watchedAt ?? '',
       };
 }
 
@@ -1136,7 +1138,7 @@ export default function KegiatanScreen({ isTab = false }: KegiatanScreenProps) {
   const router = useRouter();
   const params = useLocalSearchParams<{
     marketplaceId?: string; courseTitle?: string; courseProvider?: string;
-    courseJabkerList?: string; courseSkkTagsList?: string;
+    courseJabkerList?: string; courseSkkTagsList?: string; courseWatchedAt?: string;
     openActivityId?: string;
   }>();
   const insets = useSafeAreaInsets();
@@ -1156,6 +1158,10 @@ export default function KegiatanScreen({ isTab = false }: KegiatanScreenProps) {
         courseProvider: params.courseProvider ?? '',
         courseJabkerList: params.courseJabkerList ? JSON.parse(params.courseJabkerList) : [],
         courseSkkTagsList: params.courseSkkTagsList ? JSON.parse(params.courseSkkTagsList) : [],
+        // ISO timestamp → YYYY-MM-DD; ignore malformed values so the field stays blank
+        watchedAt: /^\d{4}-\d{2}-\d{2}/.test(params.courseWatchedAt ?? '')
+          ? (params.courseWatchedAt as string).slice(0, 10)
+          : '',
       });
       setShowCreate(true);
     }
