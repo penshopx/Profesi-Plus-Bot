@@ -24,7 +24,7 @@ import {
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@clerk/expo';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -43,6 +43,10 @@ import {
 // ─── Offline catalog cache ────────────────────────────────────────────────────
 
 const CATALOG_CACHE_KEY = 'GUSTAFTA_MARKETPLACE_CATALOG_CACHE';
+
+// How long a fetched catalog is considered fresh. Kept short (1 min) so
+// courses added/edited/removed by an admin appear quickly on mobile.
+const CATALOG_STALE_MS = 60 * 1000;
 
 async function loadCachedCatalog(): Promise<MarketplaceCatalogCourse[]> {
   try {
@@ -716,7 +720,8 @@ export default function MarketplaceScreen() {
     }
   }, [userId]);
 
-  // Fetch catalog from backend; stale time 10 min (catalog changes rarely)
+  // Fetch catalog from backend; short stale time so admin-added courses
+  // show up quickly when the user opens the marketplace tab.
   const {
     data: liveCatalog,
     isLoading: catalogLoading,
@@ -725,9 +730,21 @@ export default function MarketplaceScreen() {
   } = useQuery({
     queryKey: ['marketplace-catalog'],
     queryFn: getMarketplaceCatalog,
-    staleTime: 10 * 60 * 1000,
+    staleTime: CATALOG_STALE_MS,
     enabled: cacheLoaded,
   });
+
+  // Refetch the catalog whenever the marketplace screen gains focus and the
+  // cached data is older than CATALOG_STALE_MS, so courses added/edited/removed
+  // by an admin appear without requiring a manual pull-to-refresh.
+  useFocusEffect(
+    useCallback(() => {
+      const state = queryClient.getQueryState(['marketplace-catalog']);
+      if (!state?.dataUpdatedAt || Date.now() - state.dataUpdatedAt > CATALOG_STALE_MS) {
+        refetchCatalog();
+      }
+    }, [queryClient, refetchCatalog]),
+  );
 
   // Persist successful fetches to AsyncStorage
   useEffect(() => {
