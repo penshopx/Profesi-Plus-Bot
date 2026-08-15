@@ -686,6 +686,8 @@ export interface MarketplaceWatchRecord {
 export interface MarketplaceWatchedResponse {
   watched: MarketplaceWatchRecord[];
   watchedIds: string[];
+  /** Course IDs that already have a linked Kegiatan PKB record ("Dicatat PKB") */
+  pkbLoggedIds?: string[];
 }
 
 export async function getWatchedCourses(): Promise<MarketplaceWatchedResponse> {

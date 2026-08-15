@@ -83,6 +83,26 @@ async function saveWatchedCache(userId: string, ids: string[]): Promise<void> {
   } catch {}
 }
 
+// Cache for courses that already have a linked Kegiatan PKB ("Dicatat PKB")
+function pkbLoggedCacheKey(userId: string): string {
+  return `GUSTAFTA_MARKETPLACE_PKB_LOGGED_CACHE_${userId}`;
+}
+
+async function loadCachedPkbLogged(userId: string): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem(pkbLoggedCacheKey(userId));
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function savePkbLoggedCache(userId: string, ids: string[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(pkbLoggedCacheKey(userId), JSON.stringify(ids));
+  } catch {}
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ContentType = 'video' | 'webinar' | 'diklatkerja' | 'modul';
@@ -204,6 +224,7 @@ function formatPrice(idr: number): string {
 function CourseDetailModal({
   course,
   watched,
+  pkbLogged,
   onClose,
   onToggleWatch,
   onShare,
@@ -212,6 +233,7 @@ function CourseDetailModal({
 }: {
   course: Course;
   watched: boolean;
+  pkbLogged: boolean;
   onClose: () => void;
   onToggleWatch: () => void;
   onShare: () => void;
@@ -252,6 +274,11 @@ function CourseDetailModal({
             {course.isNew && (
               <View style={[dm.badge, { backgroundColor: '#D1FAE5' }]}>
                 <Text style={[dm.badgeText, { color: '#065F46' }]}>✨ Baru</Text>
+              </View>
+            )}
+            {pkbLogged && (
+              <View style={[dm.badge, { backgroundColor: '#DBEAFE' }]}>
+                <Text style={[dm.badgeText, { color: '#1E40AF' }]}>📋 Dicatat PKB</Text>
               </View>
             )}
           </View>
@@ -451,12 +478,14 @@ const dm = StyleSheet.create({
 function CourseCard({
   course,
   watched,
+  pkbLogged,
   onPress,
   onToggleWatch,
   onShare,
 }: {
   course: Course;
   watched: boolean;
+  pkbLogged: boolean;
   onPress: () => void;
   onToggleWatch: () => void;
   onShare: () => void;
@@ -485,6 +514,11 @@ function CourseCard({
           {watched && (
             <View style={[cc.accentBadge, { backgroundColor: 'rgba(16,185,129,0.85)' }]}>
               <Text style={cc.accentBadgeText}>✓ Ditonton</Text>
+            </View>
+          )}
+          {pkbLogged && (
+            <View style={[cc.accentBadge, { backgroundColor: 'rgba(59,130,246,0.85)' }]}>
+              <Text style={cc.accentBadgeText}>📋 Dicatat PKB</Text>
             </View>
           )}
         </View>
@@ -662,6 +696,7 @@ export default function MarketplaceScreen() {
 
   // ── Offline watched-courses cache ─────────────────────────────────────────
   const [cachedWatchedIds, setCachedWatchedIds] = useState<string[]>([]);
+  const [cachedPkbLoggedIds, setCachedPkbLoggedIds] = useState<string[]>([]);
   const [watchedCacheLoaded, setWatchedCacheLoaded] = useState(false);
 
   useEffect(() => {
@@ -674,6 +709,7 @@ export default function MarketplaceScreen() {
         setCachedWatchedIds(ids);
         setWatchedCacheLoaded(true);
       });
+      loadCachedPkbLogged(userId).then(setCachedPkbLoggedIds);
     } else {
       // No authenticated user — skip disk read, allow query to proceed unfenced
       setWatchedCacheLoaded(true);
@@ -728,12 +764,22 @@ export default function MarketplaceScreen() {
       setCachedWatchedIds(watchedData.watchedIds);
       saveWatchedCache(userId, watchedData.watchedIds);
     }
+    if (watchedData?.pkbLoggedIds && userId) {
+      setCachedPkbLoggedIds(watchedData.pkbLoggedIds);
+      savePkbLoggedCache(userId, watchedData.pkbLoggedIds);
+    }
   }, [watchedData, userId]);
 
   // Use live data when available; fall back to cached list when offline
   const watchedIds = useMemo(
     () => new Set(watchedData?.watchedIds ?? cachedWatchedIds),
     [watchedData, cachedWatchedIds],
+  );
+
+  // Courses with a linked Kegiatan PKB record ("Dicatat PKB")
+  const pkbLoggedIds = useMemo(
+    () => new Set(watchedData?.pkbLoggedIds ?? cachedPkbLoggedIds),
+    [watchedData, cachedPkbLoggedIds],
   );
 
   const toggleWatch = useMutation({
@@ -965,6 +1011,7 @@ export default function MarketplaceScreen() {
             <CourseCard
               course={item}
               watched={watchedIds.has(item.id)}
+              pkbLogged={pkbLoggedIds.has(item.id)}
               onPress={() => setSelectedCourse(item)}
               onToggleWatch={() => handleToggleWatch(item)}
               onShare={() => handleShare(item)}
@@ -996,6 +1043,7 @@ export default function MarketplaceScreen() {
         <CourseDetailModal
           course={selectedCourse}
           watched={watchedIds.has(selectedCourse.id)}
+          pkbLogged={pkbLoggedIds.has(selectedCourse.id)}
           onClose={() => setSelectedCourse(null)}
           onToggleWatch={() => handleToggleWatch(selectedCourse)}
           onShare={() => handleShare(selectedCourse)}

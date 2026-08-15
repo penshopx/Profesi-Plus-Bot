@@ -17,8 +17,9 @@ import {
   marketplaceCourses,
   marketplaceAiReviews,
   marketplaceAskomReviews,
+  pkbActivities,
 } from "@workspace/db/schema";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, isNotNull } from "drizzle-orm";
 
 /** Middleware: only allow users with role='admin'. */
 function requireAdmin(req: Request, res: Response, next: NextFunction): void {
@@ -90,13 +91,25 @@ router.get("/marketplace/courses", catalogRateLimiter, async (_req, res) => {
 
 router.get("/marketplace/watched", requireAuth, async (req, res) => {
   const uid = req.dbUser!.id;
-  const rows = await db
-    .select()
-    .from(marketplaceWatched)
-    .where(eq(marketplaceWatched.userId, uid));
+  const [rows, pkbRows] = await Promise.all([
+    db
+      .select()
+      .from(marketplaceWatched)
+      .where(eq(marketplaceWatched.userId, uid)),
+    db
+      .select({ marketplaceId: pkbActivities.marketplaceId })
+      .from(pkbActivities)
+      .where(
+        and(eq(pkbActivities.userId, uid), isNotNull(pkbActivities.marketplaceId)),
+      ),
+  ]);
   res.json({
     watched: rows,
     watchedIds: rows.map((r) => r.courseId),
+    // Courses that already have a linked Kegiatan PKB record ("Dicatat PKB")
+    pkbLoggedIds: [
+      ...new Set(pkbRows.map((r) => r.marketplaceId).filter(Boolean)),
+    ],
   });
 });
 
