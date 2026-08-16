@@ -141,6 +141,13 @@ describe("Role guard — only admin may access verification routes", () => {
       expect(res.status).toBe(403);
     });
 
+    it(`returns 403 for role=${role} on detail`, async () => {
+      primeActivity("diajukan");
+      const app = await buildApp(role);
+      const res = await request(app).get("/api/askom/submissions/10");
+      expect(res.status).toBe(403);
+    });
+
     it(`returns 403 for role=${role} on verify`, async () => {
       primeActivity("diajukan");
       const app = await buildApp(role);
