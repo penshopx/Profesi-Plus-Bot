@@ -487,6 +487,8 @@ export interface PkbSkkUnit {
   skkName: string;
   jabkerId?: string;
   jabkerName?: string;
+  /** true = dipetakan otomatis oleh platform; false/undefined = ditambahkan manual */
+  autoMapped?: boolean;
 }
 
 export interface PkbActivity {

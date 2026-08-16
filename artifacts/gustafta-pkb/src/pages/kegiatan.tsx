@@ -30,7 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface SkkUnit { skkCode: string; skkName: string; jabkerId?: string; jabkerName?: string; }
+interface SkkUnit { skkCode: string; skkName: string; jabkerId?: string; jabkerName?: string; autoMapped?: boolean; }
 interface ActivityDoc { id: number; docType: string; filename: string; objectPath: string; mimeType?: string; caption?: string; uploadedAt: string; }
 interface JourneyEntry { id: number; event: string; label: string; metadata?: Record<string, unknown>; createdAt: string; }
 interface ChecklistRecord {
@@ -781,7 +781,16 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
                     {(full.skk ?? []).map(s => (
                       <div key={s.skkCode} className="flex items-start gap-2 text-xs">
                         <span className="font-mono bg-primary/8 text-primary px-2 py-0.5 rounded-full shrink-0 text-[10px]">{s.skkCode.split(".").slice(0,4).join(".")}…</span>
-                        <span className="text-muted-foreground">{s.skkName}</span>
+                        <span className="text-muted-foreground flex-1">{s.skkName}</span>
+                        {s.autoMapped ? (
+                          <span className="inline-flex items-center gap-0.5 shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-600 border border-violet-200" title="Dipetakan otomatis oleh platform">
+                            <Sparkles className="w-2.5 h-2.5" /> Otomatis
+                          </span>
+                        ) : (
+                          <span className="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border" title="Ditambahkan manual">
+                            Manual
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>

@@ -205,7 +205,19 @@ function SkkManager({ skk, onUpdate, activityId, colors, onDirtyChange }: {
       {skk.map((u, i) => (
         <View key={i} style={[s.skkRow, { borderColor: colors.border, backgroundColor: colors.muted }]}>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 10, fontFamily: 'PlusJakartaSans_600SemiBold', color: colors.primary }}>{u.skkCode}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontSize: 10, fontFamily: 'PlusJakartaSans_600SemiBold', color: colors.primary, flexShrink: 1 }}>{u.skkCode}</Text>
+              {u.autoMapped ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 99, backgroundColor: '#EDE9FE', borderWidth: 1, borderColor: '#DDD6FE' }}>
+                  <Feather name="zap" size={8} color="#7C3AED" />
+                  <Text style={{ fontSize: 9, fontFamily: 'PlusJakartaSans_600SemiBold', color: '#7C3AED' }}>Otomatis</Text>
+                </View>
+              ) : (
+                <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 99, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
+                  <Text style={{ fontSize: 9, fontFamily: 'PlusJakartaSans_600SemiBold', color: colors.mutedForeground }}>Manual</Text>
+                </View>
+              )}
+            </View>
             <Text style={{ fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: colors.foreground, marginTop: 2 }}>{u.skkName}</Text>
             {u.jabkerName && <Text style={{ fontSize: 11, color: colors.mutedForeground }}>{u.jabkerName}</Text>}
           </View>
