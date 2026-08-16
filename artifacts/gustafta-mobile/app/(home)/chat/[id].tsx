@@ -27,6 +27,7 @@ import {
   advancePhase,
   transcribeAudio,
   getMyUsage,
+  getMyPlan,
   checkCompetencyAnalysisForJabker,
   getQuizCoverage,
   type Message,
@@ -268,12 +269,15 @@ type ExumPhase =
   | 'done'
   | 'gen_error';
 
-function ExumModal({
+export function ExumModal({
   visible,
   conversationId,
   existingContent,
   onClose,
   onGenerated,
+  onGenerationFailedSafely,
+  onGenerationFailedUnsafely,
+  generationLocked,
   colors,
   exumQuota,
 }: {
@@ -282,6 +286,18 @@ function ExumModal({
   existingContent?: string | null;
   onClose: () => void;
   onGenerated?: (content: string) => void;
+  /** Called when generation failed but the server confirmed the credit was
+   * refunded and nothing partial was persisted (retrySafe). The parent should
+   * clear its cached Exum content so stale data cannot rehydrate the modal. */
+  onGenerationFailedSafely?: () => void;
+  /** Called when generation failed WITHOUT a confirmed refund — the credit
+   * state is ambiguous, so the parent must suppress all generation entry
+   * points until the user reconciles their credit status. */
+  onGenerationFailedUnsafely?: () => void;
+  /** Defense-in-depth: while the parent is in unsafe-failure lockout, the
+   * modal must refuse to start any generation, even if reached via another
+   * path (deep link, header button with existing content, etc.). */
+  generationLocked?: boolean;
   colors: ReturnType<typeof import('@/hooks/useColors').useColors>;
   /** Daily Exum generation quota — shown so users know how many generations remain. */
   exumQuota?: { remaining: number; limit: number } | null;
@@ -293,6 +309,9 @@ function ExumModal({
   const [phase, setPhase] = useState<ExumPhase>('checking_coverage');
   const [content, setContent] = useState(existingContent || '');
   const [genError, setGenError] = useState('');
+  // True when the failed generation was refunded server-side (HTTP 500/503):
+  // no credit was lost and no partial Exum was persisted, so retry is safe.
+  const [creditsSafe, setCreditsSafe] = useState(false);
   const [coverageGaps, setCoverageGaps] = useState<QuizCoverageGap[]>([]);
   /** Total APL 02 claims; null until the coverage response arrives. */
   const [claimsCount, setClaimsCount] = useState<number | null>(null);
@@ -306,19 +325,43 @@ function ExumModal({
 
   // ── Core generation call (called only after user has seen/acknowledged gaps)
   const doGenerate = useCallback(async () => {
+    // Defense-in-depth: never start a chargeable generation while the parent
+    // is in unsafe-failure lockout (credit state unreconciled).
+    if (generationLocked) {
+      setCreditsSafe(false);
+      setGenError('Status kredit Anda belum dapat dipastikan setelah kegagalan sebelumnya. Muat ulang status kredit dari layar chat sebelum mencoba lagi.');
+      setPhase('gen_error');
+      return;
+    }
     try {
       setPhase('generating');
       setGenError('');
+      setCreditsSafe(false);
       const result = await generateExum(conversationId);
       setContent(result.content);
       onGenerated?.(result.content);
       setPhase('done');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
+      // The server sets retrySafe:true only when the credit refund was
+      // confirmed and no partial Exum was persisted — clear any stale partial
+      // content so the retry starts from a clean slate, and reassure the user
+      // that no credit was lost.
+      const refunded = (e as Error & { retrySafe?: boolean }).retrySafe === true;
+      setCreditsSafe(refunded);
+      if (refunded) {
+        // Clear both the modal-local content and the parent's cached Exum so
+        // reopening the modal cannot rehydrate stale partial content.
+        setContent('');
+        onGenerationFailedSafely?.();
+      } else {
+        // Refund not confirmed — parent must lock generation entry points.
+        onGenerationFailedUnsafely?.();
+      }
       setGenError((e as Error).message);
       setPhase('gen_error');
     }
-  }, [conversationId, onGenerated]);
+  }, [conversationId, onGenerated, onGenerationFailedSafely, onGenerationFailedUnsafely, generationLocked]);
 
   // ── Coverage gate: fetch gaps, then decide next phase
   const checkCoverage = useCallback(async () => {
@@ -467,7 +510,7 @@ function ExumModal({
                 <ActivityIndicator size="small" color={colors.mutedForeground} />
               </View>
             ) : (
-              <Pressable onPress={handleRefresh} style={em.refreshBtn}>
+              <Pressable testID="exum-refresh-btn" onPress={handleRefresh} style={em.refreshBtn}>
                 <Feather name="refresh-cw" size={18} color={colors.primary} />
               </Pressable>
             )
@@ -626,11 +669,27 @@ function ExumModal({
           <View style={em.center}>
             <Feather name="alert-circle" size={40} color={colors.destructive} />
             <Text style={[em.errText, { color: colors.destructive }]}>{genError}</Text>
-            <Pressable onPress={doGenerate}>
-              <Text style={{ color: colors.primary, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 12 }}>
-                Coba lagi
+            {creditsSafe && (
+              <Text style={{ color: colors.mutedForeground, fontFamily: 'PlusJakartaSans_500Medium', textAlign: 'center', marginTop: 8, paddingHorizontal: 24 }}>
+                Kredit Exum Anda tidak terpotong — aman untuk mencoba lagi.
               </Text>
-            </Pressable>
+            )}
+            {/* Retry is only offered when the server CONFIRMED the credit was
+                refunded (retrySafe). Otherwise a retry could burn another
+                credit, so we only offer a close action. */}
+            {creditsSafe ? (
+              <Pressable testID="exum-retry-btn" onPress={doGenerate}>
+                <Text style={{ color: colors.primary, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 12 }}>
+                  Coba lagi
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable testID="exum-error-close-btn" onPress={onClose}>
+                <Text style={{ color: colors.mutedForeground, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 12 }}>
+                  Tutup
+                </Text>
+              </Pressable>
+            )}
           </View>
         )}
 
@@ -903,7 +962,40 @@ export default function ChatScreen() {
   const [phase, setPhase] = useState('profiling');
   const [title, setTitle] = useState('');
   const [exumContent, setExumContent] = useState<string | null>(null);
+  // Set after a retry-safe failed regeneration: the conversation row may still
+  // hold the PREVIOUS Exum document, and the query sync effect would otherwise
+  // rehydrate exactly the stale content we just cleared. Reset on the next
+  // successful generation.
+  const [exumRegenFailed, setExumRegenFailed] = useState(false);
+  // Set when generation failed WITHOUT a confirmed refund: the credit state is
+  // ambiguous, so all generation entry points stay locked until the user
+  // explicitly reloads their credit status.
+  const [exumUnsafeFailure, setExumUnsafeFailure] = useState(false);
+  /** True while the reconcile fetch is in flight; the lock stays until it succeeds. */
+  const [exumReconciling, setExumReconciling] = useState(false);
+  const [exumReconcileError, setExumReconcileError] = useState(false);
   const [exumVisible, setExumVisible] = useState(false);
+
+  // Clear the unsafe-failure lock ONLY after an authoritative credit refetch
+  // succeeds. A failed/offline refetch keeps the lock and shows an error.
+  const reconcileExumCredits = useCallback(async () => {
+    setExumReconciling(true);
+    setExumReconcileError(false);
+    try {
+      // Unlock ONLY after the authoritative Exum credit state (plan endpoint:
+      // exumCredits / free-trial state) is successfully refetched. Usage
+      // counters alone are rate-limiter data and cannot confirm credits.
+      const plan = await getMyPlan();
+      queryClient.setQueryData(['my-plan'], plan);
+      queryClient.invalidateQueries({ queryKey: ['my-usage'] });
+      queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+      setExumUnsafeFailure(false);
+    } catch {
+      setExumReconcileError(true);
+    } finally {
+      setExumReconciling(false);
+    }
+  }, [conversationId, queryClient]);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -996,8 +1088,11 @@ export default function ChatScreen() {
     }
     setPhase(convData.phase);
     setTitle(convData.title);
-    if (convData.exumContent) setExumContent(convData.exumContent);
-  }, [convData, initialLoaded]);
+    // Do not rehydrate the server's (previous) Exum after a retry-safe failed
+    // regeneration — that would resurface the stale content the failure path
+    // deliberately cleared (#206).
+    if (convData.exumContent && !exumRegenFailed) setExumContent(convData.exumContent);
+  }, [convData, initialLoaded, exumRegenFailed]);
 
   // ─── doSend ────────────────────────────────────────────────────────────────
   //
@@ -1392,8 +1487,13 @@ export default function ChatScreen() {
           </View>
         </View>
 
-        {canGenerate && (
+        {/* Hidden during an unsafe-failure lockout when there is no existing
+            Exum to view — opening the modal would auto-start a chargeable
+            generation. With an existing Exum the modal opens in view mode
+            (and its own generationLocked guard blocks regeneration). */}
+        {canGenerate && !(exumUnsafeFailure && !exumContent) && (
           <Pressable
+            testID="exum-header-btn"
             style={({ pressed }) => [
               styles.exumBtn,
               { backgroundColor: pressed ? colors.accent + 'cc' : colors.accent },
@@ -1478,8 +1578,42 @@ export default function ChatScreen() {
             <QuizSummaryPanel jabker={jabker} colors={colors} />
           )}
 
-          {phase === 'synthesis' && !isStreaming && !exumContent && isOnline && (
+          {phase === 'synthesis' && !isStreaming && !exumContent && isOnline && exumUnsafeFailure && (
+            <View
+              style={[
+                styles.synthesisBanner,
+                { backgroundColor: '#FEF2F2', borderColor: '#FECACA', flexWrap: 'wrap' },
+              ]}
+              testID="exum-unsafe-banner"
+            >
+              <Feather name="alert-triangle" size={16} color="#DC2626" />
+              <Text style={[styles.synthesisBannerText, { color: '#991B1B', flex: 1 }]}>
+                Pembuatan Exum gagal dan status kredit belum dapat dipastikan. Jika kredit Anda terpotong, hubungi admin.
+              </Text>
+              {exumReconcileError && (
+                <Text testID="exum-reconcile-error" style={{ color: '#991B1B', fontSize: 11, width: '100%' }}>
+                  Gagal memuat status kredit. Periksa koneksi lalu coba lagi.
+                </Text>
+              )}
+              <Pressable
+                testID="exum-unsafe-reload-btn"
+                disabled={exumReconciling}
+                onPress={reconcileExumCredits}
+              >
+                {exumReconciling ? (
+                  <ActivityIndicator size="small" color="#DC2626" />
+                ) : (
+                  <Text style={{ color: '#DC2626', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12 }}>
+                    Muat ulang status kredit
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          )}
+
+          {phase === 'synthesis' && !isStreaming && !exumContent && isOnline && !exumUnsafeFailure && (
             <Pressable
+              testID="exum-generate-entry"
               style={[
                 styles.synthesisBanner,
                 { backgroundColor: colors.accent + '22', borderColor: colors.accent + '55' },
@@ -1686,6 +1820,8 @@ export default function ChatScreen() {
         existingContent={exumContent}
         onClose={() => setExumVisible(false)}
         onGenerated={(content) => {
+          setExumRegenFailed(false);
+          setExumUnsafeFailure(false);
           setExumContent(content);
           setPhase('done');
           queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
@@ -1693,6 +1829,18 @@ export default function ChatScreen() {
           // Refresh the quota counter immediately so the remaining count drops.
           queryClient.invalidateQueries({ queryKey: ['my-usage'] });
         }}
+        onGenerationFailedSafely={() => {
+          // Server confirmed the failed generation was refunded and nothing
+          // partial was persisted — drop the cached Exum so reopening the
+          // modal cannot rehydrate stale content. exumRegenFailed also blocks
+          // the conversation-sync effect from restoring the server's previous
+          // Exum on refetch until a new generation succeeds.
+          setExumRegenFailed(true);
+          setExumContent(null);
+          queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+        }}
+        onGenerationFailedUnsafely={() => setExumUnsafeFailure(true)}
+        generationLocked={exumUnsafeFailure}
         colors={colors}
         exumQuota={usageInfo?.exum ?? null}
       />

@@ -224,8 +224,28 @@ export async function generateExum(
     const body = await r.json().catch(() => ({}));
     throw new PlanLimitError(body.error ?? "Kredit Exum Anda sudah habis.");
   }
-  if (!r.ok) throw new Error("Gagal membuat Executive Summary");
+  if (!r.ok) {
+    // The server marks refunded failures (500 outer catch, 503 LLM outage)
+    // with retrySafe:true — credit was returned and no partial Exum was
+    // persisted, so the client can offer an immediate, unambiguous retry.
+    const body = (await r.json().catch(() => ({}))) as { error?: string; retrySafe?: boolean };
+    throw new ExumGenerationError(
+      body.error ?? "Gagal membuat Executive Summary",
+      body.retrySafe === true,
+    );
+  }
   return r.json();
+}
+
+/** Thrown when generate-exum fails for a non-quota reason. `retrySafe` means
+ * the server refunded the credit and left no partial data behind. */
+export class ExumGenerationError extends Error {
+  retrySafe: boolean;
+  constructor(message: string, retrySafe: boolean) {
+    super(message);
+    this.name = "ExumGenerationError";
+    this.retrySafe = retrySafe;
+  }
 }
 
 export async function advancePhase(conversationId: number): Promise<{ phase: string }> {

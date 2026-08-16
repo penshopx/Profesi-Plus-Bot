@@ -21,3 +21,4 @@
 - [GCS orphan cleanup](gcs-orphan-cleanup.md) — Replit sidecar creds can't set bucket lifecycle rules; use an in-process daily sweep (age cutoff >> upload-token TTL, DB-registration check) instead.
 - [Deep-link dedup races](deeplink-dedup-races.md) — mark deep-link ids handled only at terminal state; separate in-flight ref + active-id ref so re-runs and newer taps neither drop nor misroute.
 - [React Native Jest setup](react-native-jest-setup.md) — bypass RNTL + test-renderer ConcurrentRoot act() leakage; use react-test-renderer directly for mutation tests; two-phase act() required.
+- [Refund-confirmed retrySafe](refund-confirmed-retry.md) — only claim "credit not lost / retry safe" after the refund write is confirmed; never key it off HTTP status alone.

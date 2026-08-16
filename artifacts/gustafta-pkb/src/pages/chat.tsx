@@ -12,6 +12,9 @@ import ReactMarkdown from "react-markdown";
 import {
   getConversation, streamMessage, generateExum, advancePhase, createEvidence, deleteEvidence, patchEvidence,
   fetchSkkUnits, updateConversation, listPersonas, checkCompetencyAnalysisForJabker, PlanLimitError, SCALEV_CHECKOUT_URL,
+} from "@/lib/api";
+import { classifyExumFailure } from "@/lib/exum-failure";
+import {
   type Message, type EvidenceItem, type SkkUnit, type SocratiDialog,
 } from "@/lib/api";
 import { ExumOutlineEditor } from "@/components/ExumOutlineEditor";
@@ -1192,11 +1195,20 @@ export default function ChatPage() {
   const [showExumModal, setShowExumModal] = useState(false);
   const [phaseToast, setPhaseToast] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [paywall, setPaywall] = useState<{ msg: string; canUpgrade: boolean } | null>(null);
+  // `retry: true` marks a refunded generate-exum failure (server retrySafe):
+  // the modal then shows a "Coba lagi" button and confirms no credit was lost.
+  const [paywall, setPaywall] = useState<{ msg: string; canUpgrade: boolean; retry?: boolean } | null>(null);
   const [contextFailureBanner, setContextFailureBanner] = useState(false);
   // Amber warning: quiz context failed to load during Exum generation — the
   // resulting Exum was written without quiz evidence. User may retry.
   const [exumQuizWarning, setExumQuizWarning] = useState(false);
+  // Set when generate-exum failed WITHOUT a server-confirmed refund (no
+  // retrySafe flag): the credit state is ambiguous, so every generation entry
+  // point is suppressed until the user explicitly reloads their credit status.
+  const [exumUnsafeFailure, setExumUnsafeFailure] = useState(false);
+  /** True while the credit reconcile fetch is in flight; the lock stays until it succeeds. */
+  const [exumReconciling, setExumReconciling] = useState(false);
+  const [exumReconcileError, setExumReconcileError] = useState(false);
   // Quiz coverage gap banner (#133): collapsible list of claimed units without
   // a passing quiz attempt, shown during synthesis/done phases.
   const [gapsExpanded, setGapsExpanded] = useState(false);
@@ -1423,9 +1435,13 @@ export default function ChatPage() {
   };
 
   const handleGenerateExum = async () => {
+    // Hard gate: after an unsafe failure (refund not confirmed) no generation
+    // may start until the user reloads their credit status.
+    if (exumUnsafeFailure) return;
     setGenerating(true);
     try {
       const result = await generateExum(id);
+      setExumUnsafeFailure(false);
       setExumQuizWarning(result.quizContextUnavailable === true);
       setExum(result.content);
       setCurrentPhase("done");
@@ -1433,10 +1449,23 @@ export default function ChatPage() {
       // Refresh the quota indicator so the Exum count drops immediately after generation.
       qc.invalidateQueries({ queryKey: ["my-usage"] });
     } catch (err) {
-      if (err instanceof PlanLimitError) {
-        setPaywall({ msg: err.message, canUpgrade: true });
+      const failure = classifyExumFailure(err);
+      if (failure.kind === "quota") {
+        setPaywall({ msg: failure.message, canUpgrade: true });
+      } else if (failure.kind === "retrySafe") {
+        // Server refunded the credit and persisted nothing — clear any stale
+        // partial content and offer an unambiguous retry.
+        setExum(null);
+        setExumQuizWarning(false);
+        setPaywall({ msg: failure.message, canUpgrade: false, retry: true });
       } else {
-        setPaywall({ msg: "Gagal membuat Executive Summary. Silakan coba lagi.", canUpgrade: false });
+        // Refund NOT confirmed — this covers both explicit server failures
+        // without retrySafe AND transport/network errors (where the request
+        // may have reserved a credit before the connection dropped). Credit
+        // state is ambiguous, so lock all generation entry points until the
+        // user reloads their credit status.
+        setExumUnsafeFailure(true);
+        setPaywall({ msg: failure.message, canUpgrade: false });
       }
     } finally {
       setGenerating(false);
@@ -1640,7 +1669,7 @@ export default function ChatPage() {
             <span className="hidden sm:inline">Lanjut Fase</span>
           </button>
         )}
-        {canGenerate && !exum && (
+        {canGenerate && !exum && !exumUnsafeFailure && (
           <button onClick={handleGenerateExum} disabled={generating}
             className="flex items-center gap-1.5 bg-accent text-accent-foreground px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-60 shrink-0">
             {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
@@ -1654,6 +1683,50 @@ export default function ChatPage() {
           </button>
         )}
       </header>
+
+      {/* Ambiguous Exum failure — refund not confirmed. Generation stays
+          locked until the user reloads their credit status. */}
+      {exumUnsafeFailure && (
+        <div className="border-b border-red-200 bg-red-50/80 px-4 py-2.5 shrink-0">
+          <div className="max-w-3xl mx-auto flex items-start gap-2 flex-wrap">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            <span className="text-sm text-red-800 flex-1 min-w-[200px]">
+              <strong>Pembuatan Exum gagal dan status kredit belum dapat dipastikan.</strong>{" "}
+              Jika kredit Anda terpotong, hubungi admin. Muat ulang status kredit sebelum mencoba lagi.
+            </span>
+            {exumReconcileError && (
+              <span className="w-full text-xs text-red-700">Gagal memuat status kredit. Periksa koneksi lalu coba lagi.</span>
+            )}
+            <button
+              disabled={exumReconciling}
+              onClick={async () => {
+                // Clear the lock ONLY after an authoritative credit refetch
+                // succeeds; a failed refetch keeps the lock and shows an error.
+                setExumReconciling(true);
+                setExumReconcileError(false);
+                try {
+                  // Unlock ONLY after the authoritative Exum credit state
+                  // (plan endpoint: exumCredits / free-trial state) refetches
+                  // successfully. Usage counters are rate-limiter data and
+                  // cannot confirm credits.
+                  const freshPlan = await getMyPlan();
+                  qc.setQueryData(["my-plan"], freshPlan);
+                  qc.invalidateQueries({ queryKey: ["my-usage"] });
+                  qc.invalidateQueries({ queryKey: ["conversation", id] });
+                  setExumUnsafeFailure(false);
+                } catch {
+                  setExumReconcileError(true);
+                } finally {
+                  setExumReconciling(false);
+                }
+              }}
+              className="flex items-center gap-1.5 bg-white border border-red-300 text-red-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-red-100 transition-colors disabled:opacity-60">
+              {exumReconciling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              {exumReconciling ? "Memuat..." : "Muat ulang status kredit"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {paywall && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPaywall(null)}>
@@ -1672,6 +1745,12 @@ export default function ChatPage() {
               )}
               {paywall.canUpgrade && !SCALEV_CHECKOUT_URL && (
                 <span className="flex-1 text-center text-xs text-muted-foreground self-center">Hubungi admin untuk membeli kredit Exum.</span>
+              )}
+              {paywall.retry && (
+                <button onClick={() => { setPaywall(null); handleGenerateExum(); }}
+                  className="flex-1 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground hover:opacity-90 transition-opacity">
+                  Coba lagi
+                </button>
               )}
               <button onClick={() => setPaywall(null)}
                 className="flex-1 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors">
@@ -1760,7 +1839,7 @@ export default function ChatPage() {
             <span className="text-sm text-amber-800 flex-1 min-w-[200px]">
               <strong>Data quiz tidak dapat dimuat</strong> saat Exum ini dibuat — hasil quiz Anda mungkin tidak tercermin dalam ringkasan. Anda bisa membuat ulang Exum sebelum menggunakannya (menggunakan 1 kredit).
             </span>
-            <button onClick={handleGenerateExum} disabled={generating}
+            <button onClick={handleGenerateExum} disabled={generating || exumUnsafeFailure}
               className="flex items-center gap-1.5 bg-white border border-amber-300 text-amber-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-amber-100 transition-colors disabled:opacity-60">
               {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
               {generating ? "Membuat ulang..." : "Generate Ulang"}
@@ -1848,7 +1927,7 @@ export default function ChatPage() {
               className="flex items-center gap-1.5 bg-white border border-green-300 text-green-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-green-50 transition-colors">
               <Download className="w-3.5 h-3.5" /> Word (.html)
             </button>
-            <button onClick={() => { setExum(null); handleGenerateExum(); }} disabled={generating}
+            <button onClick={() => { setExum(null); handleGenerateExum(); }} disabled={generating || exumUnsafeFailure}
               title="Generate ulang Exum (misalnya setelah menambah serpihan baru)"
               className="flex items-center gap-1.5 bg-white border border-amber-300 text-amber-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-amber-50 transition-colors disabled:opacity-50">
               {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}

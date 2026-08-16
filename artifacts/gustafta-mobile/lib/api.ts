@@ -70,14 +70,18 @@ async function apiFetch(path: string, options: RequestInit = {}) {
     // once), then attempt a JSON parse to extract the server's `error` field.
     const text = await response.text().catch(() => '');
     let errorMessage: string;
+    // Server-confirmed retry-safe failure (e.g. generate-exum refunded the
+    // credit and persisted nothing) — surfaced so callers can offer a retry.
+    let retrySafe = false;
     try {
-      const body = JSON.parse(text) as { error?: string };
+      const body = JSON.parse(text) as { error?: string; retrySafe?: boolean };
       errorMessage = body.error ?? `API ${response.status}`;
+      retrySafe = body.retrySafe === true;
     } catch {
       // Body was not JSON (e.g. proxy HTML error page) — surface the raw text.
       errorMessage = text || `API ${response.status}`;
     }
-    throw Object.assign(new Error(errorMessage), { status: response.status });
+    throw Object.assign(new Error(errorMessage), { status: response.status, retrySafe });
   }
   return response;
 }

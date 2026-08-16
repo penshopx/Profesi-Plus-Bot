@@ -887,13 +887,44 @@ describe("POST /api/chat/generate-exum", () => {
 
     // Outer catch must return 500 — not 503 (that's the inner LLM-failure path).
     expect(res.status).toBe(500);
-    expect(res.body.error).toMatch(/failed to generate/i);
+    expect(res.body.error).toMatch(/gagal membuat executive summary/i);
+    // Credit was refunded and nothing partial was persisted — the response
+    // must carry the retrySafe flag so clients can offer a clean retry.
+    expect(res.body.retrySafe).toBe(true);
 
     // Refund: the outer catch must have called db.update with the users table
     // (to restore exumCredits) after the conversations update failed.
     // We cleared the mock before the request, so any users-table invocation here
     // belongs exclusively to the refund path in this request.
     expect(vi.mocked(db.update)).toHaveBeenCalledWith(usersTable);
+  });
+
+  it("omits retrySafe and the 'credit not deducted' claim when the refund itself fails", async () => {
+    // Same flow as the previous test, but the refund write (db.update(users))
+    // ALSO throws — e.g. a DB outage broke both the conversations update and
+    // the refund. The response must NOT claim the credit is intact.
+    const convUpdateReject = Promise.reject(new Error("DB connection lost during conversation update"));
+    convUpdateReject.catch(() => {});
+    const refundReject = Promise.reject(new Error("DB still down during refund"));
+    refundReject.catch(() => {});
+    dbState.push(
+      [FAKE_CONV], // 1. conversation
+      [],          // 2. messages
+      [],          // 3. evidenceItems
+      [],          // 4. exumOutlines
+      convUpdateReject, // 5. conversations update throws
+      refundReject,     // 6. refund users update throws
+    );
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    expect(res.status).toBe(500);
+    // No retrySafe flag and no reassurance that the credit survived.
+    expect(res.body.retrySafe).toBeUndefined();
+    expect(res.body.error).not.toMatch(/tidak terpotong/i);
+    expect(res.body.error).toMatch(/hubungi admin/i);
   });
 
   it("returns 402 when the user has no credits and has already used the free trial", async () => {

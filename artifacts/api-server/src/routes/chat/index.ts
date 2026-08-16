@@ -462,11 +462,20 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
   // Refund the reserved credit/trial so ANY failure after reservation (context
   // build, model resolution, or the LLM call) never costs the user. Idempotent
   // per request: we only reach a failure path once.
-  const refundReservation = async () => {
-    if (creditSource === "paid") {
-      await db.update(users).set({ exumCredits: sql`${users.exumCredits} + 1` }).where(eq(users.id, req.dbUser!.id)).catch(() => {});
-    } else {
-      await db.update(users).set({ freeExumUsed: false }).where(eq(users.id, req.dbUser!.id)).catch(() => {});
+  // Returns true only when the refund write is confirmed. Callers must NOT
+  // claim "credit not deducted" / retrySafe unless this returns true — a DB
+  // outage can cause both the original failure and a failed refund.
+  const refundReservation = async (): Promise<boolean> => {
+    try {
+      if (creditSource === "paid") {
+        await db.update(users).set({ exumCredits: sql`${users.exumCredits} + 1` }).where(eq(users.id, req.dbUser!.id));
+      } else {
+        await db.update(users).set({ freeExumUsed: false }).where(eq(users.id, req.dbUser!.id));
+      }
+      return true;
+    } catch (refundErr) {
+      req.log.error({ err: refundErr, userId: req.dbUser!.id, creditSource }, "Failed to refund Exum reservation");
+      return false;
     }
   };
 
@@ -571,11 +580,22 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       );
       exumResponse = result.choices[0]?.message?.content ?? "";
     } catch (err) {
-      await refundReservation();
+      const refunded = await refundReservation();
       req.log.error({ err }, "All LLM providers failed for Exum generation");
-      res.status(503).json({
-        error: "Semua layanan AI sedang tidak tersedia. Kredit tidak dikurangi. Coba lagi dalam beberapa menit.",
-      });
+      // Only claim the credit is intact (and mark retrySafe) when the refund
+      // write was actually confirmed.
+      res.status(503).json(
+        refunded
+          ? {
+              error: "Semua layanan AI sedang tidak tersedia. Kredit tidak dikurangi. Coba lagi dalam beberapa menit.",
+              // Credit was refunded and no partial Exum was persisted — the
+              // client can safely offer an immediate retry.
+              retrySafe: true,
+            }
+          : {
+              error: "Semua layanan AI sedang tidak tersedia. Coba lagi dalam beberapa menit. Jika kredit Anda terpotong, hubungi admin.",
+            },
+      );
       return;
     }
 
@@ -679,9 +699,24 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
 
     res.json({ content, conversationId, quizContextUnavailable });
   } catch (err) {
-    await refundReservation();
+    const refunded = await refundReservation();
     req.log.error({ err }, "Generate Exum error");
-    res.status(500).json({ error: "Failed to generate Executive Summary" });
+    // retrySafe (and the "credit not deducted" reassurance) is only sent when
+    // the refund write was confirmed; a DB outage can fail both the original
+    // operation and the refund, in which case we must not invite a retry that
+    // would consume another credit.
+    res.status(500).json(
+      refunded
+        ? {
+            error: "Gagal membuat Executive Summary. Kredit Anda tidak terpotong — silakan coba lagi.",
+            // Credit was refunded and no partial Exum was persisted (the only
+            // Exum write is a single atomic update on success) — retry is safe.
+            retrySafe: true,
+          }
+        : {
+            error: "Gagal membuat Executive Summary. Jika kredit Anda terpotong, hubungi admin.",
+          },
+    );
   }
 });
 
