@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import { applySharedContextBudget, SHARED_CONTEXT_BUDGET_CHARS, type ContextBlock } from "../context-budget";
-import { buildChatContextBlocks } from "../chat-context-blocks";
+import { buildChatContextBlocks, buildExumContextBlocks } from "../chat-context-blocks";
 
 // Helper: repeat a character to produce a string of exactly `n` chars.
 const fill = (char: string, n: number) => char.repeat(n);
@@ -218,6 +218,87 @@ describe("applySharedContextBudget", () => {
     ];
     const result = applySharedContextBudget(blocks);
     expect(result.length).toBeLessThanOrEqual(SHARED_CONTEXT_BUDGET_CHARS);
+  });
+
+  // ── Real priority table from the Exum generator ────────────────────────────
+
+  describe("Exum context blocks (buildExumContextBlocks)", () => {
+    const blockSize = 60;
+    const exumInputs = {
+      outlineContext:        fill("O", blockSize),
+      profileContext:        fill("P", blockSize),
+      competencyContext:     fill("C", blockSize),
+      quizContext:           fill("Q", blockSize),
+      watchedModulesContext: fill("W", blockSize),
+      kegiatanContext:       fill("K", blockSize),
+      knowledgeContext:      fill("N", blockSize),
+      projectBrainContext:   fill("B", blockSize),
+      historicalPKBContext:  fill("H", blockSize),
+    };
+
+    it("builds 9 blocks with strictly descending priorities: outline > profile > competency > quiz > watchedModules > kegiatan > knowledge > projectBrain > historical", () => {
+      const blocks = buildExumContextBlocks(exumInputs);
+      expect(blocks).toHaveLength(9);
+      const expectedOrder = ["O", "P", "C", "Q", "W", "K", "N", "B", "H"];
+      expectedOrder.forEach((ch, i) => {
+        expect(blocks[i].content[0]).toBe(ch);
+      });
+      for (let i = 1; i < blocks.length; i++) {
+        expect(blocks[i].priority).toBeLessThan(blocks[i - 1].priority);
+      }
+    });
+
+    it("shares the chat path's priorities for the 8 common blocks, with outline strictly above all of them", () => {
+      const exumBlocks = buildExumContextBlocks(exumInputs);
+      const chatBlocks = buildChatContextBlocks(exumInputs);
+      const outline = exumBlocks[0];
+      const rest = exumBlocks.slice(1);
+      expect(rest.map(b => b.priority)).toEqual(chatBlocks.map(b => b.priority));
+      expect(rest.map(b => b.content)).toEqual(chatBlocks.map(b => b.content));
+      for (const b of rest) {
+        expect(outline.priority).toBeGreaterThan(b.priority);
+      }
+    });
+
+    it("keeps outline and profile intact and cuts the lowest-priority blocks first when all 9 blocks are large", () => {
+      const budget = 160; // room for outline (60) + profile (60) + a trimmed 3rd block
+      const result = applySharedContextBudget(buildExumContextBlocks(exumInputs), budget);
+
+      expect(result.length).toBeLessThanOrEqual(budget);
+      // Highest priorities preserved in full
+      expect(result).toContain(fill("O", blockSize));
+      expect(result).toContain(fill("P", blockSize));
+      // Lowest priorities entirely absent or cut
+      expect(result).not.toContain(fill("H", blockSize));
+      expect(result).not.toContain(fill("B", blockSize));
+      expect(result).not.toContain(fill("N", blockSize));
+    });
+
+    it("preserves blocks strictly in priority order under an escalating budget", () => {
+      // As the budget grows by one block at a time, the next-highest-priority
+      // block should be the one that becomes fully present.
+      const order = ["O", "P", "C", "Q", "W", "K", "N", "B", "H"];
+      for (let kept = 1; kept <= order.length; kept++) {
+        const budget = kept * blockSize;
+        const result = applySharedContextBudget(buildExumContextBlocks(exumInputs), budget);
+        for (let i = 0; i < order.length; i++) {
+          const full = fill(order[i], blockSize);
+          if (i < kept) {
+            expect(result).toContain(full);
+          } else {
+            expect(result).not.toContain(full);
+          }
+        }
+      }
+    });
+
+    it("never exceeds the default shared budget with oversized Exum blocks", () => {
+      const huge = Object.fromEntries(
+        Object.keys(exumInputs).map(k => [k, fill("Z", 9999)]),
+      ) as typeof exumInputs;
+      const result = applySharedContextBudget(buildExumContextBlocks(huge));
+      expect(result.length).toBeLessThanOrEqual(SHARED_CONTEXT_BUDGET_CHARS);
+    });
   });
 
   // ── Empty / whitespace content ─────────────────────────────────────────────
