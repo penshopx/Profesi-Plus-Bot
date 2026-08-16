@@ -434,6 +434,45 @@ describe("POST /api/chat/conversations/:id/messages", () => {
     expect(systemMessage.content).toContain("PROFIL APL 01 TKK");
   });
 
+  it("does not return 500 and falls back to empty string when buildKegiatanContext throws", async () => {
+    const { buildKegiatanContext } = await import("../lib/historical-pkb.js");
+    vi.mocked(buildKegiatanContext).mockRejectedValueOnce(new Error("pkb_activities table unavailable"));
+
+    dbState.push([FAKE_CONV], undefined, [FAKE_USER_MSG], [], undefined);
+
+    const res = await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({ content: "Halo" });
+
+    // A kegiatan DB failure must not crash the chat — the session must continue.
+    expect(res.status).toBe(200);
+
+    // Other context blocks must still appear despite the kegiatan failure.
+    const systemMessage = capturedLLMMessages[0];
+    expect(systemMessage.role).toBe("system");
+    expect(systemMessage.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+    expect(systemMessage.content).toContain("PROFIL APL 01 TKK");
+  });
+
+  it("does not return 500 and falls back to empty string when buildWatchedModulesContext throws", async () => {
+    const { buildWatchedModulesContext } = await import("../lib/historical-pkb.js");
+    vi.mocked(buildWatchedModulesContext).mockRejectedValueOnce(new Error("marketplace_watched table unavailable"));
+
+    dbState.push([FAKE_CONV], undefined, [FAKE_USER_MSG], [], undefined);
+
+    const res = await request(app)
+      .post("/api/chat/conversations/1/messages")
+      .send({ content: "Halo" });
+
+    // A watched-modules DB failure must not crash the chat.
+    expect(res.status).toBe(200);
+
+    const systemMessage = capturedLLMMessages[0];
+    expect(systemMessage.role).toBe("system");
+    expect(systemMessage.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+    expect(systemMessage.content).toContain("PROFIL APL 01 TKK");
+  });
+
   it("returns 404 when the conversation does not belong to the user", async () => {
     // loadOwnedConversation returns a conversation owned by a different user
     dbState.push([{ ...FAKE_CONV, userId: 999 }]);
@@ -680,6 +719,48 @@ describe("POST /api/chat/generate-exum", () => {
 
     // safeExumCtx must absorb the exception — a quiz DB failure must not crash
     // Exum generation and must not charge the user a credit.
+    expect(res.status).toBe(200);
+
+    // Profile and competency context must still reach the prompt.
+    const prompt = capturedLLMMessages[0];
+    expect(prompt.role).toBe("user");
+    expect(prompt.content).toContain("PROFIL APL 01 TKK");
+    expect(prompt.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+  });
+
+  it("does not return 500 and still returns 200 when buildKegiatanContext throws during Exum generation", async () => {
+    const { buildKegiatanContext } = await import("../lib/historical-pkb.js");
+    vi.mocked(buildKegiatanContext).mockRejectedValueOnce(new Error("pkb_activities table unavailable"));
+
+    dbState.push([FAKE_CONV], [], [], [], undefined, undefined);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    // safeExumCtx must absorb the exception — a kegiatan DB failure must never
+    // crash Exum generation and cost the user their credit.
+    expect(res.status).toBe(200);
+
+    // Profile and competency context must still reach the prompt.
+    const prompt = capturedLLMMessages[0];
+    expect(prompt.role).toBe("user");
+    expect(prompt.content).toContain("PROFIL APL 01 TKK");
+    expect(prompt.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+  });
+
+  it("does not return 500 and still returns 200 when buildWatchedModulesContext throws during Exum generation", async () => {
+    const { buildWatchedModulesContext } = await import("../lib/historical-pkb.js");
+    vi.mocked(buildWatchedModulesContext).mockRejectedValueOnce(new Error("marketplace_watched table unavailable"));
+
+    dbState.push([FAKE_CONV], [], [], [], undefined, undefined);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    // safeExumCtx must absorb the exception — a watched-modules DB failure must
+    // never crash Exum generation and cost the user their credit.
     expect(res.status).toBe(200);
 
     // Profile and competency context must still reach the prompt.
