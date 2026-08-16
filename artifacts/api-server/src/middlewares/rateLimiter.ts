@@ -180,14 +180,33 @@ export const claimPaymentRateLimiter = createClaimPaymentRateLimiter();
 
 // ── catalogRateLimiter ────────────────────────────────────────────────────────
 
+/** Parse a positive-integer env var, falling back to a default when unset or invalid. */
+function envPositiveInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    console.warn(`[rateLimiter] Ignoring invalid ${name}="${raw}"; using default ${fallback}`);
+    return fallback;
+  }
+  return parsed;
+}
+
 /**
  * Public catalog endpoint rate limiter (IP-based — no auth required).
- * 120 requests/hour per IP prevents scraping while allowing normal browsing.
+ * Defaults to 120 requests/hour per IP, which prevents scraping while allowing
+ * normal browsing. Configurable per environment via:
+ *
+ *   CATALOG_RATE_LIMIT_MAX        — max requests per window (default 120)
+ *   CATALOG_RATE_LIMIT_WINDOW_MS  — window length in ms (default 3600000 = 1h)
+ *
+ * Useful for staging/load testing where a relaxed limit is needed without a
+ * code change.
  */
 export function createCatalogRateLimiter(overrides: LimiterOverrides = {}) {
   return rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour
-    limit: 120,
+    windowMs: envPositiveInt("CATALOG_RATE_LIMIT_WINDOW_MS", 60 * 60 * 1000), // 1 hour default
+    limit: envPositiveInt("CATALOG_RATE_LIMIT_MAX", 120),
     keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
     standardHeaders: "draft-7",
     legacyHeaders: false,

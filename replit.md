@@ -34,6 +34,8 @@ Three workflows start automatically:
 | `GEMINI_API_KEY` | Gemini 2.5 Flash/Pro | Optional |
 | `SESSION_SECRET` | Express session | ✅ Already set |
 | `SCALEV_WEBHOOK_SECRET` | Scalev payment webhooks | Optional |
+| `CATALOG_RATE_LIMIT_MAX` | Max catalog requests per window (default 120) | Optional |
+| `CATALOG_RATE_LIMIT_WINDOW_MS` | Catalog rate-limit window in ms (default 3600000 = 1h) | Optional |
 
 ## Key features
 
