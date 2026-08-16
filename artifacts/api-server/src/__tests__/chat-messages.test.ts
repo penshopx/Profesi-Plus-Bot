@@ -684,6 +684,28 @@ describe("POST /api/chat/generate-exum", () => {
     expect(prompt.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
   });
 
+  it("returns 200 and does not refund the credit when the usageEvents audit insert fails after the Exum is saved", async () => {
+    // Queue: conv, messages, evidenceItems, exumOutlines, update conv (success),
+    // then a thenable that rejects for the usageEvents insert.
+    const failingInsert = { then: (_resolve: unknown, reject: (e: unknown) => void) => reject(new Error("audit insert failed")) };
+    dbState.push([FAKE_CONV], [], [], [], undefined, failingInsert);
+
+    vi.mocked(db.update).mockClear();
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    // The Exum is already persisted — the failed audit write must be non-fatal.
+    expect(res.status).toBe(200);
+    expect(res.body.content).toBe("EXUM_RESPONSE");
+    expect(res.body.conversationId).toBe(1);
+
+    // db.update must have been called exactly once (conversations → done).
+    // A refund would issue a second db.update against users — that must NOT happen.
+    expect(vi.mocked(db.update)).toHaveBeenCalledTimes(1);
+  });
+
   it("does not return 500 and still returns 200 when buildProfileContext throws during Exum generation", async () => {
     const { buildProfileContext } = await import("../lib/historical-pkb.js");
     vi.mocked(buildProfileContext).mockRejectedValueOnce(new Error("Profile DB unreachable"));

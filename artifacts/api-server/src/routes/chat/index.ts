@@ -653,7 +653,14 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       .where(eq(conversations.id, conversationId));
 
     // Audit log of a successfully delivered Exum (source: paid credit or free trial).
-    await db.insert(usageEvents).values({ userId: req.dbUser!.id, kind: `exum_${creditSource}` });
+    // Non-fatal: the Exum is already persisted, so a failed audit write must not
+    // trigger the outer catch (which would refund the credit and return 500 for
+    // a document the user already has).
+    try {
+      await db.insert(usageEvents).values({ userId: req.dbUser!.id, kind: `exum_${creditSource}` });
+    } catch (auditErr) {
+      req.log.warn({ err: auditErr, userId: req.dbUser!.id, conversationId }, "Failed to write Exum usage audit event (non-fatal)");
+    }
 
     // Non-blocking push notification to the user's device.
     // sendPushNotification handles Expo ticket parsing and stale-token cleanup
