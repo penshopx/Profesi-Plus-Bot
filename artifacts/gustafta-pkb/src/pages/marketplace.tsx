@@ -302,7 +302,7 @@ function avgAiRating(reviews: { rating: number }[]): number {
 
 // ─── Reviews Section (shown inside DetailPanel) ───────────────────────────────
 
-function ReviewsSection({ reviews }: { reviews: Course["reviews"] }) {
+export function ReviewsSection({ reviews }: { reviews: Course["reviews"] }) {
   const [activeTab, setActiveTab] = useState<"ai" | "askom">("ai");
   const avg = avgAiRating(reviews.aiReviews);
 
@@ -491,7 +491,7 @@ function ReviewsSection({ reviews }: { reviews: Course["reviews"] }) {
 
 // ─── Course Card ──────────────────────────────────────────────────────────────
 
-function CourseCard({ course, onClick, isWatched }: { course: Course; onClick: () => void; isWatched: boolean }) {
+export function CourseCard({ course, onClick, isWatched }: { course: Course; onClick: () => void; isWatched: boolean }) {
   const T = TYPE_META[course.type as ContentType] ?? TYPE_META.video;
   const TIcon = T.icon;
   const [shareOpen, setShareOpen] = useState(false);

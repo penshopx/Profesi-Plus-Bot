@@ -1,13 +1,15 @@
 import { useClerk, useUser } from "@clerk/react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard, LogOut, Users, Video, MessageSquare,
   CheckCircle2, ChevronDown, Search, BookOpen, Plus, Pencil, Trash2, X, Sparkles, Award,
   ClipboardList, ChevronUp, ToggleLeft, ToggleRight, AlertCircle, BarChart2, Loader2, ShoppingBag, Download,
-  Star,
+  Star, Eye,
 } from "lucide-react";
+import { CourseCard, ReviewsSection } from "@/pages/marketplace";
+import type { MarketplaceCourseItem, AIReview, AskomReview } from "@/lib/api";
 import {
   listAllUsers, updateUserRole, listVideos, type VideoItem, type DbUser,
   listKnowledgeBase, createKnowledgeEntry, updateKnowledgeEntry, deleteKnowledgeEntry,
@@ -50,6 +52,141 @@ const JABKER_OPTIONS = [
   "Ahli Teknik Sumber Daya Air", "Pelaksana Lapangan",
 ];
 
+// ─── Course preview helpers ───────────────────────────────────────────────────
+
+function toPublicAiReview(r: AdminAiReviewInput): AIReview {
+  return {
+    platform: r.platform || "Platform AI",
+    platformIcon: r.platformIcon || "🤖",
+    rating: r.rating,
+    relevanceScore: r.relevanceScore,
+    comment: r.comment,
+    reviewedAt: r.reviewedAt,
+  };
+}
+
+function toPublicAskomReview(r: AdminAskomReviewInput): AskomReview {
+  return {
+    reviewerName: r.reviewerName || "(nama reviewer)",
+    credential: r.credential || "",
+    institution: r.institution || "",
+    credentialNumber: r.credentialNumber || undefined,
+    rating: r.rating,
+    relevanceScore: r.relevanceScore,
+    recommendation: r.recommendation as AskomReview["recommendation"],
+    comment: r.comment,
+    strengths: r.strengths ?? [],
+    notes: r.notes || undefined,
+    reviewedAt: r.reviewedAt,
+  };
+}
+
+/**
+ * Builds the exact course shape the public marketplace page renders,
+ * merging any unsaved review drafts so the preview updates in real time.
+ */
+function buildPreviewCourse(
+  c: AdminCourse,
+  aiEdit: { editingId: number | null; draft: AdminAiReviewInput } | null,
+  askomEdit: { editingId: number | null; draft: AdminAskomReviewInput } | null,
+): MarketplaceCourseItem {
+  let aiReviews: AIReview[];
+  if (aiEdit) {
+    aiReviews = (c.aiReviews ?? [])
+      .filter((r) => r.id !== aiEdit.editingId)
+      .map(toPublicAiReview);
+    aiReviews.push(toPublicAiReview(aiEdit.draft));
+  } else {
+    aiReviews = (c.aiReviews ?? []).map(toPublicAiReview);
+  }
+
+  let askomReviews: AskomReview[];
+  if (askomEdit) {
+    askomReviews = (c.askomReviews ?? [])
+      .filter((r) => r.id !== askomEdit.editingId)
+      .map((r) => toPublicAskomReview({ ...r, credentialNumber: r.credentialNumber ?? undefined, notes: r.notes ?? undefined }));
+    askomReviews.push(toPublicAskomReview(askomEdit.draft));
+  } else {
+    askomReviews = (c.askomReviews ?? []).map((r) =>
+      toPublicAskomReview({ ...r, credentialNumber: r.credentialNumber ?? undefined, notes: r.notes ?? undefined }));
+  }
+
+  return {
+    id: c.id,
+    title: c.title,
+    provider: c.provider,
+    providerLogo: c.providerLogo,
+    thumbnail: c.thumbnail,
+    type: c.type as MarketplaceCourseItem["type"],
+    price: c.price as MarketplaceCourseItem["price"],
+    priceIdr: c.priceIdr,
+    priceOriginalIdr: null,
+    rating: c.rating,
+    ratingCount: c.ratingCount,
+    durationMinutes: c.durationMinutes,
+    videoCount: c.videoCount,
+    quizCount: c.quizCount,
+    hasCertificate: c.hasCertificate,
+    jabker: c.jabker ?? [],
+    skkTags: [],
+    description: c.description,
+    highlights: [],
+    curriculum: [],
+    url: c.url,
+    isBestSeller: c.isBestSeller,
+    isFeatured: c.isFeatured,
+    isNew: c.isNew,
+    sortOrder: c.sortOrder,
+    reviews: { aiReviews, askomReviews },
+  };
+}
+
+function CoursePreviewModal({
+  course, hasDraft, onClose,
+}: {
+  course: MarketplaceCourseItem;
+  hasDraft: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-background border border-border rounded-2xl w-full max-w-md my-8 shadow-xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Eye className="w-4 h-4 text-primary" />
+            <h2 className="text-sm font-semibold">Preview Kartu Kursus</h2>
+            {hasDraft && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-medium">
+                termasuk perubahan belum disimpan
+              </span>
+            )}
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-5">
+          <p className="text-[11px] text-muted-foreground">
+            Tampilan persis seperti yang dilihat pengguna di halaman Marketplace.
+          </p>
+          <div className="pointer-events-none max-w-xs mx-auto">
+            <CourseCard course={course} onClick={() => {}} isWatched={false} />
+          </div>
+          {course.reviews.aiReviews.length > 0 ? (
+            <div className="border-t border-border pt-4">
+              <ReviewsSection reviews={course.reviews} />
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground italic border-t border-border pt-4">
+              Belum ada AI review — bagian "Penilaian &amp; Ulasan" tidak akan tampil di halaman detail.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardAdmin() {
   const { signOut } = useClerk();
   const { user } = useUser();
@@ -67,6 +204,9 @@ export default function DashboardAdmin() {
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
   const [aiReviewModal, setAiReviewModal] = useState<{ courseId: string; review: AdminAiReview | null } | null>(null);
   const [askomReviewModal, setAskomReviewModal] = useState<{ courseId: string; review: AdminAskomReview | null } | null>(null);
+  const [previewCourseId, setPreviewCourseId] = useState<string | null>(null);
+  const [aiDraft, setAiDraft] = useState<AdminAiReviewInput | null>(null);
+  const [askomDraft, setAskomDraft] = useState<AdminAskomReviewInput | null>(null);
 
   const { data: users = [], isLoading: usersLoading } = useQuery({
     queryKey: ["admin-users"],
@@ -130,12 +270,12 @@ export default function DashboardAdmin() {
   const aiReviewCreateMut = useMutation({
     mutationFn: ({ courseId, data }: { courseId: string; data: AdminAiReviewInput }) =>
       adminCreateAiReview(courseId, data),
-    onSuccess: () => { invalidateMarketplace(); setAiReviewModal(null); },
+    onSuccess: () => { invalidateMarketplace(); setAiReviewModal(null); setAiDraft(null); },
   });
   const aiReviewUpdateMut = useMutation({
     mutationFn: ({ courseId, reviewId, data }: { courseId: string; reviewId: number; data: Partial<AdminAiReviewInput> }) =>
       adminUpdateAiReview(courseId, reviewId, data),
-    onSuccess: () => { invalidateMarketplace(); setAiReviewModal(null); },
+    onSuccess: () => { invalidateMarketplace(); setAiReviewModal(null); setAiDraft(null); },
   });
   const aiReviewDeleteMut = useMutation({
     mutationFn: ({ courseId, reviewId }: { courseId: string; reviewId: number }) =>
@@ -146,12 +286,12 @@ export default function DashboardAdmin() {
   const askomReviewCreateMut = useMutation({
     mutationFn: ({ courseId, data }: { courseId: string; data: AdminAskomReviewInput }) =>
       adminCreateAskomReview(courseId, data),
-    onSuccess: () => { invalidateMarketplace(); setAskomReviewModal(null); },
+    onSuccess: () => { invalidateMarketplace(); setAskomReviewModal(null); setAskomDraft(null); },
   });
   const askomReviewUpdateMut = useMutation({
     mutationFn: ({ courseId, reviewId, data }: { courseId: string; reviewId: number; data: Partial<AdminAskomReviewInput> }) =>
       adminUpdateAskomReview(courseId, reviewId, data),
-    onSuccess: () => { invalidateMarketplace(); setAskomReviewModal(null); },
+    onSuccess: () => { invalidateMarketplace(); setAskomReviewModal(null); setAskomDraft(null); },
   });
   const askomReviewDeleteMut = useMutation({
     mutationFn: ({ courseId, reviewId }: { courseId: string; reviewId: number }) =>
@@ -539,6 +679,13 @@ export default function DashboardAdmin() {
                             <span>{reviewCount}</span>
                           </button>
                           <button
+                            onClick={() => setPreviewCourseId(c.id)}
+                            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+                            title="Preview kartu kursus"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
                             onClick={() => { setCourseEditing(c); setCourseModalOpen(true); }}
                             className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
                           >
@@ -711,11 +858,29 @@ export default function DashboardAdmin() {
         />
       )}
 
+      {previewCourseId && (() => {
+        const c = marketplaceCourses.find((x) => x.id === previewCourseId);
+        if (!c) return null;
+        const aiEdit = aiReviewModal && aiReviewModal.courseId === c.id && aiDraft
+          ? { editingId: aiReviewModal.review?.id ?? null, draft: aiDraft } : null;
+        const askomEdit = askomReviewModal && askomReviewModal.courseId === c.id && askomDraft
+          ? { editingId: askomReviewModal.review?.id ?? null, draft: askomDraft } : null;
+        return (
+          <CoursePreviewModal
+            course={buildPreviewCourse(c, aiEdit, askomEdit)}
+            hasDraft={Boolean(aiEdit || askomEdit)}
+            onClose={() => setPreviewCourseId(null)}
+          />
+        );
+      })()}
+
       {aiReviewModal && (
         <AiReviewModal
           courseId={aiReviewModal.courseId}
           review={aiReviewModal.review}
-          onClose={() => setAiReviewModal(null)}
+          onClose={() => { setAiReviewModal(null); setAiDraft(null); }}
+          onDraftChange={setAiDraft}
+          onPreview={() => setPreviewCourseId(aiReviewModal.courseId)}
           onSubmit={(data) => {
             if (aiReviewModal.review) {
               aiReviewUpdateMut.mutate({ courseId: aiReviewModal.courseId, reviewId: aiReviewModal.review.id, data });
@@ -732,7 +897,9 @@ export default function DashboardAdmin() {
         <AskomReviewModal
           courseId={askomReviewModal.courseId}
           review={askomReviewModal.review}
-          onClose={() => setAskomReviewModal(null)}
+          onClose={() => { setAskomReviewModal(null); setAskomDraft(null); }}
+          onDraftChange={setAskomDraft}
+          onPreview={() => setPreviewCourseId(askomReviewModal.courseId)}
           onSubmit={(data) => {
             if (askomReviewModal.review) {
               askomReviewUpdateMut.mutate({ courseId: askomReviewModal.courseId, reviewId: askomReviewModal.review.id, data });
@@ -1695,6 +1862,8 @@ function AiReviewModal({
   onSubmit,
   isPending,
   error,
+  onDraftChange,
+  onPreview,
 }: {
   courseId: string;
   review: AdminAiReview | null;
@@ -1702,6 +1871,8 @@ function AiReviewModal({
   onSubmit: (data: Partial<AdminAiReviewInput>) => void;
   isPending: boolean;
   error: string | null;
+  onDraftChange?: (draft: AdminAiReviewInput) => void;
+  onPreview?: () => void;
 }) {
   const isEdit = review !== null;
   const [form, setForm] = useState<AdminAiReviewInput>({
@@ -1715,6 +1886,9 @@ function AiReviewModal({
   const set = <K extends keyof AdminAiReviewInput>(k: K, v: AdminAiReviewInput[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  // Keep the parent-level draft in sync so the course preview reflects unsaved edits.
+  useEffect(() => { onDraftChange?.(form); }, [form]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const canSubmit = form.platform.trim() && form.comment.trim() && form.reviewedAt.trim();
 
   return (
@@ -1725,9 +1899,17 @@ function AiReviewModal({
             <Star className="w-4 h-4 text-amber-500" />
             <h2 className="text-sm font-semibold">{isEdit ? "Edit AI Review" : "Tambah AI Review"}</h2>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {onPreview && (
+              <button onClick={onPreview} title="Preview kartu kursus dengan perubahan ini"
+                className="flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-muted text-muted-foreground text-[11px] font-medium">
+                <Eye className="w-3.5 h-3.5" /> Preview
+              </button>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="px-5 py-4 space-y-3">
@@ -1807,6 +1989,8 @@ function AskomReviewModal({
   onSubmit,
   isPending,
   error,
+  onDraftChange,
+  onPreview,
 }: {
   courseId: string;
   review: AdminAskomReview | null;
@@ -1814,6 +1998,8 @@ function AskomReviewModal({
   onSubmit: (data: Partial<AdminAskomReviewInput>) => void;
   isPending: boolean;
   error: string | null;
+  onDraftChange?: (draft: AdminAskomReviewInput) => void;
+  onPreview?: () => void;
 }) {
   const isEdit = review !== null;
   const [form, setForm] = useState<AdminAskomReviewInput>({
@@ -1839,6 +2025,9 @@ function AskomReviewModal({
     set("strengths", text.split("\n").map((s) => s.trim()).filter(Boolean));
   };
 
+  // Keep the parent-level draft in sync so the course preview reflects unsaved edits.
+  useEffect(() => { onDraftChange?.(form); }, [form]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const canSubmit = form.reviewerName.trim() && form.credential.trim() && form.institution.trim() && form.comment.trim() && form.reviewedAt.trim();
 
   return (
@@ -1849,9 +2038,17 @@ function AskomReviewModal({
             <Award className="w-4 h-4 text-violet-500" />
             <h2 className="text-sm font-semibold">{isEdit ? "Edit ASKOM Review" : "Tambah ASKOM Review"}</h2>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {onPreview && (
+              <button onClick={onPreview} title="Preview kartu kursus dengan perubahan ini"
+                className="flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-muted text-muted-foreground text-[11px] font-medium">
+                <Eye className="w-3.5 h-3.5" /> Preview
+              </button>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="px-5 py-4 space-y-3">
