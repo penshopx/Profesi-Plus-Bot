@@ -16,6 +16,23 @@ export function setAuthTokenGetter(getter: () => Promise<string | null>) {
 export const SCALEV_CHECKOUT_URL: string =
   process.env.EXPO_PUBLIC_SCALEV_CHECKOUT_URL ?? '';
 
+/**
+ * True when an error thrown by a fetch call is a connectivity failure
+ * (device offline, DNS failure, connection refused) rather than an HTTP
+ * error response. HTTP errors thrown by apiFetch carry a `status` field;
+ * raw network failures never do.
+ */
+export function isNetworkError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if ((err as Error & { status?: number }).status != null) return false;
+  return (
+    err instanceof TypeError ||
+    /network request failed|failed to fetch|network error|fetch failed|internet|ENOTFOUND|ECONNREFUSED|ETIMEDOUT/i.test(
+      err.message,
+    )
+  );
+}
+
 function getBaseUrl(): string {
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
   return domain ? `https://${domain}` : '';

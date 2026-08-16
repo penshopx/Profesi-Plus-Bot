@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, Pressable, StyleSheet, TextInput, ActivityIndicator,
 } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
-import { claimPayment } from '@/lib/api';
+import { claimPayment, isNetworkError } from '@/lib/api';
 import { useColors } from '@/hooks/useColors';
+import { useNetworkState } from '@/hooks/useNetworkState';
+
+const OFFLINE_MSG = 'Tidak ada koneksi internet. Coba lagi saat online.';
 
 /**
  * ClaimCard — lets a user manually claim a Scalev order whose checkout email
@@ -14,24 +17,55 @@ import { useColors } from '@/hooks/useColors';
  */
 export function ClaimCard({ onSuccess }: { onSuccess: () => void }) {
   const colors = useColors();
+  const { isOnline } = useNetworkState();
   const [orderId, setOrderId] = useState('');
   const [email, setEmail] = useState('');
   const [result, setResult] = useState<{
     ok: boolean; creditsGranted: number; alreadyClaimed?: boolean;
   } | null>(null);
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  // Set when a submit failed due to connectivity; enables auto-retry on reconnect.
+  const [pendingRetry, setPendingRetry] = useState(false);
 
   const mut = useMutation({
     mutationFn: () => claimPayment(orderId.trim(), email.trim()),
     onSuccess: (data) => {
       setResult(data);
       setErrMsg(null);
+      setPendingRetry(false);
       setOrderId('');
       setEmail('');
       onSuccess();
     },
-    onError: (err: Error) => { setErrMsg(err.message); setResult(null); },
+    onError: (err: Error) => {
+      if (isNetworkError(err)) {
+        // Offline / connectivity failure — show a clear Indonesian message and
+        // keep the inputs filled so the user doesn't have to re-type them.
+        setErrMsg(OFFLINE_MSG);
+        setPendingRetry(true);
+      } else {
+        setErrMsg(err.message);
+      }
+      setResult(null);
+    },
   });
+
+  // Auto-retry once on an actual offline → online transition after an offline
+  // failure. Tracking the previous connectivity state prevents a retry loop
+  // while the polling hook still optimistically reports "online" right after
+  // a network failure.
+  const mutateRef = useRef(mut.mutate);
+  mutateRef.current = mut.mutate;
+  const prevOnlineRef = useRef(isOnline);
+  useEffect(() => {
+    const wasOffline = !prevOnlineRef.current;
+    prevOnlineRef.current = isOnline;
+    if (isOnline && wasOffline && pendingRetry && !mut.isPending) {
+      setPendingRetry(false);
+      setErrMsg(null);
+      mutateRef.current();
+    }
+  }, [isOnline, pendingRetry, mut.isPending]);
 
   const canSubmit = orderId.trim().length > 0 && email.trim().length > 0 && !mut.isPending;
 
@@ -69,7 +103,18 @@ export function ClaimCard({ onSuccess }: { onSuccess: () => void }) {
 
       <Pressable
         testID="btn-klaim"
-        onPress={() => { setResult(null); setErrMsg(null); mut.mutate(); }}
+        onPress={() => {
+          setResult(null);
+          if (!isOnline) {
+            // Known-offline: don't waste a doomed request — show the offline
+            // message and queue an auto-retry for when connectivity returns.
+            setErrMsg(OFFLINE_MSG);
+            setPendingRetry(true);
+            return;
+          }
+          setErrMsg(null);
+          mut.mutate();
+        }}
         disabled={!canSubmit}
         style={({ pressed }) => [
           cl.btn,

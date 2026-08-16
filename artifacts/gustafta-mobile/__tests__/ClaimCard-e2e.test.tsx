@@ -26,6 +26,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // ── DO NOT mock @/lib/api — we use the real claimPayment() function ──────────
 //    Only mock external/native modules that cannot run in Node.
 
+// useNetworkState wraps native expo-network, which cannot load under Node.
+// Report "online" so submits go through the real HTTP path.
+jest.mock('@/hooks/useNetworkState', () => ({
+  useNetworkState: () => ({ isOnline: true, isChecking: false }),
+}));
+
 jest.mock('@/hooks/useColors', () => ({
   useColors: () => ({
     card: '#fff',

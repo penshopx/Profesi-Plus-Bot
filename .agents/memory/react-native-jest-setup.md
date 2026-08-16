@@ -17,3 +17,6 @@ Use `react-test-renderer` directly (not `@testing-library/react-native`) for com
 **apiFetch error body:** Read the response body once with `text()`, then `JSON.parse()` it — a real Response body stream can only be consumed once. Never call both `json()` and `text()` on the same error response.
 
 **pnpm transformIgnorePatterns:** Include `\\.pnpm` in the exception list so the regex falls through to the second `/node_modules/` where the actual package name (e.g. `expo`) is checked.
+
+## root.update() bailout
+Passing the *same element reference* to `root.update(element)` makes React bail out without re-rendering — build a fresh element each rerender when tests flip a mocked hook value (e.g. connectivity). Also: `jest.clearAllMocks()` does NOT drop queued `mockResolvedValueOnce` values; an unconsumed once-value leaks into the next test.

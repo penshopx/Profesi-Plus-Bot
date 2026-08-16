@@ -31,6 +31,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // ── Mock the API module (network boundary) ────────────────────────────────────
 jest.mock('@/lib/api', () => ({
   claimPayment: jest.fn(),
+  // Mirror the real heuristic: connectivity failures carry no HTTP status.
+  isNetworkError: jest.fn((err: unknown) =>
+    err instanceof Error &&
+    (err as Error & { status?: number }).status == null &&
+    /network request failed/i.test(err.message)),
+}));
+
+// ── Mock useNetworkState (native expo-network won't load under Node) ─────────
+// Tests flip `mockIsOnline` and re-render to simulate connectivity changes.
+let mockIsOnline = true;
+jest.mock('@/hooks/useNetworkState', () => ({
+  useNetworkState: () => ({ isOnline: mockIsOnline, isChecking: false }),
 }));
 
 // ── Mock useColors to return a minimal palette ────────────────────────────────
@@ -126,6 +138,7 @@ async function withCard(
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockIsOnline = true;
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -296,6 +309,114 @@ describe('ClaimCard — submit guard', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Suite 5 — State transitions between attempts
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Suite 6 — Offline handling (Task #167)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ClaimCard — offline handling', () => {
+  const OFFLINE_MSG = 'Tidak ada koneksi internet. Coba lagi saat online.';
+
+  /**
+   * Render ClaimCard and return the root plus a `rerender` that re-commits the
+   * same element tree so the component picks up a flipped `mockIsOnline`.
+   */
+  async function withOfflineCard(
+    onSuccess: jest.Mock,
+    cb: (root: ReactTestRenderer, rerender: () => Promise<void>) => Promise<void>,
+  ) {
+    const client = new QueryClient({
+      defaultOptions: {
+        mutations: { retry: false },
+        queries: { retry: false, gcTime: 0 },
+      },
+    });
+    // Build a FRESH element on every render — passing the same element
+    // reference to root.update() makes React bail out without re-rendering,
+    // so the component would never observe a flipped mockIsOnline.
+    const makeElement = () => (
+      <QueryClientProvider client={client}>
+        <ClaimCard onSuccess={onSuccess} />
+      </QueryClientProvider>
+    );
+    let root!: ReactTestRenderer;
+    await act(async () => { root = create(makeElement()); });
+    const rerender = async () => {
+      await act(async () => {
+        root.update(makeElement());
+        await new Promise<void>((r) => setTimeout(r, 200));
+      });
+    };
+    await cb(root, rerender);
+    client.clear();
+    await act(async () => { root.unmount(); });
+  }
+
+  it('known-offline submit shows the Indonesian offline message without calling the API, and keeps inputs filled', async () => {
+    mockIsOnline = false;
+
+    await withOfflineCard(jest.fn(), async (root) => {
+      await submitForm(root, 'INV-OFF-1', 'off@example.com');
+
+      expect(mockClaimPayment).not.toHaveBeenCalled();
+      expect(byTestId(root, 'text-error-msg').props.children).toBe(OFFLINE_MSG);
+      // Inputs preserved so the user doesn't have to re-type
+      expect(byTestId(root, 'input-order-id').props.value).toBe('INV-OFF-1');
+      expect(byTestId(root, 'input-email').props.value).toBe('off@example.com');
+    });
+  });
+
+  it('shows the offline message (not the raw error) when the fetch throws a network error', async () => {
+    mockClaimPayment.mockRejectedValueOnce(new Error('Network request failed'));
+
+    await withOfflineCard(jest.fn(), async (root) => {
+      await submitForm(root, 'INV-OFF-2', 'off2@example.com');
+
+      expect(byTestId(root, 'text-error-msg').props.children).toBe(OFFLINE_MSG);
+      expect(byTestId(root, 'input-order-id').props.value).toBe('INV-OFF-2');
+    });
+  });
+
+  it('retries exactly once when connectivity transitions from offline to online', async () => {
+    mockIsOnline = false;
+    mockClaimPayment.mockResolvedValueOnce({ ok: true, creditsGranted: 4 });
+
+    const onSuccess = jest.fn();
+    await withOfflineCard(onSuccess, async (root, rerender) => {
+      // Submit while offline → queued, no API call
+      await submitForm(root, 'INV-RETRY', 'retry@example.com');
+      expect(mockClaimPayment).not.toHaveBeenCalled();
+
+      // Connectivity restored → single automatic retry
+      mockIsOnline = true;
+      await rerender();
+
+      expect(mockClaimPayment).toHaveBeenCalledTimes(1);
+      expect(mockClaimPayment).toHaveBeenCalledWith('INV-RETRY', 'retry@example.com');
+      expect(byTestId(root, 'banner-success')).toBeTruthy();
+      expect(onSuccess).toHaveBeenCalledTimes(1);
+
+      // Further re-renders while online do not retry again
+      await rerender();
+      expect(mockClaimPayment).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('does not retry after a network error while the hook still reports online (no offline→online transition)', async () => {
+    mockClaimPayment.mockRejectedValueOnce(new Error('Network request failed'));
+
+    await withOfflineCard(jest.fn(), async (root, rerender) => {
+      await submitForm(root, 'INV-NOLOOP', 'noloop@example.com');
+      expect(mockClaimPayment).toHaveBeenCalledTimes(1);
+
+      // Still "online" — no transition, so no retry loop
+      await rerender();
+      await rerender();
+      expect(mockClaimPayment).toHaveBeenCalledTimes(1);
+      expect(byTestId(root, 'text-error-msg').props.children).toBe(OFFLINE_MSG);
+    });
+  });
+});
 
 describe('ClaimCard — state transitions', () => {
   it('clears the error banner when a subsequent submission succeeds', async () => {
