@@ -684,6 +684,44 @@ describe("POST /api/chat/generate-exum", () => {
     expect(prompt.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
   });
 
+  // Malformed approved-outline rows must degrade to "no blueprint" — never a 500
+  // (which would burn the credit) and never a broken half-rendered blueprint.
+  it.each([
+    ["sections is null", null],
+    ["sections is an empty array", []],
+    ["sections is not an array", { title: "oops", points: ["x"] }],
+    ["sections entries are missing required fields", [{ title: "No points here" }, { points: ["orphan point"] }, null]],
+    ["sections mixes one valid entry with one malformed entry", [
+      { title: "Valid Section", points: ["a valid point"] },
+      { title: "Broken Section" }, // missing points → whole blueprint must be dropped
+    ]],
+  ])("returns 200 and omits the blueprint but keeps profile and competency context when %s", async (_label, sections) => {
+    const MALFORMED_OUTLINE_ROW = { id: 99, conversationId: 1, isApproved: true, sections };
+
+    dbState.push([FAKE_CONV], [], [], [MALFORMED_OUTLINE_ROW], undefined, undefined);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    // No crash — the credit is spent on a real Exum, not lost to a 500.
+    expect(res.status).toBe(200);
+
+    expect(capturedLLMMessages.length).toBeGreaterThan(0);
+    const prompt = capturedLLMMessages[0];
+    expect(prompt.role).toBe("user");
+
+    // The blueprint block must be omitted entirely — no partial/broken outline.
+    expect(prompt.content).not.toContain("BLUEPRINT YANG TELAH DISETUJUI PENGGUNA");
+    // Even valid entries from a partially malformed row must not leak through.
+    expect(prompt.content).not.toContain("Valid Section");
+    expect(prompt.content).not.toContain("a valid point");
+
+    // Profile and competency context must still be present.
+    expect(prompt.content).toContain("PROFIL APL 01 TKK");
+    expect(prompt.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+  });
+
   it("returns 200 and does not refund the credit when the usageEvents audit insert fails after the Exum is saved", async () => {
     // Queue: conv, messages, evidenceItems, exumOutlines, update conv (success),
     // then a thenable that rejects for the usageEvents insert.

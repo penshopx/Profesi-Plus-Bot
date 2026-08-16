@@ -531,15 +531,41 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
     }
 
     // Build outline context — inject user-approved structure when present
+    // The sections column is free-form JSON from the DB — validate its shape
+    // before use so a corrupt row degrades to "no blueprint" instead of a 500
+    // (which would burn the user's credit without producing an Exum).
     let outlineContext = "";
-    if (approvedOutlineRow?.sections) {
-      const secs = approvedOutlineRow.sections as Array<{ title: string; points: string[]; userNotes?: string }>;
-      const outline = secs.map((s, i) => {
-        const pts = s.points.map((p) => `    - ${p}`).join("\n");
-        const note = s.userNotes ? `\n    [Instruksi khusus: ${s.userNotes}]` : "";
-        return `${i + 1}. ${s.title}\n${pts}${note}`;
-      }).join("\n");
-      outlineContext = `\n\nBLUEPRINT YANG TELAH DISETUJUI PENGGUNA:\nGunakan struktur berikut sebagai kerangka wajib penulisan Exum:\n${outline}\n\nPENTING: Ikuti urutan dan judul bagian di atas dengan tepat. Setiap bagian wajib memuat semua poin yang disebutkan.`;
+    if (approvedOutlineRow) {
+      const raw = approvedOutlineRow.sections;
+      const isValidSection = (
+        s: unknown,
+      ): s is { title: string; points: string[]; userNotes?: string } =>
+        !!s &&
+        typeof s === "object" &&
+        typeof (s as { title?: unknown }).title === "string" &&
+        Array.isArray((s as { points?: unknown }).points) &&
+        ((s as { points: unknown[] }).points).every((p) => typeof p === "string") &&
+        (typeof (s as { userNotes?: unknown }).userNotes === "string" ||
+          (s as { userNotes?: unknown }).userNotes === undefined);
+      // All-or-nothing: a partially valid blueprint would send a broken,
+      // half-rendered structure to the model, which is worse than none at all.
+      const secs =
+        Array.isArray(raw) && raw.length > 0 && raw.every(isValidSection)
+          ? raw
+          : null;
+      if (secs) {
+        const outline = secs.map((s, i) => {
+          const pts = s.points.map((p) => `    - ${p}`).join("\n");
+          const note = s.userNotes ? `\n    [Instruksi khusus: ${s.userNotes}]` : "";
+          return `${i + 1}. ${s.title}\n${pts}${note}`;
+        }).join("\n");
+        outlineContext = `\n\nBLUEPRINT YANG TELAH DISETUJUI PENGGUNA:\nGunakan struktur berikut sebagai kerangka wajib penulisan Exum:\n${outline}\n\nPENTING: Ikuti urutan dan judul bagian di atas dengan tepat. Setiap bagian wajib memuat semua poin yang disebutkan.`;
+      } else {
+        req.log.warn(
+          { convId, outlineId: approvedOutlineRow.id },
+          "Approved outline row has malformed or empty sections — proceeding without blueprint context",
+        );
+      }
     }
 
     // Enforce the same shared budget for Exum context.
