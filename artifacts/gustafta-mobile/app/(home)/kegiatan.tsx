@@ -651,7 +651,7 @@ interface MarketplacePrefill {
   watchedAt?: string;
 }
 
-function buildInitialForm(initial?: PkbActivity | null, prefill?: MarketplacePrefill | null): FormData {
+export function buildInitialForm(initial?: PkbActivity | null, prefill?: MarketplacePrefill | null): FormData {
   return initial
     ? {
         namaKegiatan: initial.namaKegiatan, tanggalMulai: initial.tanggalMulai,
@@ -670,7 +670,7 @@ function buildInitialForm(initial?: PkbActivity | null, prefill?: MarketplacePre
       };
 }
 
-function ActivityFormModal({ visible, initial, prefill, onClose, onSaved, colors }: {
+export function ActivityFormModal({ visible, initial, prefill, onClose, onSaved, colors }: {
   visible: boolean; initial?: PkbActivity | null; prefill?: MarketplacePrefill | null;
   onClose: () => void; onSaved: (act: PkbActivity) => void; colors: ReturnType<typeof useColors>;
 }) {
@@ -771,11 +771,11 @@ function ActivityFormModal({ visible, initial, prefill, onClose, onSaved, colors
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={confirmClose}>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <View style={[s.modalHeader, { borderBottomColor: colors.border }]}>
-          <Pressable onPress={confirmClose} hitSlop={8}>
+          <Pressable testID="form-cancel" onPress={confirmClose} hitSlop={8}>
             <Text style={{ fontSize: 15, color: colors.mutedForeground, fontFamily: 'PlusJakartaSans_400Regular' }}>Batal</Text>
           </Pressable>
           <Text style={[s.modalTitle, { color: colors.foreground }]}>{initial ? 'Edit Kegiatan' : 'Kegiatan Baru'}</Text>
-          <Pressable onPress={handleSave} disabled={isPending} hitSlop={8}>
+          <Pressable testID="form-save" onPress={handleSave} disabled={isPending} hitSlop={8}>
             {isPending
               ? <ActivityIndicator color={colors.primary} size="small" />
               : <Text style={{ fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', color: colors.primary }}>Simpan</Text>}
