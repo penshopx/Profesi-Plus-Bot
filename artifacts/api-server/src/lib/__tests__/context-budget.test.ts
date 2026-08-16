@@ -301,6 +301,111 @@ describe("applySharedContextBudget", () => {
     });
   });
 
+  // ── Partial builder failures (safeCtx → empty string) ─────────────────────
+  //
+  // When a context builder throws, safeCtx substitutes an empty string BEFORE
+  // the budget is applied. These tests prove that a failed slot neither
+  // consumes budget nor disturbs the priority ordering of surviving blocks.
+
+  describe("partial builder failures via buildChatContextBlocks", () => {
+    const blockSize = 60;
+
+    const fullInputs = () => ({
+      profileContext:        fill("P", blockSize),
+      competencyContext:     fill("C", blockSize),
+      quizContext:           fill("Q", blockSize),
+      watchedModulesContext: fill("W", blockSize),
+      kegiatanContext:       fill("K", blockSize),
+      knowledgeContext:      fill("N", blockSize),
+      projectBrainContext:   fill("B", blockSize),
+      historicalPKBContext:  fill("H", blockSize),
+    });
+
+    it("a single failed block (projectBrain) frees its budget for lower-priority blocks", () => {
+      // Budget for exactly 3 full blocks.
+      const budget = 3 * blockSize;
+
+      // Baseline: with all 8 blocks present, P, C, Q survive; W does not.
+      const baseline = applySharedContextBudget(
+        buildChatContextBlocks(fullInputs()),
+        budget,
+      );
+      expect(baseline).toContain(fill("Q", blockSize));
+      expect(baseline).not.toContain(fill("W", blockSize));
+
+      // Now simulate projectBrain's builder throwing (safeCtx → "").
+      const inputs = { ...fullInputs(), projectBrainContext: "" };
+      const result = applySharedContextBudget(buildChatContextBlocks(inputs), budget);
+
+      expect(result.length).toBeLessThanOrEqual(budget);
+      // The same top-3 blocks survive — the empty slot changes nothing above it.
+      expect(result).toContain(fill("P", blockSize));
+      expect(result).toContain(fill("C", blockSize));
+      expect(result).toContain(fill("Q", blockSize));
+      // The failed slot contributes nothing.
+      expect(result).not.toContain("B");
+      // And the empty slot did not steal budget from anyone: total is still 3 full blocks.
+      expect(result.length).toBe(3 * blockSize);
+    });
+
+    it("two failed high-priority blocks let lower-priority blocks take their share", () => {
+      // Budget for exactly 3 full blocks. Fail profile (7) and competency (6):
+      // the next three by priority — quiz (5), watchedModules (4.5), kegiatan (4)
+      // — should now fit in full.
+      const budget = 3 * blockSize;
+      const inputs = { ...fullInputs(), profileContext: "", competencyContext: "" };
+      const result = applySharedContextBudget(buildChatContextBlocks(inputs), budget);
+
+      expect(result.length).toBeLessThanOrEqual(budget);
+      expect(result).toContain(fill("Q", blockSize));
+      expect(result).toContain(fill("W", blockSize));
+      expect(result).toContain(fill("K", blockSize));
+      // Knowledge (3) is next in line but there is no budget left for it.
+      expect(result).not.toContain(fill("N", blockSize));
+      expect(result).not.toContain("P");
+      expect(result).not.toContain("C");
+    });
+
+    it("preserves original slot order in the output when some slots failed", () => {
+      const inputs = { ...fullInputs(), quizContext: "", projectBrainContext: "" };
+      const result = applySharedContextBudget(buildChatContextBlocks(inputs), 10_000);
+
+      // All surviving blocks fit; they must appear in slot (input) order.
+      const order = ["P", "C", "W", "K", "N", "H"].map(ch => result.indexOf(fill(ch, blockSize)));
+      for (const idx of order) expect(idx).toBeGreaterThanOrEqual(0);
+      for (let i = 1; i < order.length; i++) {
+        expect(order[i]).toBeGreaterThan(order[i - 1]);
+      }
+      expect(result).not.toContain("Q");
+      expect(result).not.toContain("B");
+      expect(result.length).toBe(6 * blockSize);
+    });
+
+    it("trims the correct lower-priority block when a mid-priority slot fails under a tight budget", () => {
+      // Fail watchedModules (4.5). Budget = 3 full blocks + half a block:
+      // P, C, Q full; kegiatan (4) — not watchedModules — gets the trimmed tail.
+      const budget = 3 * blockSize + 30;
+      const inputs = { ...fullInputs(), watchedModulesContext: "" };
+      const result = applySharedContextBudget(buildChatContextBlocks(inputs), budget);
+
+      expect(result.length).toBeLessThanOrEqual(budget);
+      expect(result).toContain(fill("P", blockSize));
+      expect(result).toContain(fill("C", blockSize));
+      expect(result).toContain(fill("Q", blockSize));
+      // Kegiatan is trimmed (partial run + marker), not dropped.
+      expect(result).toContain(fill("K", 30 - MARKER_LEN) + MARKER);
+      expect(result).not.toContain(fill("K", blockSize));
+      expect(result).not.toContain("W");
+    });
+
+    it("all blocks failing yields an empty prompt, not a crash", () => {
+      const inputs = Object.fromEntries(
+        Object.keys(fullInputs()).map(k => [k, ""]),
+      ) as ReturnType<typeof fullInputs>;
+      expect(applySharedContextBudget(buildChatContextBlocks(inputs), 100)).toBe("");
+    });
+  });
+
   // ── Empty / whitespace content ─────────────────────────────────────────────
 
   it("skips empty-string blocks without consuming budget", () => {
