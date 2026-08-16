@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import { clearStalePushTokens } from "./lib/push-cleanup";
 import { pool } from "@workspace/db";
 import { pruneExpiredRateLimitCounters } from "./lib/pgRateLimitStore";
+import { cleanupOrphanedUploads, UPLOAD_CLEANUP_INTERVAL_MS } from "./lib/upload-cleanup";
 
 /**
  * One-time migration: revoke legacy "askom" role from any users still carrying
@@ -12,6 +13,17 @@ import { pruneExpiredRateLimitCounters } from "./lib/pgRateLimitStore";
  * users are downgraded to "user". Runs on every startup but is a no-op once all
  * rows are cleared.
  */
+/** Run orphaned-upload cleanup once at startup, then every 24 hours. */
+let uploadCleanupInterval: NodeJS.Timeout | undefined;
+
+function scheduleUploadCleanup(): void {
+  uploadCleanupInterval = setInterval(() => {
+    void cleanupOrphanedUploads(logger);
+  }, UPLOAD_CLEANUP_INTERVAL_MS);
+  // Don't let the timer keep the process alive on its own.
+  uploadCleanupInterval.unref?.();
+}
+
 async function migrateAskomRoleToUser(): Promise<void> {
   try {
     const result = await db.execute(sql`UPDATE users SET role = 'user' WHERE role = 'askom'`);
@@ -129,8 +141,11 @@ migrateAskomRoleToUser()
   .then(() => clearStalePushTokens(logger))
   .then(() => cleanupExpiredRateLimits())
   .then(() => {
+    // Fire-and-forget: startup shouldn't block on a full GCS listing.
+    void cleanupOrphanedUploads(logger);
     schedulePushTokenCleanup();
     scheduleRateLimitCleanup();
+    scheduleUploadCleanup();
     const server = app.listen(port, (err) => {
       if (err) {
         logger.error({ err }, "Error listening on port");
@@ -146,6 +161,9 @@ migrateAskomRoleToUser()
       }
       if (rateLimitCleanupInterval) {
         clearInterval(rateLimitCleanupInterval);
+      }
+      if (uploadCleanupInterval) {
+        clearInterval(uploadCleanupInterval);
       }
       // Close the HTTP server so the process exits cleanly, with a bounded
       // fallback in case connections don't drain in time.
