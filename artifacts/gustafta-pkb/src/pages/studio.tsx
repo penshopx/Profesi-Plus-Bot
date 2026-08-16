@@ -16,6 +16,7 @@ import {
   type CompetencyUnitStatus,
 } from "@/lib/api";
 import { getMyUsage } from "@/lib/api-profile";
+import { useResetCountdown } from "@/hooks/useResetCountdown";
 import {
   Target, ArrowLeft, Sparkles, Brain, CheckCircle2, AlertTriangle,
   XCircle, Trash2, Loader2, Lightbulb, TrendingUp, ChevronDown, History, BookOpen,
@@ -58,6 +59,9 @@ export default function StudioPage() {
     staleTime: 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
+
+  // Live countdown to the competency-quota reset (#184), skew-safe via serverNow.
+  const compCountdown = useResetCountdown(usage?.competency?.resetAt, usage?.serverNow);
 
   const { data: jabkers = [] } = useQuery({ queryKey: ["jabkers"], queryFn: fetchJabkerList });
   const { data: modelData } = useQuery({ queryKey: ["models"], queryFn: listModels });
@@ -265,7 +269,9 @@ export default function StudioPage() {
                   :           "bg-indigo-50 border-indigo-200 text-indigo-600"
                 }`}>
                   {exhausted
-                    ? `Batas analisis hari ini tercapai${resetStr ? ` · reset ${resetStr}` : ""}`
+                    ? `Batas analisis hari ini tercapai${
+                        compCountdown ? ` · reset dalam ${compCountdown}` : resetStr ? ` · reset ${resetStr}` : ""
+                      }`
                     : `${remaining}/${limit} analisis tersisa hari ini`}
                 </span>
               );

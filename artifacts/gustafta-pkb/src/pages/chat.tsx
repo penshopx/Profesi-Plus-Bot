@@ -18,6 +18,7 @@ import { ExumOutlineEditor } from "@/components/ExumOutlineEditor";
 import { parseExumDegradation } from "@/lib/exum-degradation";
 import { QuizSummaryPanel } from "@/components/QuizSummaryPanel";
 import { getMyUsage, getMyPlan, getQuizCoverage } from "@/lib/api-profile";
+import { useResetCountdown } from "@/hooks/useResetCountdown";
 
 // ─── Markdown → HTML helpers (module-level, used by print & HTML export) ──────
 function mdEsc(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -1268,6 +1269,11 @@ export default function ChatPage() {
     return () => clearInterval(timer);
   }, [usage?.resetAt, usage?.serverNow]);
 
+  // Live countdowns to the daily Exum/analysis quota resets (#184), skew-safe
+  // via serverNow — shown only when the respective quota is exhausted.
+  const exumCountdown = useResetCountdown(usage?.exum?.resetAt, usage?.serverNow);
+  const compCountdown = useResetCountdown(usage?.competency?.resetAt, usage?.serverNow);
+
   const { data: plan } = useQuery({
     queryKey: ["my-plan"],
     queryFn: getMyPlan,
@@ -2155,9 +2161,11 @@ export default function ChatPage() {
                 {usage?.exum && (() => {
                   const { remaining: exumRem, limit: exumLim } = usage.exum;
                   const exumLow = exumRem <= 1;
+                  const exumExhausted = exumRem <= 0;
                   return (
                     <span className={`text-[11px] shrink-0 ${exumLow ? "text-rose-500 font-medium" : "text-muted-foreground"}`}>
                       · {exumRem}/{exumLim} Exum/hari
+                      {exumExhausted && exumCountdown ? ` · reset dalam ${exumCountdown}` : ""}
                     </span>
                   );
                 })()}
@@ -2165,9 +2173,11 @@ export default function ChatPage() {
                 {usage?.competency && (() => {
                   const { remaining: compRem, limit: compLim } = usage.competency;
                   const compLow = compRem <= 1;
+                  const compExhausted = compRem <= 0;
                   return (
                     <span className={`text-[11px] shrink-0 ${compLow ? "text-rose-500 font-medium" : "text-muted-foreground"}`}>
                       · {compRem}/{compLim} analisis/hari
+                      {compExhausted && compCountdown ? ` · reset dalam ${compCountdown}` : ""}
                     </span>
                   );
                 })()}

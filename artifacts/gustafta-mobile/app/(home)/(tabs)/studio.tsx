@@ -18,6 +18,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNetworkState } from '@/hooks/useNetworkState';
+import { useResetCountdown } from '@/hooks/useResetCountdown';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import {
   listStudioAnalyses,
@@ -361,6 +362,9 @@ export default function StudioScreen() {
     refetchInterval: 5 * 60 * 1000,
   });
 
+  // Live countdown to the competency-quota reset (#184), skew-safe via serverNow.
+  const compCountdown = useResetCountdown(usage?.competency?.resetAt, usage?.serverNow);
+
   const { mutate: runAnalysis, isPending: isAnalyzing, error: analyzeError } =
     useMutation({
       mutationFn: () => runStudioAnalysis(selectedJabker),
@@ -488,7 +492,7 @@ export default function StudioScreen() {
                   <Feather name="zap" size={12} color={textColor} />
                   <Text style={[styles.quotaText, { color: textColor }]}>
                     {exhausted
-                      ? 'Batas analisis hari ini tercapai'
+                      ? `Batas analisis hari ini tercapai${compCountdown ? ` · reset dalam ${compCountdown}` : ''}`
                       : `${remaining}/${limit} analisis tersisa hari ini`}
                   </Text>
                 </View>
