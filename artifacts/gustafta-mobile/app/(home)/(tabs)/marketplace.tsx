@@ -138,6 +138,17 @@ const TYPE_ICON: Record<ContentType, string> = {
   modul: 'file-text',
 };
 
+// Icons for curriculum item types. Falls back to 'file-text' for unknown types.
+const CURRICULUM_ICON: Record<string, string> = {
+  video: 'play-circle',
+  quiz: 'help-circle',
+  reading: 'book-open',
+  praktik: 'tool',
+  webinar: 'monitor',
+  modul: 'file-text',
+  dokumen: 'file-text',
+};
+
 function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes} mnt`;
   const h = Math.floor(minutes / 60);
@@ -288,6 +299,31 @@ function CourseDetailModal({
               <Text style={[dm.highlightText, { color: colors.mutedForeground }]}>{h}</Text>
             </View>
           ))}
+
+          {/* Curriculum */}
+          {course.curriculum.length > 0 && (
+            <>
+              <Text style={[dm.sectionTitle, { color: colors.foreground }]}>Kurikulum</Text>
+              {course.curriculum.map((item, i) => (
+                <View
+                  key={i}
+                  style={[dm.curriculumRow, { backgroundColor: colors.muted, borderColor: colors.border }]}
+                >
+                  <Feather
+                    name={(CURRICULUM_ICON[item.type] ?? 'file-text') as any}
+                    size={15}
+                    color={colors.primary}
+                  />
+                  <Text style={[dm.curriculumTitle, { color: colors.foreground }]} numberOfLines={2}>
+                    {item.title}
+                  </Text>
+                  <Text style={[dm.curriculumDuration, { color: colors.mutedForeground }]}>
+                    {item.duration}
+                  </Text>
+                </View>
+              ))}
+            </>
+          )}
 
           {/* AI platform reviews */}
           {course.aiReviews.length > 0 && (
@@ -449,6 +485,18 @@ const dm = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', marginBottom: 8, marginTop: 4 },
   description: { fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular', lineHeight: 20, marginBottom: 16 },
   highlightRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  curriculumRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 6,
+  },
+  curriculumTitle: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium', flex: 1 },
+  curriculumDuration: { fontSize: 11, fontFamily: 'PlusJakartaSans_400Regular', fontVariant: ['tabular-nums'] },
   highlightText: { fontSize: 13, fontFamily: 'PlusJakartaSans_400Regular', flex: 1, lineHeight: 20 },
   skkRow: {
     borderRadius: 10,

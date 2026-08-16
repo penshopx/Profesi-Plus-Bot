@@ -39,6 +39,7 @@ export interface Course {
   isFeatured?: boolean;
   aiReviews: MarketplaceAiReview[];
   askomReview: MarketplaceAskomReview | null;
+  curriculum: { type: string; title: string; duration: string }[];
 }
 
 // API stores thumbnail as a Tailwind CSS class; map to solid hex for the accent strip.
@@ -83,5 +84,7 @@ export function mapApiCourse(c: MarketplaceCatalogCourse): Course {
     // Server returns askomReviews as an array but enforces one per course.
     aiReviews:       c.reviews?.aiReviews ?? [],
     askomReview:     c.reviews?.askomReviews?.[0] ?? null,
+    // Older cached catalogs may not carry `curriculum`; degrade to empty.
+    curriculum:      c.curriculum ?? [],
   };
 }
