@@ -1204,6 +1204,12 @@ export default function KegiatanScreen({ isTab = false }: KegiatanScreenProps) {
   // Track the last activityId handled via deep-link so repeated re-renders don't re-open,
   // but a new distinct notification tap (different id) still works while the screen is mounted.
   const lastHandledDeepLinkId = React.useRef<string | null>(null);
+  // Deep-link id whose fallback detail fetch is currently in flight — prevents
+  // duplicate requests when the effect re-runs while the fetch is pending.
+  const inFlightDeepLinkId = React.useRef<string | null>(null);
+  // The most recent openActivityId param — async fallback handlers check this
+  // so a stale request for tap A never opens/alerts after the user taps B.
+  const activeDeepLinkId = React.useRef<string | null>(null);
 
   useEffect(() => {
     if (params.marketplaceId && params.courseTitle) {
@@ -1232,16 +1238,75 @@ export default function KegiatanScreen({ isTab = false }: KegiatanScreenProps) {
   // Deep-link from push notification: open a specific activity once the list loads.
   // Use lastHandledDeepLinkId so each distinct activityId tap opens its activity,
   // but the same id doesn't re-open on incidental re-renders.
+  //
+  // Fallback (task #193): if the activity isn't in the cached list yet (the
+  // user never opened this tab, or the list is stale/empty), fetch the detail
+  // directly so the tap never silently does nothing. On failure we surface an
+  // alert instead of failing silently.
   useEffect(() => {
-    if (!params.openActivityId || isLoading || activities.length === 0) return;
-    if (lastHandledDeepLinkId.current === params.openActivityId) return;
-    const targetId = parseInt(params.openActivityId, 10);
+    const id = params.openActivityId;
+    activeDeepLinkId.current = id ?? null;
+    if (!id || isLoading) return;
+    // Already reached a terminal state (opened, alerted, or rejected as malformed).
+    if (lastHandledDeepLinkId.current === id) return;
+
+    // Strict numeric validation — reject values like "42junk" that parseInt
+    // would silently truncate. Malformed ids are terminal.
+    if (!/^\d+$/.test(id)) {
+      lastHandledDeepLinkId.current = id;
+      return;
+    }
+    const targetId = parseInt(id, 10);
+
     const match = activities.find((a) => a.id === targetId);
     if (match) {
-      lastHandledDeepLinkId.current = params.openActivityId;
+      lastHandledDeepLinkId.current = id;
       setSelectedActivity(match);
+      return;
     }
-  }, [params.openActivityId, activities, isLoading]);
+
+    // Not in the cached list — fetch it directly and refresh the list.
+    //
+    // Deduplication: `lastHandledDeepLinkId` is set only when a terminal state
+    // is reached (match opened, detail opened, or alert shown), NOT when the
+    // request starts — otherwise an effect re-run caused by a background list
+    // update (or Strict Mode setup/cleanup) would mark the tap handled and
+    // silently drop it. In-flight requests are tracked separately so re-runs
+    // while the fetch is pending don't fire duplicates. The promise result is
+    // applied even after effect cleanup: a list update mid-flight must not
+    // lose the tap (if the list update itself contained the match, the re-run
+    // above already opened it and the settled promise becomes a no-op).
+    if (inFlightDeepLinkId.current === id) return;
+    inFlightDeepLinkId.current = id;
+    getKegiatanDetail(targetId)
+      .then((detail) => {
+        // Defensive shape check: a proxy/error body must never be treated as
+        // an activity (e.g. `{ error: "not found" }` from a non-2xx response).
+        if (!detail || typeof detail.id !== 'number' || typeof detail.namaKegiatan !== 'string') {
+          throw new Error('invalid detail response');
+        }
+        // Only clear the in-flight marker if it still belongs to this request —
+        // a newer tap (B) may have replaced it while we were pending.
+        if (inFlightDeepLinkId.current === id) inFlightDeepLinkId.current = null;
+        // Stale guard: a newer tap supersedes this result entirely.
+        if (activeDeepLinkId.current !== id) return;
+        if (lastHandledDeepLinkId.current === id) return; // already opened via list re-run
+        lastHandledDeepLinkId.current = id;
+        setSelectedActivity(detail);
+        refetch();
+      })
+      .catch(() => {
+        if (inFlightDeepLinkId.current === id) inFlightDeepLinkId.current = null;
+        if (activeDeepLinkId.current !== id) return;
+        if (lastHandledDeepLinkId.current === id) return;
+        lastHandledDeepLinkId.current = id;
+        Alert.alert(
+          'Kegiatan tidak ditemukan',
+          'Kegiatan dari notifikasi tidak dapat dimuat. Coba muat ulang daftar kegiatan.',
+        );
+        refetch();
+      });
+  }, [params.openActivityId, activities, isLoading, refetch]);
 
   const counts = {
     draft: activities.filter((a) => a.status === 'draft' || a.status === 'lengkap').length,
