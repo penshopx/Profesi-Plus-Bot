@@ -161,14 +161,23 @@ function ChipSelector({ options, value, onChange, colors }: {
 
 // ─── SKK Manager ──────────────────────────────────────────────────────────────
 
-function SkkManager({ skk, onUpdate, activityId, colors }: {
+function SkkManager({ skk, onUpdate, activityId, colors, onDirtyChange }: {
   skk: PkbSkkUnit[]; onUpdate: (skk: PkbSkkUnit[]) => void;
   activityId: number; colors: ReturnType<typeof useColors>;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [skkCode, setSkkCode] = useState('');
   const [skkName, setSkkName] = useState('');
   const [jabkerName, setJabkerName] = useState('');
+
+  // Report to the parent whether the inline add-form has unsaved typed content,
+  // so the enclosing detail modal can warn before discarding it.
+  const dirty = showAdd && (skkCode.trim() !== '' || skkName.trim() !== '' || jabkerName.trim() !== '');
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => { onDirtyChange?.(false); };
+  }, [dirty, onDirtyChange]);
 
   const qc = useQueryClient();
   const updateMut = useMutation({
@@ -908,6 +917,27 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
   const [showEdit, setShowEdit] = useState(false);
   const qc = useQueryClient();
 
+  // True while the SkkManager's inline add-form has typed, unsaved content.
+  const skkFormDirtyRef = useRef(false);
+  const handleSkkDirtyChange = useCallback((dirty: boolean) => {
+    skkFormDirtyRef.current = dirty;
+  }, []);
+
+  const confirmClose = useCallback(() => {
+    if (skkFormDirtyRef.current) {
+      Alert.alert(
+        'Buang isian unit SKK?',
+        'Unit SKK yang sedang Anda ketik belum disimpan dan akan hilang.',
+        [
+          { text: 'Lanjut Mengisi', style: 'cancel' },
+          { text: 'Buang', style: 'destructive', onPress: onClose },
+        ],
+      );
+    } else {
+      onClose();
+    }
+  }, [onClose]);
+
   // Auto-mapping runs fire-and-forget on the server after create/update, so
   // SKK results land in the DB a few seconds after the API responds. Poll the
   // detail endpoint for ~30s while the SKK list is still empty so the mapped
@@ -980,11 +1010,11 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
   ];
 
   return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={confirmClose}>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         {/* Header */}
         <View style={[s.modalHeader, { borderBottomColor: colors.border }]}>
-          <Pressable onPress={onClose} hitSlop={8}>
+          <Pressable onPress={confirmClose} hitSlop={8}>
             <Feather name="x" size={20} color={colors.mutedForeground} />
           </Pressable>
           <StatusBadge status={activity.status} colors={colors} />
@@ -1060,7 +1090,7 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
               <Text style={[s.sectionLabel, { color: colors.mutedForeground }]}>
                 Mapping SKK (Field 5) — {skk.length} unit
               </Text>
-              <SkkManager skk={skk} onUpdate={setSkk} activityId={activity.id} colors={colors} />
+              <SkkManager skk={skk} onUpdate={setSkk} activityId={activity.id} colors={colors} onDirtyChange={handleSkkDirtyChange} />
 
               {/* Actions */}
               <View style={{ gap: 10, marginTop: 24 }}>
