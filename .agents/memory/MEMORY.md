@@ -9,7 +9,7 @@
 - [Rate limiter IPv6 validation](rate-limiter-ipv6.md) — express-rate-limit v8 throws ERR_ERL_KEY_GEN_IPV6 if keyGenerator uses req.ip directly; must use ipKeyGenerator(req) from the package for IP fallback.
 - [Expo push notifications](expo-push-notifications.md) — use Expo Push API (exp.host) from the server; store token in users.expoPushToken; SDK version: expo-notifications@~0.32.17 + expo-device@~8.0.10 for SDK 54.
 - [Voice notes transcription](voice-notes-transcription.md) — multer memory storage → OpenAI toFile() → whisper-1 with language:"id"; mobile uses standard fetch (not expo/fetch) for multipart; expo-av@~15.0.0 for recording in SDK 54.
-- [ASKOM PKB verification](askom-verification.md) — role "askom" added to ROLES; pkbActivities has askomNote/askomVerifiedAt/askomVerifiedBy; status adds "ditolak"; GET/POST /askom/submissions/* endpoints; web panel at /dashboard/askom; rejected activities can be re-submitted (resets askomNote).
+- [ASKOM PKB verification](askom-verification.md) — askom role REMOVED from platform; PKB review is admin-only per regulation; never grant askom bypasses.
 - [Marketplace catalog pattern](marketplace-catalog-pattern.md) — catalog now in DB (marketplace_courses + AI/ASKOM review tables); seeded via lib/db/src/seed-marketplace.ts (idempotent, run in post-merge.sh); admin CRUD at /api/marketplace/admin/courses.
 - [Client countdown + server clock skew](client-countdown-server-now.md) — always include serverNow in rate-limit responses; client computes resetDelay=resetAt-serverNow and ticks from Date.now() to avoid device clock skew (#92 pattern).
 - [Upload token security](upload-token-security.md) — issueUploadToken/consumeUploadToken in-memory store gates doc registration to actual uploaders.

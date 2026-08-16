@@ -74,6 +74,10 @@ router.get("/storage/downloads/request-url", requireAuth, async (req: Request, r
       return;
     }
 
+    // Only admins may download another user's PKB document. The legacy
+    // "askom" role was removed from the platform (PKB review is admin-only
+    // per regulation; see routes/askom.ts) and is migrated to "user" at
+    // startup, so it intentionally gets NO ownership bypass here.
     const userRole = req.dbUser!.role;
     const canBypassOwnership = userRole === "admin";
     if (docRow.ownerId !== req.dbUser!.id && !canBypassOwnership) {
@@ -184,6 +188,10 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
 
+    // Only admins may bypass ownership. The legacy "askom" role was removed
+    // from the platform (PKB review is admin-only per regulation; see
+    // routes/askom.ts) and is migrated to "user" at startup, so it
+    // intentionally gets NO ownership bypass here.
     const userRole = req.dbUser!.role;
     const canBypassOwnership = userRole === "admin";
 

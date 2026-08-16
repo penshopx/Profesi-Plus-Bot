@@ -1,7 +1,9 @@
 ---
-name: ASKOM PKB verification
-description: How the ASKOM (Asesor Kompetensi) verification panel is structured — role, DB fields, routes, and UI.
+name: ASKOM PKB verification (role removed)
+description: The askom role was REMOVED from the platform; PKB review is admin-only per regulation. Legacy notes below.
 ---
+
+> **UPDATE (Aug 2026):** The "askom" role no longer exists in ROLES. PKB review is admin-only per regulation (see routes/askom.ts header comment). Startup migrates lingering askom rows to "user". Storage ownership bypasses are admin-only — never grant askom a bypass. Do not re-add the role without explicit user direction. Legacy notes below describe the old system.
 
 ## Role
 - `"askom"` added to `ROLES` in `lib/db/src/schema/users.ts` alongside existing roles.

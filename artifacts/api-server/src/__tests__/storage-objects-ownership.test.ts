@@ -183,6 +183,23 @@ describe("GET /storage/objects/* — ownership gate", () => {
     expect(mockDownloadObject).toHaveBeenCalled();
   });
 
+  // ── Legacy askom role gets NO bypass ─────────────────────────────────────────
+  // The "askom" role was removed from the platform (PKB review is admin-only
+  // per regulation; startup migrates askom → user). A lingering askom-role
+  // session must not be able to read other users' documents.
+
+  it("returns 403 when a legacy askom-role user requests a PKB document owned by another user", async () => {
+    authUser = { id: 7, role: "askom" };
+    // Doc owned by user 99; legacy askom user (id=7) is requesting it.
+    selectResponses.push([{ ownerId: 99 }]);
+
+    const res = await request(app).get("/storage/objects/uploads/99/pkb-doc.pdf");
+
+    expect(res.status).toBe(403);
+    expect(mockGetObjectEntityFile).not.toHaveBeenCalled();
+    expect(mockDownloadObject).not.toHaveBeenCalled();
+  });
+
   // ── Non-PKB objects pass through ──────────────────────────────────────────────
 
   it("serves authenticated requests for objects not registered in pkbActivityDocs", async () => {

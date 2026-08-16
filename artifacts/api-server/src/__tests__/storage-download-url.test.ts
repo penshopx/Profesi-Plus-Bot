@@ -162,6 +162,21 @@ describe("GET /storage/downloads/request-url", () => {
     expect(res.body.downloadURL).toBe("https://signed.example.com/admin-file");
   });
 
+  it("returns 403 when a legacy askom-role user requests another user's document", async () => {
+    // The "askom" role was removed from the platform (PKB review is admin-only
+    // per regulation; startup migrates askom → user). It gets no bypass.
+    authUser = { id: 7, role: "askom" };
+    // Ownership check: doc owned by user 99
+    selectResponses.push([{ ownerId: 99 }]);
+
+    const res = await request(app)
+      .get("/storage/downloads/request-url")
+      .query({ objectPath: "/objects/uploads/99/some-file" });
+
+    expect(res.status).toBe(403);
+    expect(mockGetObjectEntityDownloadURL).not.toHaveBeenCalled();
+  });
+
   it("returns 200 with downloadURL when the document owner requests it", async () => {
     // Ownership check: doc owned by user 42 (same as authUser)
     selectResponses.push([{ ownerId: 42 }]);
