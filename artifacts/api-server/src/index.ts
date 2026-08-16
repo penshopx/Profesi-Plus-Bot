@@ -3,6 +3,8 @@ import { logger } from "./lib/logger";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { clearStalePushTokens } from "./lib/push-cleanup";
+import { pool } from "@workspace/db";
+import { pruneExpiredRateLimitCounters } from "./lib/pgRateLimitStore";
 
 /**
  * One-time migration: revoke legacy "askom" role from any users still carrying
@@ -82,6 +84,22 @@ function validateEmailConfig(): void {
 
 validateEmailConfig();
 
+/**
+ * Delete expired rate-limit counter rows so the table doesn't grow forever.
+ * Idempotent and non-fatal: a failure just means the rows get cleaned up on
+ * the next run.
+ */
+async function cleanupExpiredRateLimits(): Promise<void> {
+  try {
+    const count = await pruneExpiredRateLimitCounters(pool);
+    if (count > 0) {
+      logger.info({ count }, "Pruned expired rate-limit counter rows");
+    }
+  } catch (err) {
+    logger.warn({ err }, "rate-limit counter cleanup failed (non-fatal)");
+  }
+}
+
 /** Run stale push-token cleanup once, then every 24 hours. */
 const PUSH_TOKEN_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 let pushTokenCleanupInterval: NodeJS.Timeout | undefined;
@@ -94,11 +112,25 @@ function schedulePushTokenCleanup(): void {
   pushTokenCleanupInterval.unref?.();
 }
 
+/** Run expired rate-limit row cleanup every hour (also runs once at startup). */
+const RATE_LIMIT_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+let rateLimitCleanupInterval: NodeJS.Timeout | undefined;
+
+function scheduleRateLimitCleanup(): void {
+  rateLimitCleanupInterval = setInterval(() => {
+    void cleanupExpiredRateLimits();
+  }, RATE_LIMIT_CLEANUP_INTERVAL_MS);
+  // Don't let the timer keep the process alive on its own.
+  rateLimitCleanupInterval.unref?.();
+}
+
 migrateAskomRoleToUser()
   .then(() => backfillCreditsGranted())
   .then(() => clearStalePushTokens(logger))
+  .then(() => cleanupExpiredRateLimits())
   .then(() => {
     schedulePushTokenCleanup();
+    scheduleRateLimitCleanup();
     const server = app.listen(port, (err) => {
       if (err) {
         logger.error({ err }, "Error listening on port");
@@ -111,6 +143,9 @@ migrateAskomRoleToUser()
     process.on("SIGTERM", () => {
       if (pushTokenCleanupInterval) {
         clearInterval(pushTokenCleanupInterval);
+      }
+      if (rateLimitCleanupInterval) {
+        clearInterval(rateLimitCleanupInterval);
       }
       // Close the HTTP server so the process exits cleanly, with a bounded
       // fallback in case connections don't drain in time.

@@ -154,3 +154,21 @@ export class PgRateLimitStore implements Store {
   }
 
 }
+
+/**
+ * Delete all rate-limit rows whose window has already expired.
+ *
+ * Safe to run at any time (expired rows are never read: every query in the
+ * store filters on `reset_at > NOW()` or resets on conflict), and idempotent —
+ * re-running it just deletes nothing. Intended to be called on server startup
+ * and on a periodic interval so the table doesn't grow unboundedly.
+ *
+ * Returns the number of rows deleted.
+ */
+export async function pruneExpiredRateLimitCounters(pool: Pool): Promise<number> {
+  await ensureTable(pool);
+  const result = await pool.query(
+    `DELETE FROM rate_limit_counters WHERE reset_at < NOW()`,
+  );
+  return result.rowCount ?? 0;
+}
