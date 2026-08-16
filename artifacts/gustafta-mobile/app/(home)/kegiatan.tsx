@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'expo-image';
 import * as DocumentPicker from 'expo-document-picker';
 import * as WebBrowser from 'expo-web-browser';
 import {
@@ -237,6 +238,66 @@ function SkkManager({ skk, onUpdate, activityId, colors }: {
         </Pressable>
       )}
     </View>
+  );
+}
+
+// ─── Document thumbnail ───────────────────────────────────────────────────────
+
+/**
+ * Renders a real image thumbnail for an image document. Fetches a short-lived
+ * presigned URL lazily on mount (rows only mount when the Dokumen tab is
+ * visible). Falls back to the tap-to-view placeholder while loading or when
+ * fetching the URL fails.
+ */
+function DocThumbnail({ objectPath, onPress, disabled, colors }: {
+  objectPath: string;
+  onPress: () => void;
+  disabled: boolean;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setUrl(null);
+    setFailed(false);
+    getDocDownloadUrl(objectPath)
+      .then((u) => { if (!cancelled) setUrl(u); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [objectPath]);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => ({
+        height: 80, borderRadius: 6, backgroundColor: colors.border,
+        alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6,
+        overflow: 'hidden',
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      {url && !failed ? (
+        <Image
+          source={{ uri: url }}
+          style={{ width: '100%', height: 80 }}
+          contentFit="cover"
+          transition={150}
+          onError={() => setFailed(true)}
+        />
+      ) : failed ? (
+        <>
+          <Feather name="image" size={20} color={colors.mutedForeground} />
+          <Text style={{ fontSize: 12, color: colors.mutedForeground, fontFamily: 'PlusJakartaSans_400Regular' }}>
+            Ketuk untuk melihat foto
+          </Text>
+        </>
+      ) : (
+        <ActivityIndicator size="small" color={colors.mutedForeground} />
+      )}
+    </Pressable>
   );
 }
 
@@ -533,22 +594,14 @@ function DocUploadSection({ activityId, activityStatus, docs, onRefresh, colors 
                           </Pressable>
                         )}
                       </View>
-                      {/* Inline image thumbnail placeholder — tap opens the viewer */}
+                      {/* Inline image thumbnail — tap opens the viewer */}
                       {isImage && (
-                        <Pressable
+                        <DocThumbnail
+                          objectPath={doc.objectPath}
                           onPress={() => handleOpen(doc)}
                           disabled={isOpening}
-                          style={({ pressed }) => ({
-                            height: 80, borderRadius: 6, backgroundColor: colors.border,
-                            alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6,
-                            opacity: pressed ? 0.7 : 1,
-                          })}
-                        >
-                          <Feather name="image" size={20} color={colors.mutedForeground} />
-                          <Text style={{ fontSize: 12, color: colors.mutedForeground, fontFamily: 'PlusJakartaSans_400Regular' }}>
-                            Ketuk untuk melihat foto
-                          </Text>
-                        </Pressable>
+                          colors={colors}
+                        />
                       )}
                     </View>
                   );
