@@ -12,7 +12,7 @@ import { findJabkerGroup } from "../../lib/skk-data";
 import { requireAuth } from "../../middlewares/auth";
 import { chatMessageRateLimiter, exumRateLimiter } from "../../middlewares/rateLimiter";
 import { applySharedContextBudget } from "../../lib/context-budget";
-import { buildChatContextBlocks } from "../../lib/chat-context-blocks";
+import { buildChatContextBlocks, buildExumContextBlocks } from "../../lib/chat-context-blocks";
 import { sendPushNotification } from "../../lib/push";
 
 const router: IRouter = Router();
@@ -549,17 +549,21 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
     // Enforce the same shared budget for Exum context.
     // outlineContext (approved blueprint) gets highest priority since it drives
     // the document structure. historicalPKBContext is trimmed first.
-    const exumCombinedContext = applySharedContextBudget([
-      { content: outlineContext,    priority: 8 },
-      { content: exumProfile,       priority: 7 },
-      { content: exumCompetency,    priority: 6 },
-      { content: exumQuiz,          priority: 5 },
-      { content: exumWatched,       priority: 4.5 },
-      { content: exumKegiatan,      priority: 4 },
-      { content: exumKnowledge,     priority: 3 },
-      { content: exumProjectBrain,  priority: 2 },
-      { content: exumHistorical,    priority: 1 },
-    ]);
+    // Priority table lives in lib/chat-context-blocks.ts (buildExumContextBlocks)
+    // so the integration tests exercise the same wiring without a duplicate.
+    const exumCombinedContext = applySharedContextBudget(
+      buildExumContextBlocks({
+        outlineContext,
+        profileContext:        exumProfile,
+        competencyContext:     exumCompetency,
+        quizContext:           exumQuiz,
+        watchedModulesContext: exumWatched,
+        kegiatanContext:       exumKegiatan,
+        knowledgeContext:      exumKnowledge,
+        projectBrainContext:   exumProjectBrain,
+        historicalPKBContext:  exumHistorical,
+      }),
+    );
     markProjectBrainUsed(exumPbMeta, exumCombinedContext);
     const exumPrompt = buildExumPrompt(
       conv.mode, conv.jabker, conv.jenjang, transcript, evidence,

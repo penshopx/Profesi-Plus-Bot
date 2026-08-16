@@ -39,3 +39,24 @@ export function buildChatContextBlocks(inputs: ChatContextInputs): ContextBlock[
     { content: inputs.historicalPKBContext,  priority: 1   },
   ];
 }
+
+export interface ExumContextInputs extends ChatContextInputs {
+  /** Approved outline blueprint — highest priority: it drives document structure. */
+  outlineContext: string;
+}
+
+/**
+ * Assembles the Exum generator's 9 context blocks (approved outline + the same
+ * 8 blocks as chat) with their canonical priorities exactly as the
+ * /chat/generate-exum handler passes them to `applySharedContextBudget`.
+ *
+ * Priority legend (higher = preserved first when budget is tight):
+ *   8 outline | 7 profile | 6 competency | 5 quiz | 4.5 watchedModules
+ *   4 kegiatan | 3 knowledge | 2 projectBrain | 1 historical
+ */
+export function buildExumContextBlocks(inputs: ExumContextInputs): ContextBlock[] {
+  return [
+    { content: inputs.outlineContext, priority: 8 },
+    ...buildChatContextBlocks(inputs),
+  ];
+}

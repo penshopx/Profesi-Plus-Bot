@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { applySharedContextBudget, SHARED_CONTEXT_BUDGET_CHARS } from "../lib/context-budget";
-import { buildChatContextBlocks } from "../lib/chat-context-blocks";
+import { buildChatContextBlocks, buildExumContextBlocks } from "../lib/chat-context-blocks";
 import { buildSystemPrompt } from "../lib/pkb-system-prompt";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -349,5 +349,164 @@ describe("applySharedContextBudget — 8-block integration (mirrors chat/index.t
 
     // Full prompt must be ≤ boilerplate + budget — no context leaked outside the slot.
     expect(fullSystemPrompt.length).toBeLessThanOrEqual(boilerplateLen + SHARED_CONTEXT_BUDGET_CHARS);
+  });
+});
+
+// ─── Integration: Exum generator 9-block wiring (mirrors /chat/generate-exum) ─
+//
+// The Exum generation flow runs its own parallel context build with an extra
+// outline block (p=8) on top of the same 8 chat blocks. These tests use
+// `buildExumContextBlocks` — the same factory the production Exum handler
+// calls — so a wiring/copy-paste bug in the Exum path fails here.
+//
+// Priority map (canonical, lives in lib/chat-context-blocks.ts):
+//   8 outline | 7 profile | 6 competency | 5 quiz | 4.5 watchedModules
+//   4 kegiatan | 3 knowledge | 2 projectBrain | 1 historical
+
+describe("applySharedContextBudget — Exum 9-block integration (mirrors generate-exum wiring)", () => {
+  const SENTINEL = {
+    outline:        "OUTLINE::",
+    profile:        "PROFILE::",
+    competency:     "COMPETENCY::",
+    quiz:           "QUIZ::",
+    watchedModules: "WATCHED::",
+    kegiatan:       "KEGIATAN::",
+    knowledge:      "KNOWLEDGE::",
+    projectBrain:   "PROJECTBRAIN::",
+    historical:     "HISTORICAL::",
+  } as const;
+
+  const BLOCK_SIZE = 1_500; // 9 × 1 500 = 13 500 > 10 000 budget
+
+  const pad = (sentinel: string, size = BLOCK_SIZE) =>
+    (sentinel + "x".repeat(Math.max(0, size - sentinel.length))).slice(0, size);
+
+  /** Produce the production Exum blocks via the exported factory. */
+  function makeExumBlocks(overrides: Partial<Record<keyof typeof SENTINEL, string>> = {}) {
+    return buildExumContextBlocks({
+      outlineContext:        overrides.outline        ?? pad(SENTINEL.outline),
+      profileContext:        overrides.profile        ?? pad(SENTINEL.profile),
+      competencyContext:     overrides.competency     ?? pad(SENTINEL.competency),
+      quizContext:           overrides.quiz           ?? pad(SENTINEL.quiz),
+      watchedModulesContext: overrides.watchedModules ?? pad(SENTINEL.watchedModules),
+      kegiatanContext:       overrides.kegiatan       ?? pad(SENTINEL.kegiatan),
+      knowledgeContext:      overrides.knowledge      ?? pad(SENTINEL.knowledge),
+      projectBrainContext:   overrides.projectBrain   ?? pad(SENTINEL.projectBrain),
+      historicalPKBContext:  overrides.historical     ?? pad(SENTINEL.historical),
+    });
+  }
+
+  // ── Budget invariant ──────────────────────────────────────────────────────
+
+  it("combined Exum context never exceeds SHARED_CONTEXT_BUDGET_CHARS when all blocks are large", () => {
+    const result = applySharedContextBudget(makeExumBlocks());
+    expect(result.length).toBeLessThanOrEqual(SHARED_CONTEXT_BUDGET_CHARS);
+  });
+
+  it("combined Exum context never exceeds the budget even without an approved outline", () => {
+    // No approved outline is the common case: outlineContext is "".
+    const result = applySharedContextBudget(makeExumBlocks({ outline: "" }));
+    expect(result.length).toBeLessThanOrEqual(SHARED_CONTEXT_BUDGET_CHARS);
+  });
+
+  // ── Priority preservation ─────────────────────────────────────────────────
+
+  it("approved outline (p=8) is preserved in full when budget is tight", () => {
+    const result = applySharedContextBudget(makeExumBlocks());
+    expect(result).toContain(pad(SENTINEL.outline));
+  });
+
+  it("profile (p=7) and competency (p=6) survive in full when total content exceeds the budget", () => {
+    // 9 × 1 500 = 13 500 > 10 000 — lower-priority blocks must give way,
+    // but the high-priority personalisation blocks must be untouched.
+    const result = applySharedContextBudget(makeExumBlocks());
+    expect(result).toContain(pad(SENTINEL.profile));
+    expect(result).toContain(pad(SENTINEL.competency));
+  });
+
+  it("profile and competency survive even without an outline when the rest overflows the budget", () => {
+    const result = applySharedContextBudget(makeExumBlocks({ outline: "" }));
+    expect(result).toContain(pad(SENTINEL.profile));
+    expect(result).toContain(pad(SENTINEL.competency));
+    expect(result.length).toBeLessThanOrEqual(SHARED_CONTEXT_BUDGET_CHARS);
+  });
+
+  it("lowest-priority block (historical, p=1) is cut before high-priority blocks", () => {
+    const result = applySharedContextBudget(makeExumBlocks());
+    // historical must NOT appear in full while outline/profile do.
+    expect(result).not.toContain(pad(SENTINEL.historical));
+    expect(result).toContain(pad(SENTINEL.outline));
+    expect(result).toContain(pad(SENTINEL.profile));
+  });
+
+  it("competency (p=6) survives while quiz (p=5) is absent when budget fits only the top three", () => {
+    // Budget = exactly outline + profile + competency.
+    const tightBudget = BLOCK_SIZE * 3;
+    const result = applySharedContextBudget(makeExumBlocks(), tightBudget);
+    expect(result).toContain(SENTINEL.outline);
+    expect(result).toContain(SENTINEL.profile);
+    expect(result).toContain(SENTINEL.competency);
+    expect(result).not.toContain(SENTINEL.quiz);
+    expect(result.length).toBeLessThanOrEqual(tightBudget);
+  });
+
+  // ── Output ordering ───────────────────────────────────────────────────────
+
+  it("all 9 production blocks appear in original input order when budget is generous", () => {
+    const smallBlocks = buildExumContextBlocks({
+      outlineContext:        SENTINEL.outline,
+      profileContext:        SENTINEL.profile,
+      competencyContext:     SENTINEL.competency,
+      quizContext:           SENTINEL.quiz,
+      watchedModulesContext: SENTINEL.watchedModules,
+      kegiatanContext:       SENTINEL.kegiatan,
+      knowledgeContext:      SENTINEL.knowledge,
+      projectBrainContext:   SENTINEL.projectBrain,
+      historicalPKBContext:  SENTINEL.historical,
+    });
+    const result = applySharedContextBudget(smallBlocks, 10_000);
+
+    const inputOrder = [
+      SENTINEL.outline,
+      SENTINEL.profile,
+      SENTINEL.competency,
+      SENTINEL.quiz,
+      SENTINEL.watchedModules,
+      SENTINEL.kegiatan,
+      SENTINEL.knowledge,
+      SENTINEL.projectBrain,
+      SENTINEL.historical,
+    ];
+    const positions = inputOrder.map((s) => result.indexOf(s));
+    positions.forEach((pos, i) => {
+      expect(pos).toBeGreaterThanOrEqual(0);
+      if (i > 0) expect(pos).toBeGreaterThan(positions[i - 1]);
+    });
+  });
+
+  // ── Empty-builder resilience ──────────────────────────────────────────────
+
+  it("a single failed builder ('' content) does not drop adjacent Exum blocks", () => {
+    const result = applySharedContextBudget(makeExumBlocks({ quiz: "" }), 20_000);
+    expect(result).toContain(SENTINEL.outline);
+    expect(result).toContain(SENTINEL.profile);
+    expect(result).toContain(SENTINEL.competency);
+    expect(result).toContain(SENTINEL.watchedModules);
+    expect(result).toContain(SENTINEL.kegiatan);
+    expect(result).toContain(SENTINEL.knowledge);
+    expect(result).toContain(SENTINEL.projectBrain);
+    expect(result).toContain(SENTINEL.historical);
+    expect(result).not.toContain(SENTINEL.quiz);
+  });
+
+  it("all 9 builders returning '' produces an empty combined context without error", () => {
+    const result = applySharedContextBudget(
+      buildExumContextBlocks({
+        outlineContext: "", profileContext: "", competencyContext: "",
+        quizContext: "", watchedModulesContext: "", kegiatanContext: "",
+        knowledgeContext: "", projectBrainContext: "", historicalPKBContext: "",
+      }),
+    );
+    expect(result).toBe("");
   });
 });
