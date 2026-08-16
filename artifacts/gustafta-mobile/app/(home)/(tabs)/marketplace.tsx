@@ -40,6 +40,7 @@ import {
   type MarketplaceCatalogCourse,
 } from '@/lib/api';
 import { mapApiCourse, type Course, type ContentType } from '@/lib/marketplaceMapping';
+import { getMarketplaceListState } from '@/lib/marketplaceLoadingState';
 
 // ─── Offline catalog cache ────────────────────────────────────────────────────
 
@@ -962,7 +963,19 @@ export default function MarketplaceScreen() {
   }, [courses, search, filterJabker, filterPrice]);
 
   const watchedCount = courses.filter((c) => watchedIds.has(c.id)).length;
-  const isLoading = catalogLoading || watchedLoading;
+  // Decide what the list area renders. Spinner appears only on a true first
+  // load (cache read finished empty + initial fetch in flight); the brief
+  // AsyncStorage read window renders a neutral blank so remounting with a
+  // persisted cache never flashes a spinner; background re-fetches
+  // (stale-while-revalidate on tab focus) never interrupt the list —
+  // consistent with the Studio tab.
+  const listState = getMarketplaceListState({
+    cacheLoaded,
+    catalogCount: rawCatalog.length,
+    catalogLoading,
+    watchedLoading,
+    catalogError,
+  });
 
   return (
     <View style={[ms.root, { backgroundColor: colors.background }]}>
@@ -1078,15 +1091,18 @@ export default function MarketplaceScreen() {
       </ScrollView>
 
       {/* List */}
-      {/* Show spinner only when loading with no cached data to display yet */}
-      {isLoading && rawCatalog.length === 0 ? (
+      {listState === 'awaiting-cache' ? (
+        /* Disk cache still being read — neutral blank, no spinner flash */
+        <View style={ms.loadingBox} />
+      ) : listState === 'loading' ? (
+        /* True first load: cache read finished empty, initial fetch in flight */
         <View style={ms.loadingBox}>
           <ActivityIndicator color={colors.primary} />
           <Text style={[ms.loadingText, { color: colors.mutedForeground }]}>
             {catalogLoading ? 'Memuat katalog kursus...' : 'Memuat status...'}
           </Text>
         </View>
-      ) : catalogError && rawCatalog.length === 0 ? (
+      ) : listState === 'error' ? (
         /* Show error only when there is no cached data to fall back to */
         <View style={ms.loadingBox}>
           <Feather name="wifi-off" size={32} color={colors.mutedForeground} />
