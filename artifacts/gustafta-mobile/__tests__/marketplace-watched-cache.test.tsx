@@ -505,3 +505,55 @@ describe('online toggle — persists to AsyncStorage immediately', () => {
     await teardown();
   });
 });
+
+describe('catalog reconciliation — removed courses are pruned from the watched cache', () => {
+  it('a cached watched id missing from a fresh catalog is removed from disk', async () => {
+    // Previous session: user watched course-1 AND a course that has since
+    // been deleted from the backend catalog.
+    await saveCatalogCache([COURSE]);
+    await saveWatchedCache('user_A', ['course-1', 'ghost-course']);
+    (getMarketplaceCatalog as jest.Mock).mockResolvedValue([COURSE]);
+    (getWatchedCourses as jest.Mock).mockImplementation(neverResolves);
+
+    const { teardown } = await mountScreen();
+    await settle();
+
+    expect(await loadCachedWatched('user_A')).toEqual(['course-1']);
+    await teardown();
+  });
+
+  it('an EMPTY catalog response is authoritative and clears all cached watched ids', async () => {
+    await saveCatalogCache([COURSE]);
+    await saveWatchedCache('user_A', ['course-1']);
+    (getMarketplaceCatalog as jest.Mock).mockResolvedValue([]);
+    (getWatchedCourses as jest.Mock).mockImplementation(neverResolves);
+
+    const { teardown } = await mountScreen();
+    await settle();
+
+    expect(await loadCachedWatched('user_A')).toEqual([]);
+    await teardown();
+  });
+
+  it('a watched response that resolves AFTER the catalog cannot write removed ids back', async () => {
+    await saveCatalogCache([COURSE]);
+    (getMarketplaceCatalog as jest.Mock).mockResolvedValue([COURSE]);
+    // Server still returns a stale watched list containing a removed course;
+    // resolve it later than the catalog to mirror the race.
+    (getWatchedCourses as jest.Mock).mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () => resolve({ watched: [], watchedIds: ['course-1', 'ghost-course'], pkbLoggedIds: [] }),
+            100,
+          ),
+        ),
+    );
+
+    const { teardown } = await mountScreen();
+    await settle(300);
+
+    expect(await loadCachedWatched('user_A')).toEqual(['course-1']);
+    await teardown();
+  });
+});

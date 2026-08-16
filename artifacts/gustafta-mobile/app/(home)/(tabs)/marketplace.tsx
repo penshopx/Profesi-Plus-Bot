@@ -37,6 +37,7 @@ import {
   loadCachedPkbLogged,
   savePkbLoggedCache,
   currentSignOutEpoch,
+  reconcileIdsWithCatalog,
 } from '@/lib/marketplaceCache';
 import { useNetworkState } from '@/hooks/useNetworkState';
 import { OfflineBanner } from '@/components/OfflineBanner';
@@ -804,6 +805,21 @@ export default function MarketplaceScreen() {
     }
   }, [liveCatalog]);
 
+  // Reconcile the watched cache against each freshly fetched catalog: when a
+  // course is removed from the backend catalog, its ID would otherwise linger
+  // in the local watched cache forever and inflate the badge count on later
+  // offline sessions. Any defined successful response — including an empty
+  // catalog (all courses removed) — is authoritative. Runs only for the
+  // currently signed-in owner's cache.
+  useEffect(() => {
+    if (!liveCatalog || !userId) return;
+    if (cachedWatched.owner !== userId) return;
+    const kept = reconcileIdsWithCatalog(cachedWatched.ids, liveCatalog);
+    if (kept === cachedWatched.ids) return;
+    setCachedWatched({ owner: userId, ids: kept });
+    saveWatchedCache(userId, kept);
+  }, [liveCatalog, userId, cachedWatched]);
+
   // Use live data when available; fall back to cache when offline
   const rawCatalog = liveCatalog ?? cachedCatalog;
   const showingCachedCatalog = !liveCatalog && cachedCatalog.length > 0;
@@ -828,17 +844,21 @@ export default function MarketplaceScreen() {
     enabled: watchedCacheLoaded && !!userId,
   });
 
-  // Persist successful watched fetches to AsyncStorage
+  // Persist successful watched fetches to AsyncStorage. The server list is
+  // pruned against the freshest catalog BEFORE both the state and storage
+  // writes, so a watched response arriving after catalog reconciliation can
+  // never write removed-course IDs back into the cache.
   useEffect(() => {
     if (watchedData?.watchedIds && userId) {
-      setCachedWatched({ owner: userId, ids: watchedData.watchedIds });
-      saveWatchedCache(userId, watchedData.watchedIds);
+      const ids = reconcileIdsWithCatalog(watchedData.watchedIds, liveCatalog);
+      setCachedWatched({ owner: userId, ids });
+      saveWatchedCache(userId, ids);
     }
     if (watchedData?.pkbLoggedIds && userId) {
       setCachedPkbLogged({ owner: userId, ids: watchedData.pkbLoggedIds });
       savePkbLoggedCache(userId, watchedData.pkbLoggedIds);
     }
-  }, [watchedData, userId]);
+  }, [watchedData, userId, liveCatalog]);
 
   // Use live data when available; fall back to cached list when offline
   const watchedIds = useMemo(

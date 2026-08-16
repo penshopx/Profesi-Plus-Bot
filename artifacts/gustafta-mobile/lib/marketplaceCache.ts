@@ -51,6 +51,23 @@ export async function saveCatalogCache(data: MarketplaceCatalogCourse[]): Promis
   } catch {}
 }
 
+/**
+ * Prune watched/PKB-logged IDs against a freshly fetched catalog. Any defined
+ * successful catalog response — including an empty array (all courses
+ * removed) — is authoritative; `undefined` (no fetch yet / offline) leaves the
+ * list untouched. Returns the same array reference when nothing was pruned so
+ * callers can cheaply detect "no change".
+ */
+export function reconcileIdsWithCatalog(
+  ids: string[],
+  catalog: { id: string }[] | undefined,
+): string[] {
+  if (!catalog) return ids;
+  const live = new Set(catalog.map((c) => c.id));
+  const kept = ids.filter((id) => live.has(id));
+  return kept.length === ids.length ? ids : kept;
+}
+
 // ─── Watched-courses cache (user-scoped) ──────────────────────────────────────
 
 export function watchedCacheKey(userId: string): string {

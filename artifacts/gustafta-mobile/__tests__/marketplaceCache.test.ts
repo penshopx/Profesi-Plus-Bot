@@ -137,3 +137,25 @@ describe('sign-out clearing — clearUserMarketplaceCaches', () => {
     await expect(clearUserMarketplaceCaches('user_A')).resolves.toBeUndefined();
   });
 });
+
+describe('reconcileIdsWithCatalog — prune watched ids against a fresh catalog', () => {
+  const { reconcileIdsWithCatalog } = require('@/lib/marketplaceCache');
+
+  it('removes ids that no longer appear in the catalog', () => {
+    expect(reconcileIdsWithCatalog(['a', 'ghost'], [{ id: 'a' }])).toEqual(['a']);
+  });
+
+  it('treats an EMPTY catalog as authoritative (all courses removed)', () => {
+    expect(reconcileIdsWithCatalog(['a', 'b'], [])).toEqual([]);
+  });
+
+  it('leaves the list untouched when the catalog is undefined (offline / no fetch)', () => {
+    const ids = ['a', 'b'];
+    expect(reconcileIdsWithCatalog(ids, undefined)).toBe(ids);
+  });
+
+  it('returns the SAME array reference when nothing was pruned', () => {
+    const ids = ['a'];
+    expect(reconcileIdsWithCatalog(ids, [{ id: 'a' }, { id: 'b' }])).toBe(ids);
+  });
+});
