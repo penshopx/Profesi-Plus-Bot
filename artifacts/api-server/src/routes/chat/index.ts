@@ -14,6 +14,7 @@ import { chatMessageRateLimiter, exumRateLimiter } from "../../middlewares/rateL
 import { applySharedContextBudget } from "../../lib/context-budget";
 import { buildChatContextBlocks, buildExumContextBlocks } from "../../lib/chat-context-blocks";
 import { sendPushNotification } from "../../lib/push";
+import { makeSafeCtx } from "../../lib/safe-ctx";
 
 const router: IRouter = Router();
 
@@ -256,14 +257,7 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
   // kill the entire chat request. Failures are logged and tracked so the
   // client can surface a non-blocking warning when personalisation blocks fail.
   const contextErrors: string[] = [];
-  const safeCtx = async (name: string, fn: () => Promise<string>): Promise<string> => {
-    try { return await fn(); }
-    catch (err) {
-      req.log.warn({ err, contextBlock: name }, "Context builder failed — falling back to empty string");
-      contextErrors.push(name);
-      return "";
-    }
-  };
+  const safeCtx = makeSafeCtx(req.log, contextErrors);
 
   let pbMeta: ProjectBrainContextMeta = { text: "", blocks: [] };
   const [knowledgeContext, projectBrainContext, historicalPKBContext, competencyContext, quizContext, profileContext, kegiatanContext, watchedModulesContext] = await Promise.all([
@@ -494,14 +488,7 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       .join("\n\n");
 
     const exumContextErrors: string[] = [];
-    const safeExumCtx = async (name: string, fn: () => Promise<string>): Promise<string> => {
-      try { return await fn(); }
-      catch (err) {
-        req.log.warn({ err, contextBlock: name, context_block_failed: name.replace("exum:", "") }, "Exum context builder failed — falling back to empty string");
-        exumContextErrors.push(name);
-        return "";
-      }
-    };
+    const safeExumCtx = makeSafeCtx(req.log, exumContextErrors);
 
     let exumPbMeta: ProjectBrainContextMeta = { text: "", blocks: [] };
     const [exumKnowledge, exumProjectBrain, exumHistorical, exumCompetency, exumQuiz, exumProfile, exumKegiatan, exumWatched, approvedOutlineRow] = await Promise.all([
