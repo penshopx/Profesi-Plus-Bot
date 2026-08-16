@@ -30,6 +30,29 @@ function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   next();
 }
 
+/**
+ * Validate rating / relevanceScore when present in the body.
+ * rating must be a finite number in [0, 5]; relevanceScore in [0, 100].
+ * Sends the 400 itself and returns false when invalid.
+ */
+function validateReviewScores(body: Record<string, unknown>, res: Response): boolean {
+  if (body.rating !== undefined) {
+    const rating = Number(body.rating);
+    if (!Number.isFinite(rating) || rating < 0 || rating > 5) {
+      res.status(400).json({ error: "rating harus angka antara 0 dan 5." });
+      return false;
+    }
+  }
+  if (body.relevanceScore !== undefined) {
+    const rs = Number(body.relevanceScore);
+    if (!Number.isFinite(rs) || rs < 0 || rs > 100) {
+      res.status(400).json({ error: "relevanceScore harus angka antara 0 dan 100." });
+      return false;
+    }
+  }
+  return true;
+}
+
 const router = Router();
 
 // ─── GET /api/marketplace/courses ─────────────────────────────────────────────
@@ -291,6 +314,7 @@ router.post("/marketplace/admin/courses/:id/ai-reviews", requireAuth, requireAdm
     res.status(400).json({ error: "platform, platformIcon, rating, relevanceScore, comment, reviewedAt wajib diisi." });
     return;
   }
+  if (!validateReviewScores(body, res)) return;
   const [created] = await db.insert(marketplaceAiReviews).values({
     courseId: id,
     platform: String(body.platform),
@@ -309,6 +333,7 @@ router.patch("/marketplace/admin/courses/:id/ai-reviews/:reviewId", requireAuth,
   const reviewId = Number(req.params.reviewId);
   if (!Number.isFinite(reviewId)) { res.status(400).json({ error: "reviewId tidak valid." }); return; }
   const body = req.body as Record<string, unknown>;
+  if (!validateReviewScores(body, res)) return;
   const patch: Partial<typeof marketplaceAiReviews.$inferInsert> = {};
   if (body.platform !== undefined)       patch.platform       = String(body.platform);
   if (body.platformIcon !== undefined)   patch.platformIcon   = String(body.platformIcon);
@@ -345,6 +370,7 @@ router.post("/marketplace/admin/courses/:id/askom-reviews", requireAuth, require
     res.status(400).json({ error: "reviewerName, credential, institution, rating, relevanceScore, recommendation, comment, reviewedAt wajib diisi." });
     return;
   }
+  if (!validateReviewScores(body, res)) return;
   // Satu ASKOM review per kursus — ditegakkan lewat unique index di DB
   // (marketplace_askom_reviews_course_uidx). Insert atomik: konflik → tidak
   // ada row yang dikembalikan → 409. Gunakan PATCH untuk mengubah yang ada.
@@ -375,6 +401,7 @@ router.patch("/marketplace/admin/courses/:id/askom-reviews/:reviewId", requireAu
   const reviewId = Number(req.params.reviewId);
   if (!Number.isFinite(reviewId)) { res.status(400).json({ error: "reviewId tidak valid." }); return; }
   const body = req.body as Record<string, unknown>;
+  if (!validateReviewScores(body, res)) return;
   const patch: Partial<typeof marketplaceAskomReviews.$inferInsert> = {};
   if (body.reviewerName !== undefined)     patch.reviewerName     = String(body.reviewerName);
   if (body.credential !== undefined)       patch.credential       = String(body.credential);
