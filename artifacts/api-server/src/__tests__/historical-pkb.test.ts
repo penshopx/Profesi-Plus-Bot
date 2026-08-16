@@ -90,7 +90,9 @@ import {
   buildCompetencyAnalysisContext,
   buildHistoricalPKBContext,
   buildProfileContext,
+  buildKegiatanContext,
   MAX_HISTORICAL_PKB_CHARS,
+  MAX_KEGIATAN_BLOCK_CHARS,
 } from "../lib/historical-pkb.js";
 
 // ─── Helpers / Fixtures ───────────────────────────────────────────────────────
@@ -486,5 +488,67 @@ describe("buildHistoricalPKBContext", () => {
     dbState.push([FIXTURE_EXUM], []);
     const result = await buildHistoricalPKBContext(1, 99);
     expect(result).not.toContain("SERPIHAN DARI SESI SEBELUMNYA");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildKegiatanContext
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// buildKegiatanContext runs TWO sequential DB calls:
+//   1. activities query (select ... limit MAX_KEGIATAN)
+//   2. SKK batch query (select ... where inArray(...)) — only if activities exist
+// Push queue items accordingly.
+
+describe("buildKegiatanContext", () => {
+  const makeActivity = (i: number, overrides: Record<string, unknown> = {}) => ({
+    id: i,
+    namaKegiatan: `Kegiatan ${i}`,
+    jenisPkb: "Pelatihan",
+    jpPkb: 8,
+    tanggalMulai: "2026-01-0" + ((i % 9) + 1),
+    tempatKegiatan: "Jakarta",
+    namaMateri: "Materi " + i,
+    penyelenggara: "LPJK",
+    uraianSingkat: "U".repeat(300), // exceeds per-item MAX_URAIAN_CHARS
+    ...overrides,
+  });
+
+  it("returns empty string when user has no activities", async () => {
+    dbState.push([]);
+    const result = await buildKegiatanContext(1);
+    expect(result).toBe("");
+  });
+
+  it("includes activity name for a single kegiatan", async () => {
+    dbState.push([makeActivity(1)], []);
+    const result = await buildKegiatanContext(1);
+    expect(result).toContain("Kegiatan 1");
+  });
+
+  it("caps output at MAX_KEGIATAN_BLOCK_CHARS plus truncation marker when many large activities exist", async () => {
+    // Implementation slices at MAX_KEGIATAN_BLOCK_CHARS then appends the
+    // marker, so final length is at most cap + len(marker).
+    const MARKER = "\n…[kegiatan dipotong]";
+    const many = Array.from({ length: 8 }, (_, i) =>
+      makeActivity(i + 1, { namaKegiatan: `Kegiatan besar ${i} ` + "N".repeat(400) })
+    );
+    const skk = many.map((a) => ({
+      activityId: a.id,
+      skkCode: "M.711000.001.01.X",
+      skkName: "Unit SKK yang cukup panjang untuk memperbesar blok",
+    }));
+    dbState.push(many, skk);
+    const result = await buildKegiatanContext(1);
+    expect(result.length).toBeGreaterThan(MAX_KEGIATAN_BLOCK_CHARS); // ensure cap was actually exercised
+    expect(result.length).toBeLessThanOrEqual(MAX_KEGIATAN_BLOCK_CHARS + MARKER.length);
+    expect(result).toMatch(/\[kegiatan dipotong\]$/);
+  });
+
+  it("does not append a truncation marker when content fits within the cap", async () => {
+    dbState.push([makeActivity(1, { uraianSingkat: "singkat" })], []);
+    const result = await buildKegiatanContext(1);
+    expect(result.length).toBeLessThanOrEqual(MAX_KEGIATAN_BLOCK_CHARS);
+    expect(result).not.toContain("[kegiatan dipotong]");
   });
 });

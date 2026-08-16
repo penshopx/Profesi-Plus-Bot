@@ -339,10 +339,12 @@ export async function buildHistoricalPKBContext(
  * helping the user write their Exum — rather than asking the user to repeat
  * information they've already documented.
  */
+/** Hard cap on the kegiatan context block — keeps it from crowding higher-priority blocks. */
+export const MAX_KEGIATAN_BLOCK_CHARS = 2400;
+
 export async function buildKegiatanContext(userId: number): Promise<string> {
   const MAX_KEGIATAN = 8;
   const MAX_URAIAN_CHARS = 200;
-  const MAX_BLOCK_CHARS = 2400; // hard cap — keeps kegiatan from crowding higher-priority blocks
 
   const activities = await db
     .select()
@@ -389,8 +391,8 @@ export async function buildKegiatanContext(userId: number): Promise<string> {
   }
 
   const combined = lines.join("\n");
-  return combined.length > MAX_BLOCK_CHARS
-    ? combined.slice(0, MAX_BLOCK_CHARS) + "\n…[kegiatan dipotong]"
+  return combined.length > MAX_KEGIATAN_BLOCK_CHARS
+    ? combined.slice(0, MAX_KEGIATAN_BLOCK_CHARS) + "\n…[kegiatan dipotong]"
     : combined;
 }
 
