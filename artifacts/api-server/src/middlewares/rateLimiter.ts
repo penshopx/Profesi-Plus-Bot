@@ -54,6 +54,7 @@ export function isPro(req: Request): boolean {
 export const chatRateLimitStore        = new PgRateLimitStore(pool);
 export const exumRateLimitStore        = new PgRateLimitStore(pool, { prefix: "exum" });
 export const competencyRateLimitStore  = new PgRateLimitStore(pool, { prefix: "competency" });
+export const claimRateLimitStore        = new PgRateLimitStore(pool, { prefix: "claim" });
 
 // ── Factory options type ──────────────────────────────────────────────────────
 
@@ -171,7 +172,8 @@ export function createClaimPaymentRateLimiter(overrides: LimiterOverrides = {}) 
       code: "rate_limit_claim",
     },
     skip: overrides.skip ?? (() => process.env.NODE_ENV === "test"),
-    ...(overrides.store ? { store: overrides.store } : {}),
+    // Always use the shared singleton unless tests inject their own store.
+    store: overrides.store ?? claimRateLimitStore,
   });
 }
 

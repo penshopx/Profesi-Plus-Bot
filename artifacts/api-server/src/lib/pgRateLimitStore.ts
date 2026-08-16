@@ -18,7 +18,7 @@ import type { Pool } from "pg";
 // multiple concurrent constructor calls (e.g. chat + exum + competency stores
 // all created at module load time) never race against each other and trigger
 // a PostgreSQL "duplicate key" error on pg_type.
-let tableReadyPromise: Promise<void> | null = null;
+let tableReadyPromise: Promise<void> | undefined;
 
 function ensureTable(pool: Pool): Promise<void> {
   if (!tableReadyPromise) {
@@ -57,9 +57,13 @@ export class PgRateLimitStore implements Store {
    * so multiple limiters can share the same `rate_limit_counters` table without
    * colliding.  For example prefix="exum" turns key "user:5" into "exum:user:5".
    */
-  private readonly prefix: string;
+  readonly prefix: string;
+
+  /** Connection pool used for all queries. */
+  private readonly pool: Pool;
 
   constructor(pool: Pool, opts: { prefix?: string } = {}) {
+    this.pool = pool;
     this.prefix = opts.prefix ?? "";
     this.readyPromise = ensureTable(pool);
   }
