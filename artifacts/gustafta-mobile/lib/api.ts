@@ -733,7 +733,8 @@ export interface MarketplaceAskomReview {
 
 export interface MarketplaceCourseReviews {
   aiReviews: MarketplaceAiReview[];
-  askomReview: MarketplaceAskomReview | null;
+  /** Server enforces at most one ASKOM review per course, but returns an array. */
+  askomReviews: MarketplaceAskomReview[];
 }
 
 export interface MarketplaceCatalogCourse {

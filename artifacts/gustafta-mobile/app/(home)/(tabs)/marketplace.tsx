@@ -39,6 +39,7 @@ import {
   getMarketplaceCatalog,
   type MarketplaceCatalogCourse,
 } from '@/lib/api';
+import { mapApiCourse, type Course, type ContentType } from '@/lib/marketplaceMapping';
 
 // ─── Offline catalog cache ────────────────────────────────────────────────────
 
@@ -107,83 +108,8 @@ async function savePkbLoggedCache(userId: string, ids: string[]): Promise<void> 
   } catch {}
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type ContentType = 'video' | 'webinar' | 'diklatkerja' | 'modul';
-type PriceType = 'gratis' | 'berbayar';
-
-interface SkkTag {
-  code: string;
-  name: string;
-}
-
-interface Course {
-  id: string;
-  title: string;
-  provider: string;
-  providerLogo: string;
-  gradientStart: string;
-  gradientEnd: string;
-  type: ContentType;
-  price: PriceType;
-  priceIdr?: number;
-  rating: number;
-  ratingCount: number;
-  durationMinutes: number;
-  videoCount: number;
-  hasCertificate: boolean;
-  jabker: string[];
-  skkTags: SkkTag[];
-  description: string;
-  highlights: string[];
-  url: string;
-  isBestSeller?: boolean;
-  isNew?: boolean;
-  isFeatured?: boolean;
-}
-
-// ─── Thumbnail → gradient mapping ─────────────────────────────────────────────
-// API stores thumbnail as a Tailwind CSS class; map to solid hex for the accent strip.
-
-const THUMBNAIL_TO_HEX: Record<string, [string, string]> = {
-  'from-orange-500 to-red-500':    ['#F97316', '#EF4444'],
-  'from-blue-500 to-cyan-500':     ['#3B82F6', '#06B6D4'],
-  'from-emerald-500 to-teal-500':  ['#10B981', '#14B8A6'],
-  'from-violet-500 to-purple-500': ['#8B5CF6', '#A855F7'],
-  'from-rose-500 to-pink-500':     ['#F43F5E', '#EC4899'],
-  'from-amber-500 to-orange-500':  ['#F59E0B', '#F97316'],
-  'from-red-500 to-orange-600':    ['#EF4444', '#EA580C'],
-  'from-cyan-500 to-sky-500':      ['#06B6D4', '#0EA5E9'],
-  'from-indigo-500 to-blue-600':   ['#6366F1', '#2563EB'],
-};
-
-function mapApiCourse(c: MarketplaceCatalogCourse): Course {
-  const [gradientStart, gradientEnd] = THUMBNAIL_TO_HEX[c.thumbnail] ?? ['#6366F1', '#2563EB'];
-  return {
-    id:              c.id,
-    title:           c.title,
-    provider:        c.provider,
-    providerLogo:    c.providerLogo,
-    gradientStart,
-    gradientEnd,
-    type:            c.type as ContentType,
-    price:           c.price as PriceType,
-    priceIdr:        c.priceIdr ?? undefined,
-    rating:          c.rating,
-    ratingCount:     c.ratingCount,
-    durationMinutes: c.durationMinutes,
-    videoCount:      c.videoCount,
-    hasCertificate:  c.hasCertificate,
-    jabker:          c.jabker,
-    skkTags:         c.skkTags,
-    description:     c.description,
-    highlights:      c.highlights,
-    url:             c.url,
-    isBestSeller:    c.isBestSeller,
-    isNew:           c.isNew,
-    isFeatured:      c.isFeatured,
-  };
-}
+// Course model and API→Course mapping live in lib/marketplaceMapping.ts so
+// they can be unit-tested without pulling in React Native modules.
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
@@ -363,6 +289,71 @@ function CourseDetailModal({
             </View>
           ))}
 
+          {/* AI platform reviews */}
+          {course.aiReviews.length > 0 && (
+            <>
+              <Text style={[dm.sectionTitle, { color: colors.foreground }]}>Ulasan AI Platform</Text>
+              {course.aiReviews.map((r, i) => (
+                <View
+                  key={`${r.platform}-${i}`}
+                  style={[dm.reviewCard, { backgroundColor: colors.muted, borderColor: colors.border }]}
+                >
+                  <View style={dm.reviewHeader}>
+                    <Text style={[dm.reviewPlatform, { color: colors.foreground }]}>
+                      {r.platformIcon ? `${r.platformIcon} ` : ''}{r.platform}
+                    </Text>
+                    <View style={dm.reviewMeta}>
+                      <Feather name="star" size={12} color="#F59E0B" />
+                      <Text style={[dm.reviewMetaText, { color: colors.mutedForeground }]}>
+                        {r.rating.toFixed(1)}
+                      </Text>
+                      <Text style={[dm.statDot, { color: colors.border }]}>·</Text>
+                      <Text style={[dm.reviewMetaText, { color: colors.mutedForeground }]}>
+                        Relevansi {r.relevanceScore}%
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[dm.reviewComment, { color: colors.mutedForeground }]}>{r.comment}</Text>
+                </View>
+              ))}
+            </>
+          )}
+
+          {/* ASKOM expert review */}
+          {course.askomReview && (
+            <>
+              <Text style={[dm.sectionTitle, { color: colors.foreground }]}>Ulasan Ahli ASKOM</Text>
+              <View style={[dm.reviewCard, { backgroundColor: '#ECFDF5', borderColor: '#6EE7B7' }]}>
+                <View style={dm.reviewHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[dm.reviewPlatform, { color: '#065F46' }]}>
+                      {course.askomReview.reviewerName}
+                    </Text>
+                    <Text style={[dm.reviewCredential, { color: '#047857' }]}>
+                      {course.askomReview.credential} · {course.askomReview.institution}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[dm.recommendationPill, { backgroundColor: '#D1FAE5' }]}>
+                  <Feather name="thumbs-up" size={12} color="#065F46" />
+                  <Text style={dm.recommendationText}>{course.askomReview.recommendation}</Text>
+                </View>
+                <Text style={[dm.reviewComment, { color: '#065F46' }]}>{course.askomReview.comment}</Text>
+                {course.askomReview.strengths.length > 0 && (
+                  <View style={dm.strengthsBlock}>
+                    <Text style={[dm.strengthsTitle, { color: '#065F46' }]}>Keunggulan</Text>
+                    {course.askomReview.strengths.map((s, i) => (
+                      <View key={i} style={dm.highlightRow}>
+                        <Feather name="check" size={13} color="#059669" style={{ marginTop: 2 }} />
+                        <Text style={[dm.highlightText, { color: '#047857' }]}>{s}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </>
+          )}
+
           {/* SKK Tags */}
           <Text style={[dm.sectionTitle, { color: colors.foreground }]}>Unit SKK yang Didukung</Text>
           {course.skkTags.map((t) => (
@@ -475,6 +466,37 @@ const dm = StyleSheet.create({
     borderWidth: 1,
   },
   jabkerPillText: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium' },
+  reviewCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 8,
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 6,
+  },
+  reviewPlatform: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold' },
+  reviewCredential: { fontSize: 11, fontFamily: 'PlusJakartaSans_400Regular', marginTop: 2 },
+  reviewMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  reviewMetaText: { fontSize: 11, fontFamily: 'PlusJakartaSans_500Medium' },
+  reviewComment: { fontSize: 12, fontFamily: 'PlusJakartaSans_400Regular', lineHeight: 18 },
+  recommendationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+    marginBottom: 6,
+  },
+  recommendationText: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: '#065F46' },
+  strengthsBlock: { marginTop: 8 },
+  strengthsTitle: { fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold', marginBottom: 6 },
 });
 
 // ─── Course card ──────────────────────────────────────────────────────────────
