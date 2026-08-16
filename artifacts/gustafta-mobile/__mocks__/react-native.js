@@ -84,7 +84,37 @@ ActivityIndicator.displayName = 'ActivityIndicator';
 
 const ScrollView = makeStub('ScrollView');
 const KeyboardAvoidingView = makeStub('KeyboardAvoidingView');
-const FlatList = makeStub('FlatList');
+// FlatList renders its data through renderItem (plus header/footer/empty
+// components) so list-based screens can be tested with react-test-renderer.
+const FlatList = React.forwardRef(function MockFlatList(props, ref) {
+  const {
+    data = [],
+    renderItem,
+    keyExtractor,
+    ListHeaderComponent,
+    ListFooterComponent,
+    ListEmptyComponent,
+    testID,
+    ...rest
+  } = props;
+  const renderMaybe = (Comp) =>
+    Comp == null ? null : React.isValidElement(Comp) ? Comp : React.createElement(Comp);
+  const items = (data ?? []).map((item, index) =>
+    React.createElement(
+      React.Fragment,
+      { key: keyExtractor ? keyExtractor(item, index) : String(index) },
+      renderItem ? renderItem({ item, index, separators: {} }) : null,
+    ),
+  );
+  return React.createElement(
+    'View',
+    { ref, testID },
+    renderMaybe(ListHeaderComponent),
+    (data ?? []).length === 0 ? renderMaybe(ListEmptyComponent) : items,
+    renderMaybe(ListFooterComponent),
+  );
+});
+FlatList.displayName = 'FlatList';
 const SafeAreaView = makeStub('SafeAreaView');
 const Modal = makeStub('Modal');
 const Image = makeStub('Image');

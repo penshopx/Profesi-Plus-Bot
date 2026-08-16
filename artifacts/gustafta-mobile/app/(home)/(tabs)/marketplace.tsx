@@ -29,7 +29,15 @@ import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  loadCachedCatalog,
+  saveCatalogCache,
+  loadCachedWatched,
+  saveWatchedCache,
+  loadCachedPkbLogged,
+  savePkbLoggedCache,
+  currentSignOutEpoch,
+} from '@/lib/marketplaceCache';
 import { useNetworkState } from '@/hooks/useNetworkState';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import {
@@ -42,72 +50,17 @@ import {
 import { mapApiCourse, type Course, type ContentType } from '@/lib/marketplaceMapping';
 import { getMarketplaceListState } from '@/lib/marketplaceLoadingState';
 
-// ─── Offline catalog cache ────────────────────────────────────────────────────
-
-const CATALOG_CACHE_KEY = 'GUSTAFTA_MARKETPLACE_CATALOG_CACHE';
+// ─── Offline caches ───────────────────────────────────────────────────────────
+//
+// Cache read/write helpers live in lib/marketplaceCache.ts so they can be
+// unit-tested (cold-start load, toggle persistence, sign-out clearing).
+// Watched / PKB-logged keys are scoped per user id so two accounts sharing a
+// device never read each other's watch history from disk; the profile screen
+// additionally clears them on sign-out via clearUserMarketplaceCaches().
 
 // How long a fetched catalog is considered fresh. Kept short (1 min) so
 // courses added/edited/removed by an admin appear quickly on mobile.
 const CATALOG_STALE_MS = 60 * 1000;
-
-async function loadCachedCatalog(): Promise<MarketplaceCatalogCourse[]> {
-  try {
-    const raw = await AsyncStorage.getItem(CATALOG_CACHE_KEY);
-    return raw ? (JSON.parse(raw) as MarketplaceCatalogCourse[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function saveCatalogCache(data: MarketplaceCatalogCourse[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(data));
-  } catch {}
-}
-
-// ─── Offline watched-courses cache ───────────────────────────────────────────
-//
-// The key is scoped to the authenticated user so that two accounts sharing a
-// device never read each other's watch history from disk.
-
-function watchedCacheKey(userId: string): string {
-  return `GUSTAFTA_MARKETPLACE_WATCHED_CACHE_${userId}`;
-}
-
-async function loadCachedWatched(userId: string): Promise<string[]> {
-  try {
-    const raw = await AsyncStorage.getItem(watchedCacheKey(userId));
-    return raw ? (JSON.parse(raw) as string[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function saveWatchedCache(userId: string, ids: string[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(watchedCacheKey(userId), JSON.stringify(ids));
-  } catch {}
-}
-
-// Cache for courses that already have a linked Kegiatan PKB ("Dicatat PKB")
-function pkbLoggedCacheKey(userId: string): string {
-  return `GUSTAFTA_MARKETPLACE_PKB_LOGGED_CACHE_${userId}`;
-}
-
-async function loadCachedPkbLogged(userId: string): Promise<string[]> {
-  try {
-    const raw = await AsyncStorage.getItem(pkbLoggedCacheKey(userId));
-    return raw ? (JSON.parse(raw) as string[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function savePkbLoggedCache(userId: string, ids: string[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(pkbLoggedCacheKey(userId), JSON.stringify(ids));
-  } catch {}
-}
 
 // Course model and API→Course mapping live in lib/marketplaceMapping.ts so
 // they can be unit-tested without pulling in React Native modules.
@@ -770,25 +723,51 @@ export default function MarketplaceScreen() {
   const [cacheLoaded, setCacheLoaded] = useState(false);
 
   // ── Offline watched-courses cache ─────────────────────────────────────────
-  const [cachedWatchedIds, setCachedWatchedIds] = useState<string[]>([]);
-  const [cachedPkbLoggedIds, setCachedPkbLoggedIds] = useState<string[]>([]);
+  //
+  // Local watched/PKB state is tagged with the user id that owns it. Rendering
+  // derives from it ONLY when the owner matches the currently signed-in user,
+  // so an identity switch can never flash or leak another account's history —
+  // not even for the single render before effects run.
+  type OwnedIds = { owner: string | null; ids: string[] };
+  const NO_IDS: OwnedIds = { owner: null, ids: [] };
+  const [cachedWatched, setCachedWatched] = useState<OwnedIds>(NO_IDS);
+  const [cachedPkbLogged, setCachedPkbLogged] = useState<OwnedIds>(NO_IDS);
   const [watchedCacheLoaded, setWatchedCacheLoaded] = useState(false);
+
+  const cachedWatchedIds = cachedWatched.owner === userId ? cachedWatched.ids : [];
+  const cachedPkbLoggedIds = cachedPkbLogged.owner === userId ? cachedPkbLogged.ids : [];
 
   useEffect(() => {
     loadCachedCatalog().then((data) => {
       setCachedCatalog(data);
       setCacheLoaded(true);
     });
+    // Reset in-memory watched state whenever the signed-in user changes so a
+    // prior account's data never renders transiently on a shared device.
+    setCachedWatched(NO_IDS);
+    setCachedPkbLogged(NO_IDS);
+    setWatchedCacheLoaded(false);
+    // Guard against a stale async disk read: if the signed-in user changes
+    // while a previous user's read is still in flight, that read must never
+    // write into the new user's state.
+    let cancelled = false;
     if (userId) {
       loadCachedWatched(userId).then((ids) => {
-        setCachedWatchedIds(ids);
+        if (cancelled) return;
+        setCachedWatched({ owner: userId, ids });
         setWatchedCacheLoaded(true);
       });
-      loadCachedPkbLogged(userId).then(setCachedPkbLoggedIds);
+      loadCachedPkbLogged(userId).then((ids) => {
+        if (!cancelled) setCachedPkbLogged({ owner: userId, ids });
+      });
     } else {
       // No authenticated user — skip disk read, allow query to proceed unfenced
       setWatchedCacheLoaded(true);
     }
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   // Fetch catalog from backend; short stale time so admin-added courses
@@ -838,22 +817,25 @@ export default function MarketplaceScreen() {
     [courses],
   );
 
-  // Fetch watched status from backend (wait for cache to load first)
+  // Fetch watched status from backend (wait for cache to load first).
+  // The key is scoped per user id so the in-memory React Query cache can
+  // never serve one account's watch history to another account that signs
+  // in within the stale window on the same device.
   const { data: watchedData, isLoading: watchedLoading, refetch: refetchWatched } = useQuery({
-    queryKey: ['marketplace-watched'],
+    queryKey: ['marketplace-watched', userId],
     queryFn: getWatchedCourses,
     staleTime: 1000 * 60,
-    enabled: watchedCacheLoaded,
+    enabled: watchedCacheLoaded && !!userId,
   });
 
   // Persist successful watched fetches to AsyncStorage
   useEffect(() => {
     if (watchedData?.watchedIds && userId) {
-      setCachedWatchedIds(watchedData.watchedIds);
+      setCachedWatched({ owner: userId, ids: watchedData.watchedIds });
       saveWatchedCache(userId, watchedData.watchedIds);
     }
     if (watchedData?.pkbLoggedIds && userId) {
-      setCachedPkbLoggedIds(watchedData.pkbLoggedIds);
+      setCachedPkbLogged({ owner: userId, ids: watchedData.pkbLoggedIds });
       savePkbLoggedCache(userId, watchedData.pkbLoggedIds);
     }
   }, [watchedData, userId]);
@@ -880,7 +862,7 @@ export default function MarketplaceScreen() {
   );
 
   const toggleWatch = useMutation({
-    mutationFn: async ({ course, isWatched }: { course: Course; isWatched: boolean }) => {
+    mutationFn: async ({ course, isWatched }: { course: Course; isWatched: boolean; ownerId: string | null; epoch: number }) => {
       if (isWatched) {
         await unmarkCourseWatched(course.id);
       } else {
@@ -890,10 +872,10 @@ export default function MarketplaceScreen() {
         });
       }
     },
-    onMutate: async ({ course, isWatched }) => {
-      await queryClient.cancelQueries({ queryKey: ['marketplace-watched'] });
-      const prev = queryClient.getQueryData(['marketplace-watched']);
-      queryClient.setQueryData(['marketplace-watched'], (old: any) => {
+    onMutate: async ({ course, isWatched, ownerId }) => {
+      await queryClient.cancelQueries({ queryKey: ['marketplace-watched', ownerId] });
+      const prev = queryClient.getQueryData(['marketplace-watched', ownerId]);
+      queryClient.setQueryData(['marketplace-watched', ownerId], (old: any) => {
         if (!old) return old;
         const ids: string[] = old.watchedIds ?? [];
         const newIds = isWatched ? ids.filter((id: string) => id !== course.id) : [...ids, course.id];
@@ -901,23 +883,34 @@ export default function MarketplaceScreen() {
       });
       return { prev };
     },
-    onError: (_err, _vars, ctx: any) => {
-      if (ctx?.prev) queryClient.setQueryData(['marketplace-watched'], ctx.prev);
+    onError: (_err, { ownerId }, ctx: any) => {
+      if (ctx?.prev) queryClient.setQueryData(['marketplace-watched', ownerId], ctx.prev);
     },
-    onSuccess: (_data, { course, isWatched }) => {
-      // Keep AsyncStorage in sync after a successful toggle
-      if (userId) {
-        setCachedWatchedIds((prev) => {
-          const newIds = isWatched
-            ? prev.filter((id) => id !== course.id)
-            : [...prev, course.id];
-          saveWatchedCache(userId, newIds);
-          return newIds;
-        });
-      }
+    onSuccess: async (_data, { course, isWatched, ownerId, epoch }) => {
+      // Keep AsyncStorage in sync after a successful toggle. All writes are
+      // keyed to the user who INITIATED the toggle (ownerId), not whoever is
+      // signed in when the request settles — if the identity switched while
+      // the request was in flight, the disk cache for the initiating user is
+      // still updated, but in-memory state is only touched when it still
+      // belongs to that same user (owner-tag check inside the updater).
+      if (!ownerId) return;
+      // Sign-out fence: if the user signed out after starting this toggle,
+      // sign-out already wiped their disk cache — persisting now would
+      // silently recreate the watch history that was just cleared.
+      if (epoch !== currentSignOutEpoch()) return;
+      const ids = await loadCachedWatched(ownerId);
+      const newIds = isWatched
+        ? ids.filter((id) => id !== course.id)
+        : Array.from(new Set([...ids, course.id]));
+      // Re-check after the async read: sign-out may have happened meanwhile.
+      if (epoch !== currentSignOutEpoch()) return;
+      await saveWatchedCache(ownerId, newIds);
+      setCachedWatched((prev) =>
+        prev.owner === ownerId ? { owner: ownerId, ids: newIds } : prev,
+      );
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['marketplace-watched'] });
+    onSettled: (_data, _err, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['marketplace-watched', vars.ownerId] });
     },
   });
 
@@ -925,9 +918,14 @@ export default function MarketplaceScreen() {
     (course: Course) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const isWatched = watchedIds.has(course.id);
-      toggleWatch.mutate({ course, isWatched });
+      toggleWatch.mutate({
+        course,
+        isWatched,
+        ownerId: userId ?? null,
+        epoch: currentSignOutEpoch(),
+      });
     },
-    [watchedIds, toggleWatch],
+    [watchedIds, toggleWatch, userId],
   );
 
   const handleShare = useCallback(async (course: Course) => {

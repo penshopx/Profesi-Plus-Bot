@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUser, useClerk } from '@clerk/expo';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +17,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getMyPlan, listProjectBrain, getMyAplProfile, getMyAplClaims, getMe } from '@/lib/api';
 import { buildAplHtml } from '@/lib/apl-html';
+import { clearUserMarketplaceCaches } from '@/lib/marketplaceCache';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
@@ -95,6 +96,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, isLoaded } = useUser();
   const { signOut } = useClerk();
+  const queryClient = useQueryClient();
   const router = useRouter();
   const isWeb = Platform.OS === 'web';
   const [printingApl, setPrintingApl] = React.useState(false);
@@ -150,6 +152,12 @@ export default function ProfileScreen() {
   }, [aplProfile]);
 
   const handleSignOut = async () => {
+    // Clear user-scoped marketplace caches so watch history never leaks to
+    // the next account signing in on this device.
+    if (user?.id) await clearUserMarketplaceCaches(user.id);
+    // Drop the in-memory React Query cache too (watched history, plan,
+    // profile, …) so the next account starts from a clean slate.
+    queryClient.clear();
     await signOut();
     router.replace('/(auth)/sign-in');
   };
