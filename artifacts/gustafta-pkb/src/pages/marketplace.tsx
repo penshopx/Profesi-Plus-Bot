@@ -891,6 +891,30 @@ function DetailPanel({
 }
 const ALL_TYPES: ContentType[] = ["video", "webinar", "diklatkerja", "modul"];
 
+// ─── Offline catalog cache (localStorage) ────────────────────────────────────
+// The catalog is served from the backend; cache the last successful response so
+// users who open the page offline still see the previously loaded courses.
+const CATALOG_CACHE_KEY = "GUSTAFTA_MARKETPLACE_CATALOG_CACHE";
+
+function loadCachedCatalog(): Course[] | null {
+  try {
+    const raw = localStorage.getItem(CATALOG_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as Course[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedCatalog(courses: Course[]) {
+  try {
+    localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(courses));
+  } catch {
+    // Storage full / unavailable — caching is best-effort only.
+  }
+}
+
 export default function MarketplacePage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -902,11 +926,23 @@ export default function MarketplacePage() {
   const [showFilters, setShowFilters] = useState(false);
 
   // Catalog — fetched from backend; cached 10 minutes (catalog rarely changes).
-  const { data: courses = [], isLoading: catalogLoading, isError: catalogError } = useQuery({
+  // A copy of the last successful response is kept in localStorage so the
+  // catalog stays browsable offline; a fresh response always replaces it.
+  const cachedCatalog = useMemo(loadCachedCatalog, []);
+  const { data: liveCatalog, isLoading: catalogFetching, isError: catalogError } = useQuery({
     queryKey: ["marketplace-catalog"],
-    queryFn: getMarketplaceCatalog,
+    queryFn: async () => {
+      const fresh = await getMarketplaceCatalog();
+      saveCachedCatalog(fresh);
+      return fresh;
+    },
     staleTime: 10 * 60 * 1000,
   });
+  // Live data wins; fall back to the cached copy while loading or on error.
+  const courses = liveCatalog ?? cachedCatalog ?? [];
+  const usingCachedCatalog = !liveCatalog && cachedCatalog !== null;
+  const catalogLoading = catalogFetching && cachedCatalog === null;
+  const showCatalogError = catalogError && !liveCatalog && cachedCatalog === null;
 
   // Watched course IDs — fetched via react-query, invalidated after each watch/unwatch.
   const { data: watchedIds = [] } = useQuery({
@@ -1004,8 +1040,8 @@ export default function MarketplacePage() {
           </div>
         )}
 
-        {/* Error state */}
-        {catalogError && !catalogLoading && (
+        {/* Error state — only when there is no cached catalog to fall back on */}
+        {showCatalogError && (
           <div className="text-center py-16 text-muted-foreground">
             <BookOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="font-medium">Gagal memuat katalog</p>
@@ -1013,8 +1049,16 @@ export default function MarketplacePage() {
           </div>
         )}
 
-        {/* Main content — only shown when catalog is loaded */}
-        {!catalogLoading && !catalogError && (
+        {/* Cached-catalog notice — shown while offline / before a fresh response arrives */}
+        {usingCachedCatalog && catalogError && (
+          <div className="mb-6 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>Menampilkan katalog tersimpan — periksa koneksi Anda untuk memuat versi terbaru.</span>
+          </div>
+        )}
+
+        {/* Main content — shown when catalog is loaded (live or cached) */}
+        {!catalogLoading && !showCatalogError && (
           <>
             {/* Featured */}
             {!search && !filterJabker && !filterType && !filterPrice && (
