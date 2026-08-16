@@ -1490,6 +1490,31 @@ export default function ChatScreen() {
               <Text style={[styles.synthesisBannerText, { color: colors.accent }]}>
                 Sesi siap — Buat Ringkasan PKB (Exum)
               </Text>
+              {usageInfo?.exum && (
+                <View
+                  style={[
+                    styles.exumQuotaPill,
+                    {
+                      backgroundColor:
+                        usageInfo.exum.remaining <= 0 ? '#FEF2F2' : usageInfo.exum.remaining <= 1 ? '#FFFBEB' : '#EEF2FF',
+                      borderColor:
+                        usageInfo.exum.remaining <= 0 ? '#FECACA' : usageInfo.exum.remaining <= 1 ? '#FDE68A' : '#C7D2FE',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.exumQuotaPillText,
+                      {
+                        color:
+                          usageInfo.exum.remaining <= 0 ? '#DC2626' : usageInfo.exum.remaining <= 1 ? '#D97706' : '#4338CA',
+                      },
+                    ]}
+                  >
+                    {usageInfo.exum.remaining}/{usageInfo.exum.limit}
+                  </Text>
+                </View>
+              )}
               <Feather name="chevron-right" size={15} color={colors.accent} />
             </Pressable>
           )}
@@ -1546,6 +1571,9 @@ export default function ChatScreen() {
                   },
                 ]}
               >
+                {canGenerate && usageInfo.exum
+                  ? `${usageInfo.exum.remaining}/${usageInfo.exum.limit} Exum · `
+                  : ''}
                 {usageInfo.remaining}/{usageInfo.limit} pesan/jam
                 {usageInfo.remaining <= 0 && countdown
                   ? ` · reset dalam ${countdown}`
@@ -1719,6 +1747,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   synthesisBannerText: { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold', flex: 1 },
+  exumQuotaPill: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  exumQuotaPillText: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold' },
   studioBanner: {
     flexDirection: 'row',
     alignItems: 'center',
