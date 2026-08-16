@@ -440,9 +440,11 @@ export default function StudioScreen() {
                 styles.jabkerPicker,
                 {
                   borderColor: selectedJabker ? colors.primary : colors.border,
-                  backgroundColor: pressed ? colors.muted : colors.background,
+                  backgroundColor: pressed && isOnline ? colors.muted : colors.background,
+                  opacity: isOnline ? 1 : 0.5,
                 },
               ]}
+              disabled={!isOnline}
               onPress={() => setPickerVisible(true)}
             >
               <Text
