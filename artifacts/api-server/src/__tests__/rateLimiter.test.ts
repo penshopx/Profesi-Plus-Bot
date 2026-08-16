@@ -21,6 +21,7 @@ import { describe, it, expect } from "vitest";
 
 import {
   createChatMessageRateLimiter,
+  createExumRateLimiter,
   createCompetencyRateLimiter,
   createClaimPaymentRateLimiter,
   createCatalogRateLimiter,
@@ -151,6 +152,69 @@ describe("chatMessageRateLimiter", () => {
     const res = await request(app).get("/test");
     expect(res.status).toBe(429);
     expect(res.body).toMatchObject({ code: "rate_limit_chat" });
+  });
+});
+
+// ── exumRateLimiter ───────────────────────────────────────────────────────────
+
+describe("exumRateLimiter (#209 — blocks excess generation attempts)", () => {
+  const FREE_LIMIT = 5;
+  const PRO_LIMIT = 20;
+
+  /** Build a test app using the real production factory, skip disabled. */
+  function makeApp(user: DbUser, store = new MemoryStore()) {
+    const limiter = createExumRateLimiter({ skip: () => false, store });
+    const app = express();
+    app.set("trust proxy", 1);
+    app.use(asUser(user));
+    app.use(limiter);
+    app.get("/test", (_req, res) => res.json({ ok: true }));
+    return app;
+  }
+
+  it("allows a Free user exactly 5 generations", async () => {
+    const app = makeApp({ id: 1 });
+    const statuses = await sendN(app, FREE_LIMIT);
+    expect(statuses.every((s) => s === 200)).toBe(true);
+  });
+
+  it("blocks a Free user on the 6th request with 429 and code=rate_limit_exum", async () => {
+    const app = makeApp({ id: 2 });
+    await sendN(app, FREE_LIMIT);
+    const res = await request(app).get("/test");
+    expect(res.status).toBe(429);
+    expect(res.body).toMatchObject({ code: "rate_limit_exum" });
+  });
+
+  it("allows a Pro user 20 generations before blocking the 21st", async () => {
+    const app = makeApp({ id: 3, plan: "pro" });
+    const statuses = await sendN(app, PRO_LIMIT);
+    expect(statuses.every((s) => s === 200)).toBe(true);
+    const res = await request(app).get("/test");
+    expect(res.status).toBe(429);
+    expect(res.body).toMatchObject({ code: "rate_limit_exum" });
+  });
+
+  it("tracks limits per user independently (different IDs do not share buckets)", async () => {
+    // Share one MemoryStore between two users to confirm keying is per-user-id
+    const store = new MemoryStore();
+    const appA = makeApp({ id: 10 }, store);
+    const appB = makeApp({ id: 11 }, store);
+
+    // Exhaust user 10's quota
+    await sendN(appA, FREE_LIMIT);
+
+    // User 11 should still be unaffected
+    const res = await request(appB).get("/test");
+    expect(res.status).toBe(200);
+  });
+
+  it("reports the draft-7 RateLimit-Limit matching the configured limits", async () => {
+    const freeRes = await request(makeApp({ id: 20 })).get("/test");
+    expect(parseDraft7Limit(freeRes.headers as Record<string, string>)).toBe(FREE_LIMIT);
+
+    const proRes = await request(makeApp({ id: 21, plan: "pro" })).get("/test");
+    expect(parseDraft7Limit(proRes.headers as Record<string, string>)).toBe(PRO_LIMIT);
   });
 });
 
