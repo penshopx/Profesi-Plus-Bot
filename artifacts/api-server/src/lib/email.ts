@@ -92,21 +92,38 @@ export function isEmailConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM);
 }
 
-/** Sends the credit-claim confirmation receipt. */
+/**
+ * Sends the credit confirmation receipt.
+ *
+ * `reason` selects the copy:
+ * - "claim"    (default) — manual claim flow: "Klaim kredit Exum berhasil ✅"
+ * - "purchase" — automatic purchase via payment webhook: "Pembelian kredit Exum berhasil 🎉"
+ */
 export function sendCreditClaimEmail(opts: {
   to: string;
   orderId: string;
   creditsGranted: number;
   newBalance: number;
+  reason?: "claim" | "purchase";
 }): void {
-  const { to, orderId, creditsGranted, newBalance } = opts;
+  const { to, orderId, creditsGranted, newBalance, reason = "claim" } = opts;
+  const isPurchase = reason === "purchase";
 
-  const subject = "Klaim kredit Exum berhasil ✅";
+  const subject = isPurchase
+    ? "Pembelian kredit Exum berhasil 🎉"
+    : "Klaim kredit Exum berhasil ✅";
+  const headline = isPurchase ? "Pembelian kredit berhasil! 🎉" : "Klaim kredit berhasil! 🎉";
+  const intro = isPurchase
+    ? "Pembelian kredit Exum Anda telah berhasil diproses."
+    : "Klaim kredit Exum Anda telah berhasil diproses.";
+  const disclaimer = isPurchase
+    ? "Jika Anda tidak merasa melakukan pembelian ini, hubungi tim dukungan kami."
+    : "Jika Anda tidak merasa melakukan klaim ini, hubungi tim dukungan kami.";
 
   const text = [
     "Halo,",
     "",
-    "Klaim kredit Exum Anda telah berhasil diproses.",
+    intro,
     "",
     `ID Pesanan         : ${orderId}`,
     `Kredit dikreditkan : ${creditsGranted} kredit`,
@@ -133,7 +150,7 @@ export function sendCreditClaimEmail(opts: {
         </tr>
         <tr>
           <td style="padding:32px;">
-            <h2 style="margin:0 0 16px;color:#111827;font-size:18px;">Klaim kredit berhasil! 🎉</h2>
+            <h2 style="margin:0 0 16px;color:#111827;font-size:18px;">${headline}</h2>
             <p style="margin:0 0 24px;color:#374151;line-height:1.6;">
               Kredit Exum Anda telah berhasil dikreditkan ke akun Anda.
             </p>
@@ -156,7 +173,7 @@ export function sendCreditClaimEmail(opts: {
               Kredit dapat langsung digunakan untuk membuat Exum baru.
             </p>
             <p style="margin:0;color:#6b7280;font-size:13px;">
-              Jika Anda tidak merasa melakukan klaim ini, hubungi tim dukungan kami.
+              ${disclaimer}
             </p>
           </td>
         </tr>

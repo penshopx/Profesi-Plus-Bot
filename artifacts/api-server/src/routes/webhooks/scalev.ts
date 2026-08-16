@@ -209,6 +209,7 @@ router.post("/webhooks/scalev", async (req, res): Promise<void> => {
             orderId,
             creditsGranted: quantity,
             newBalance: row?.exumCredits ?? quantity,
+            reason: "purchase",
           });
         })
         .catch((err) => req.log.warn({ err, orderId }, "Failed to fetch balance for receipt email"));
