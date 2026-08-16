@@ -167,16 +167,28 @@ function FormModal({
   const [form, setForm] = useState<FormState>(initial);
   const isNew = !initial.title && !initial.description;
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Draft found in AsyncStorage, waiting for the user to choose resume/discard.
+  const [pendingDraft, setPendingDraft] = useState<FormState | null>(null);
 
-  // On open: load draft for new entries, reset to initial for edits
+  // On open: for new entries, check for a saved draft and ask the user;
+  // for edits, reset to initial.
   useEffect(() => {
     if (!visible) return;
+    setPendingDraft(null);
     if (isNew) {
+      setForm(EMPTY);
       AsyncStorage.getItem(DRAFT_KEY).then((raw) => {
-        if (raw) {
-          try { setForm(JSON.parse(raw)); } catch {}
-        } else {
-          setForm(EMPTY);
+        if (!raw) return;
+        try {
+          const parsed = JSON.parse(raw) as FormState;
+          // Only offer non-empty drafts
+          const hasContent = Object.values(parsed ?? {}).some(
+            (v) => typeof v === 'string' && v.trim() !== '' && v !== 'project',
+          );
+          if (hasContent) setPendingDraft(parsed);
+          else AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
+        } catch {
+          AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
         }
       });
     } else {
@@ -184,6 +196,18 @@ function FormModal({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  function resumeDraft() {
+    if (pendingDraft) setForm({ ...EMPTY, ...pendingDraft });
+    setPendingDraft(null);
+  }
+
+  function discardDraft() {
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
+    setPendingDraft(null);
+    setForm(EMPTY);
+  }
 
   // Auto-save draft (debounced 600ms) for new entries only
   const setWithDraft = (k: keyof FormState) => (v: string) => {
@@ -262,6 +286,37 @@ function FormModal({
         </View>
 
         <ScrollView contentContainerStyle={fm.body} keyboardShouldPersistTaps="handled">
+          {/* Draft banner */}
+          {isNew && pendingDraft && (
+            <View style={[fm.draftBanner, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Feather name="file-text" size={16} color={colors.primary} />
+                <Text style={[fm.draftTitle, { color: colors.foreground, flex: 1 }]}>
+                  Ada draf yang belum selesai
+                </Text>
+              </View>
+              <Text style={[fm.draftSub, { color: colors.mutedForeground }]}>
+                {pendingDraft.title.trim()
+                  ? `Draf: "${pendingDraft.title.trim()}"`
+                  : 'Draf entri sebelumnya tersimpan di perangkat ini.'}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                <Pressable
+                  onPress={resumeDraft}
+                  style={({ pressed }) => [fm.draftBtn, { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 }]}
+                >
+                  <Text style={fm.draftBtnTextPrimary}>Lanjutkan draf</Text>
+                </Pressable>
+                <Pressable
+                  onPress={discardDraft}
+                  style={({ pressed }) => [fm.draftBtn, { borderWidth: 1, borderColor: colors.border, opacity: pressed ? 0.6 : 1 }]}
+                >
+                  <Text style={[fm.draftBtnTextSecondary, { color: colors.foreground }]}>Mulai baru</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+
           {/* Kind selector */}
           <Text style={[fm.label, { color: colors.mutedForeground }]}>Jenis</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
@@ -334,6 +389,12 @@ const fm = StyleSheet.create({
   label: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, fontFamily: 'PlusJakartaSans_400Regular' },
   kindChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  draftBanner: { borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 18 },
+  draftTitle: { fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  draftSub: { fontSize: 12, fontFamily: 'PlusJakartaSans_400Regular', marginTop: 4 },
+  draftBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  draftBtnTextPrimary: { color: '#fff', fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  draftBtnTextSecondary: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium' },
   kindLabel: { fontSize: 13, fontFamily: 'PlusJakartaSans_500Medium' },
 });
 
