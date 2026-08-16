@@ -290,6 +290,18 @@ describe("claimPaymentRateLimiter (#87 — blocks brute-force order ID guessing)
     expect(res.status).not.toBe(500);
   });
 
+  it("includes a human-readable error message the mobile ClaimCard can display", async () => {
+    const app = makeApp({ id: 53 });
+    await postN(app, CLAIM_LIMIT);
+    const res = await request(app).post("/test");
+    expect(res.status).toBe(429);
+    expect(typeof res.body.error).toBe("string");
+    expect(res.body.error.length).toBeGreaterThan(0);
+    expect(res.body.error).toBe(
+      "Terlalu banyak percobaan klaim. Coba lagi dalam beberapa saat.",
+    );
+  });
+
   it("tracks limits per user independently — different users share no bucket", async () => {
     // One shared store to confirm keying is per-user-id
     const store = new MemoryStore();
