@@ -200,6 +200,21 @@ describe("POST /api/askom/submissions/:id/verify", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 400 for a ditolak activity that skipped re-submission", async () => {
+    selectCallCount = 0;
+    selectResponses.length = 0;
+    selectResponses.push([{ id: 10, userId: 42, namaKegiatan: "Test", status: "ditolak" }]);
+
+    const res = await request(app)
+      .post("/api/askom/submissions/10/verify")
+      .send({ note: "coba verifikasi ulang" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/ditolak/);
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
   it("sends push notification to owner when push token is set", async () => {
     primeActivity("diajukan", "ExponentPushToken[test123]");
 
@@ -296,6 +311,21 @@ describe("POST /api/askom/submissions/:id/reject", () => {
       .send({ note: "   " });
 
     expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when rejecting an already diverifikasi activity", async () => {
+    selectCallCount = 0;
+    selectResponses.length = 0;
+    selectResponses.push([{ id: 10, userId: 42, namaKegiatan: "Test", status: "diverifikasi" }]);
+
+    const res = await request(app)
+      .post("/api/askom/submissions/10/reject")
+      .send({ note: "alasan penolakan" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/diverifikasi/);
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockInsert).not.toHaveBeenCalled();
   });
 
   it("sets status ditolak and inserts a journey row", async () => {
