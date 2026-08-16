@@ -770,6 +770,48 @@ describe("POST /api/chat/generate-exum", () => {
     expect(prompt.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
   });
 
+  it("does not return 500 and still returns 200 when buildKnowledgeContext throws during Exum generation", async () => {
+    const { buildKnowledgeContext } = await import("../lib/knowledge-base.js");
+    vi.mocked(buildKnowledgeContext).mockRejectedValueOnce(new Error("KB file I/O error"));
+
+    dbState.push([FAKE_CONV], [], [], [], undefined, undefined);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    // safeExumCtx must absorb the exception — a knowledge-base failure must
+    // never crash Exum generation and cost the user their credit.
+    expect(res.status).toBe(200);
+
+    // Profile and competency context must still reach the prompt.
+    const prompt = capturedLLMMessages[0];
+    expect(prompt.role).toBe("user");
+    expect(prompt.content).toContain("PROFIL APL 01 TKK");
+    expect(prompt.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+  });
+
+  it("does not return 500 and still returns 200 when buildProjectBrainContextWithMeta throws during Exum generation", async () => {
+    const { buildProjectBrainContextWithMeta } = await import("../lib/project-brain.js");
+    vi.mocked(buildProjectBrainContextWithMeta).mockRejectedValueOnce(new Error("Project brain DB schema change"));
+
+    dbState.push([FAKE_CONV], [], [], [], undefined, undefined);
+
+    const res = await request(app)
+      .post("/api/chat/generate-exum")
+      .send({ conversationId: 1 });
+
+    // safeExumCtx must absorb the exception — a project-brain failure must
+    // never crash Exum generation and cost the user their credit.
+    expect(res.status).toBe(200);
+
+    // Profile and competency context must still reach the prompt.
+    const prompt = capturedLLMMessages[0];
+    expect(prompt.role).toBe("user");
+    expect(prompt.content).toContain("PROFIL APL 01 TKK");
+    expect(prompt.content).toContain("ANALISIS KOMPETENSI TKK (STUDIO KOMPETENSI)");
+  });
+
   it("refunds the reserved credit and returns 503 when the LLM call fails", async () => {
     // Queue items consumed before the LLM call: conv, messages, evidenceItems, exumOutlines
     dbState.push([FAKE_CONV], [], [], []);
