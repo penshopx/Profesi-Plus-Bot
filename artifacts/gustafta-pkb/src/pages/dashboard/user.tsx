@@ -43,6 +43,13 @@ function relTime(iso: string): string {
   return `${days} hari lalu`;
 }
 
+/** Entry was used as AI context recently (last 24h) — show the "Digunakan AI" badge. */
+function usedRecently(iso: string | null): boolean {
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  return Number.isFinite(t) && Date.now() - t < 24 * 60 * 60 * 1000;
+}
+
 const EMPTY_FORM: ProjectBrainInput = {
   kind: "project", title: "", organization: "", role: "", period: "",
   location: "", description: "", skkUnitCodes: "", jenjang: "", highlights: "",
@@ -256,12 +263,12 @@ export default function DashboardUser() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">{meta.label}</span>
-                          {e.lastUsedAt && (
+                          {usedRecently(e.lastUsedAt) && (
                             <span
                               className="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded"
-                              title={`Terakhir dibaca AI: ${new Date(e.lastUsedAt).toLocaleString("id-ID")}`}
+                              title={`Terakhir digunakan AI: ${new Date(e.lastUsedAt!).toLocaleString("id-ID")}`}
                             >
-                              dibaca AI {relTime(e.lastUsedAt)}
+                              Digunakan AI · {relTime(e.lastUsedAt!)}
                             </span>
                           )}
                           {e.isPinned && (
