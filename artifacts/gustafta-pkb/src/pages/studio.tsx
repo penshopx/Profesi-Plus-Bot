@@ -323,7 +323,9 @@ export default function StudioPage() {
                     {quizGaps.slice(0, 5).map((q) => (
                       <li key={q.id} className="text-xs text-rose-700 flex gap-1.5 items-baseline">
                         <span className="shrink-0 text-rose-400">•</span>
-                        <span>{q.title}{q.skkUnitCode ? <span className="font-mono text-[10px] ml-1 opacity-60">{q.skkUnitCode}</span> : null}</span>
+                        <a href={`/quiz?quizId=${q.id}`} className="underline underline-offset-2 hover:text-rose-900" title={`Buka kuis — ${q.title}`}>
+                          {q.title}{q.skkUnitCode ? <span className="font-mono text-[10px] ml-1 opacity-60">{q.skkUnitCode}</span> : null}
+                        </a>
                       </li>
                     ))}
                     {quizGaps.length > 5 && (

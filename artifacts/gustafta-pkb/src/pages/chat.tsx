@@ -1884,7 +1884,7 @@ export default function ChatPage() {
                       <span className="text-amber-800">{gap.skkUnitName}</span>
                       {gap.quizTitle && (
                         <a
-                          href="/quiz"
+                          href={gap.quizId != null ? `/quiz?quizId=${gap.quizId}` : "/quiz"}
                           className="ml-2 inline-flex items-center gap-1 text-xs font-semibold text-amber-700 underline underline-offset-2 hover:text-amber-900"
                           title={`Buka halaman kuis — ${gap.quizTitle}`}
                         >

@@ -10,9 +10,9 @@
  *  Daftar quiz → Pilih quiz → (Pre/Post/Proficiency) → Kerjakan → Hasil & feedback
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import {
   listQuizzes, getQuiz, submitQuizAttempt, getMyAttempts,
   type QuizSummary, type QuizFull, type AttemptResult, type QuizAttempt,
@@ -366,6 +366,28 @@ export default function QuizPage() {
   const [stage, setStage] = useState<Stage>({ type: "list" });
   const { data: quizzes = [], isLoading } = useQuery({ queryKey: ["quizzes"], queryFn: () => listQuizzes() });
   const { data: attempts = [] } = useQuery({ queryKey: ["my-attempts"], queryFn: getMyAttempts });
+  const { toast } = useToast();
+
+  // Deep link: /quiz?quizId=123 opens that quiz's mode selector directly (#230)
+  const search = useSearch();
+  const deepLinkHandled = useRef(false);
+  useEffect(() => {
+    if (deepLinkHandled.current || isLoading) return;
+    const raw = new URLSearchParams(search).get("quizId");
+    if (!raw) { deepLinkHandled.current = true; return; }
+    deepLinkHandled.current = true;
+    const id = Number(raw);
+    const quiz = Number.isFinite(id) ? quizzes.find((q) => q.id === id) : undefined;
+    if (quiz) {
+      setStage({ type: "select", quiz });
+    } else {
+      toast({
+        title: "Quiz tidak ditemukan",
+        description: "Quiz yang dituju tidak tersedia. Silakan pilih dari daftar.",
+        variant: "destructive",
+      });
+    }
+  }, [search, isLoading, quizzes, toast]);
 
   const loadQuizMut = useMutation({
     mutationFn: (id: number) => getQuiz(id),
