@@ -188,12 +188,53 @@ function handlePrintAPL(
   signingDate: Date,
 ) {
   const html = buildAplHtml(profile, claims, userName, email, signingDate);
-  const w = window.open("", "_blank");
-  if (!w) { alert("Pop-up diblokir. Izinkan pop-up untuk mencetak."); return; }
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  setTimeout(() => { w.print(); }, 400);
+
+  // Print via a hidden iframe — no pop-up window, so pop-up blockers can't
+  // interfere. The browser's print dialog offers "Save as PDF" everywhere.
+  const prev = document.getElementById("apl-print-frame");
+  if (prev) prev.remove();
+
+  const iframe = document.createElement("iframe");
+  iframe.id = "apl-print-frame";
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  iframe.setAttribute("aria-hidden", "true");
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument;
+  const win = iframe.contentWindow;
+  if (!doc || !win) {
+    iframe.remove();
+    alert("Gagal menyiapkan dokumen cetak. Silakan coba lagi.");
+    return;
+  }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  let printed = false;
+  const doPrint = () => {
+    if (printed) return;
+    printed = true;
+    try {
+      win.focus();
+      win.print();
+    } catch {
+      alert("Gagal membuka dialog cetak. Silakan coba lagi.");
+    }
+    // Keep the iframe alive while the print dialog is open; clean up later.
+    setTimeout(() => iframe.remove(), 60_000);
+  };
+
+  // Print once the iframe content has loaded (fallback timer for browsers
+  // that never fire load for document.write content).
+  iframe.addEventListener("load", () => setTimeout(doPrint, 100));
+  setTimeout(doPrint, 600);
 }
 
 const AGAMA_OPTIONS = ["Islam", "Kristen Protestan", "Kristen Katolik", "Hindu", "Buddha", "Konghucu"];
