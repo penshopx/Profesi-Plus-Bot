@@ -547,6 +547,10 @@ export function validateQuizQuestions(questions: QuizQuestionAdmin[]): string | 
     if (!q.correctId) {
       return `Soal #${num}: jawaban benar belum dipilih.`;
     }
+    // correctId must reference an existing option
+    if (!q.options.some((o) => o.id === q.correctId)) {
+      return `Soal #${num}: jawaban benar ("${q.correctId}") tidak cocok dengan opsi yang ada.`;
+    }
 
     if (q.id) {
       if (ids.includes(q.id)) {
