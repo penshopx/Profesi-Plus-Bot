@@ -293,6 +293,32 @@ export async function listAdminQuizzes(): Promise<QuizFullAdmin[]> {
   return (await f("/quizzes/admin/all")).json();
 }
 
+// Audit of quizzes containing questions whose correctId matches no option ID
+// (saved/imported before save-time validation existed).
+export interface BrokenAnswerQuestion {
+  number: number;
+  id: string;
+  text: string;
+  correctId: string;
+}
+
+export interface BrokenAnswerQuiz {
+  quizId: number;
+  title: string;
+  isActive: boolean;
+  brokenQuestions: BrokenAnswerQuestion[];
+}
+
+export interface BrokenAnswersAudit {
+  scanned: number;
+  brokenCount: number;
+  broken: BrokenAnswerQuiz[];
+}
+
+export async function getAdminQuizBrokenAnswers(): Promise<BrokenAnswersAudit> {
+  return (await f("/quizzes/admin/broken-answers")).json();
+}
+
 export async function adminCreateQuiz(data: QuizCreateInput): Promise<QuizFullAdmin> {
   return (await f("/quizzes", { method: "POST", body: JSON.stringify(data) })).json();
 }

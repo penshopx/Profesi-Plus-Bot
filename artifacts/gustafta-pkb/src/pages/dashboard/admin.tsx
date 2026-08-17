@@ -24,8 +24,9 @@ import {
 } from "@/lib/api";
 import {
   listAdminQuizzes, adminCreateQuiz, adminUpdateQuiz, adminDeleteQuiz, adminGenerateQuestions,
-  getAdminQuizStats, getAdminQuizAllStats,
+  getAdminQuizStats, getAdminQuizAllStats, getAdminQuizBrokenAnswers,
   type QuizFullAdmin, type QuizQuestionAdmin, type QuizCreateInput, type QuizStats, type QuizBulkStat,
+  type BrokenAnswersAudit,
 } from "@/lib/api-profile";
 import { buildQuizStatsCsv } from "@/lib/quiz-stats-csv";
 
@@ -241,10 +242,22 @@ export default function DashboardAdmin() {
   });
   const quizStatsMap = Object.fromEntries(quizBulkStats.map((s) => [s.quizId, s]));
 
+  // Audit: quizzes containing questions whose correct answer matches no option
+  // (saved before save-time validation existed) — flagged so admins fix them.
+  const { data: brokenAudit } = useQuery<BrokenAnswersAudit>({
+    queryKey: ["admin-quiz-broken-answers"],
+    queryFn: getAdminQuizBrokenAnswers,
+    enabled: activeTab === "quiz",
+  });
+  const brokenQuizMap = Object.fromEntries(
+    (brokenAudit?.broken ?? []).map((b) => [b.quizId, b]),
+  );
+
   const invalidateKb = () => queryClient.invalidateQueries({ queryKey: ["knowledge-base"] });
   const invalidateQuiz = () => {
     queryClient.invalidateQueries({ queryKey: ["admin-quizzes"] });
     queryClient.invalidateQueries({ queryKey: ["admin-quiz-all-stats"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-quiz-broken-answers"] });
   };
 
   const { data: marketplaceCourses = [], isLoading: marketplaceLoading } = useQuery<AdminCourse[]>({
@@ -572,6 +585,20 @@ export default function DashboardAdmin() {
                         {!q.isActive && (
                           <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">nonaktif</span>
                         )}
+                        {(() => {
+                          const b = brokenQuizMap[q.id];
+                          if (!b) return null;
+                          const nums = b.brokenQuestions.map((bq) => `#${bq.number}`).join(", ");
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 font-medium"
+                              title={`Soal ${nums}: jawaban benar tidak cocok dengan opsi mana pun — peserta tidak mungkin menjawab benar. Buka editor untuk memperbaiki.`}
+                            >
+                              <AlertCircle className="w-3 h-3" />
+                              {b.brokenQuestions.length} soal jawaban rusak
+                            </span>
+                          );
+                        })()}
                       </div>
                       <div className="flex items-center gap-3 mt-1 flex-wrap">
                         {q.jabker && <span className="text-[11px] text-muted-foreground">{q.jabker}</span>}

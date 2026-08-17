@@ -130,8 +130,82 @@ router.get("/quizzes/my-summary", requireAuth, async (req, res): Promise<void> =
   res.json(Array.from(byQuiz.values()));
 });
 
+// Static admin GET routes MUST be registered before the dynamic /quizzes/:id
+// matcher so "admin" is never captured as an :id parameter.
+/** List ALL quizzes (including inactive) for admin management */
+router.get("/quizzes/admin/all", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
+  const all = await db.select().from(quizzes).orderBy(desc(quizzes.updatedAt));
+  res.json(all);
+});
+
+/**
+ * Audit endpoint: scan ALL quizzes (including inactive) for questions whose
+ * correctId doesn't reference any of the question's option IDs. Such
+ * questions can never be answered correctly — they predate the save-time
+ * validation and must be fixed manually via the quiz editor.
+ *
+ * Returns one entry per affected quiz with the broken question numbers so the
+ * admin list can flag them.
+ */
+router.get("/quizzes/admin/broken-answers", requireAuth, requireRole("admin"), async (_req, res): Promise<void> => {
+  const all = await db.select().from(quizzes);
+
+  const broken: {
+    quizId: number;
+    title: string;
+    isActive: boolean;
+    brokenQuestions: { number: number; id: string; text: string; correctId: string }[];
+  }[] = [];
+
+  for (const quiz of all) {
+    const questions = (quiz.questions as QuizQuestion[] | null) ?? [];
+    const bad: { number: number; id: string; text: string; correctId: string }[] = [];
+    questions.forEach((q, i) => {
+      const optionIds = (q.options ?? []).map((o) => o.id);
+      if (!optionIds.includes(q.correctId)) {
+        bad.push({ number: i + 1, id: q.id, text: q.text, correctId: q.correctId });
+      }
+    });
+    if (bad.length > 0) {
+      broken.push({ quizId: quiz.id, title: quiz.title, isActive: quiz.isActive, brokenQuestions: bad });
+    }
+  }
+
+  res.json({ scanned: all.length, brokenCount: broken.length, broken });
+});
+
+/** Bulk aggregate stats for ALL quizzes — used to show inline counts on the quiz list.
+ *  Uses a LEFT JOIN so quizzes with zero attempts still appear (with zeros). */
+router.get("/quizzes/admin/all-stats", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      quizId: quizzes.id,
+      totalAttempts: count(quizAttempts.id),
+      avgScore: sql<number>`COALESCE(ROUND(AVG(${quizAttempts.scorePercent})), 0)`,
+      passCount: sql<number>`COALESCE(SUM(CASE WHEN ${quizAttempts.passed} THEN 1 ELSE 0 END), 0)`,
+    })
+    .from(quizzes)
+    .leftJoin(quizAttempts, eq(quizAttempts.quizId, quizzes.id))
+    .groupBy(quizzes.id);
+
+  const result = rows.map((r) => {
+    const total = Number(r.totalAttempts);
+    const passes = Number(r.passCount);
+    return {
+      quizId: r.quizId,
+      totalAttempts: total,
+      avgScore: Number(r.avgScore),
+      passRate: total > 0 ? Math.round((passes / total) * 100) : 0,
+    };
+  });
+
+  res.json(result);
+});
+
 router.get("/quizzes/:id", requireAuth, async (req, res): Promise<void> => {
-  const [quiz] = await db.select().from(quizzes).where(eq(quizzes.id, Number(req.params.id)));
+  const quizId = Number(req.params.id);
+  if (!Number.isInteger(quizId)) { res.status(404).json({ error: "Quiz tidak ditemukan" }); return; }
+  const [quiz] = await db.select().from(quizzes).where(eq(quizzes.id, quizId));
   if (!quiz || !quiz.isActive) { res.status(404).json({ error: "Quiz tidak ditemukan" }); return; }
 
   const questions = quiz.questions as QuizQuestion[];
@@ -223,11 +297,7 @@ router.post("/quizzes/:id/attempt", requireAuth, async (req, res): Promise<void>
 
 // ─── Admin endpoints ──────────────────────────────────────────────────────────
 
-/** List ALL quizzes (including inactive) for admin management */
-router.get("/quizzes/admin/all", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
-  const all = await db.select().from(quizzes).orderBy(desc(quizzes.updatedAt));
-  res.json(all);
-});
+
 
 /**
  * Validate the questions array before saving.
@@ -358,33 +428,6 @@ router.delete("/quizzes/:id", requireAuth, requireRole("admin"), async (req, res
   res.json({ ok: true });
 });
 
-/** Bulk aggregate stats for ALL quizzes — used to show inline counts on the quiz list.
- *  Uses a LEFT JOIN so quizzes with zero attempts still appear (with zeros). */
-router.get("/quizzes/admin/all-stats", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
-  const rows = await db
-    .select({
-      quizId: quizzes.id,
-      totalAttempts: count(quizAttempts.id),
-      avgScore: sql<number>`COALESCE(ROUND(AVG(${quizAttempts.scorePercent})), 0)`,
-      passCount: sql<number>`COALESCE(SUM(CASE WHEN ${quizAttempts.passed} THEN 1 ELSE 0 END), 0)`,
-    })
-    .from(quizzes)
-    .leftJoin(quizAttempts, eq(quizAttempts.quizId, quizzes.id))
-    .groupBy(quizzes.id);
-
-  const result = rows.map((r) => {
-    const total = Number(r.totalAttempts);
-    const passes = Number(r.passCount);
-    return {
-      quizId: r.quizId,
-      totalAttempts: total,
-      avgScore: Number(r.avgScore),
-      passRate: total > 0 ? Math.round((passes / total) * 100) : 0,
-    };
-  });
-
-  res.json(result);
-});
 
 /** Quiz performance statistics — aggregates all attempts to show per-question failure rates */
 router.get("/quizzes/admin/stats/:id", requireAuth, requireRole("admin"), async (req, res): Promise<void> => {
