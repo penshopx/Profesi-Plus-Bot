@@ -70,6 +70,7 @@ export default function QuizScreen() {
       );
       // Quiz evidence changed — coverage gaps and summaries may be stale.
       queryClient.invalidateQueries({ queryKey: ['my-quiz-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['quiz-coverage'] });
     },
   });
 

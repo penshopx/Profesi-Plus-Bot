@@ -305,6 +305,20 @@ export function ExumModal({
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
   const router = useRouter();
+  const queryClient = useQueryClient();
+
+  // Coverage goes through the react-query cache under ['quiz-coverage'] so
+  // that passing a quiz (which invalidates that key) makes the next fetch hit
+  // the server, while unaffected reopens can reuse fresh cached data.
+  const fetchCoverage = useCallback(
+    () =>
+      queryClient.fetchQuery({
+        queryKey: ['quiz-coverage'],
+        queryFn: getQuizCoverage,
+        staleTime: 60_000,
+      }),
+    [queryClient],
+  );
 
   const [phase, setPhase] = useState<ExumPhase>('checking_coverage');
   const [content, setContent] = useState(existingContent || '');
@@ -371,7 +385,7 @@ export function ExumModal({
   const checkCoverage = useCallback(async () => {
     setPhase('checking_coverage');
     try {
-      const result = await getQuizCoverage();
+      const result = await fetchCoverage();
       setCoverageGaps(result.gaps);
       setClaimsCount(result.claimsCount ?? null);
       if (result.claimsCount === 0) {
@@ -386,7 +400,7 @@ export function ExumModal({
     } catch {
       setPhase('coverage_error');
     }
-  }, [doGenerate]);
+  }, [doGenerate, fetchCoverage]);
 
   // ── Refresh: if gaps are known, confirm before regenerating
   const handleRefresh = useCallback(() => {
@@ -416,7 +430,7 @@ export function ExumModal({
       // Refresh is blocked (coverageLoading=true) until this settles so the
       // gap gate cannot be bypassed by tapping refresh before data arrives.
       setCoverageLoading(true);
-      getQuizCoverage()
+      fetchCoverage()
         .then((r) => {
           setCoverageGaps(r.gaps);
           setClaimsCount(r.claimsCount ?? null);
