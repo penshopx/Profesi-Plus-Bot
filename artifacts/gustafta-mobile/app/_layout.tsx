@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { AppState, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
@@ -18,11 +18,9 @@ import {
 import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import Constants from 'expo-constants';
 import { ClerkProvider, useAuth } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
-import { registerPushToken } from '@/lib/api';
+import { usePushRegistration } from '@/hooks/usePushRegistration';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -124,57 +122,8 @@ function AuthQueryWrapper({ children }: { children: React.ReactNode }) {
 }
 
 // ─── Push notifications ───────────────────────────────────────────────────────
-
-async function registerForPushNotifications(getToken: () => Promise<string | null>): Promise<void> {
-  if (!Device.isDevice) return;
-
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== 'granted') return;
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('exum', {
-      name: 'Exum Selesai',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#1AA890',
-    });
-    await Notifications.setNotificationChannelAsync('kegiatan', {
-      name: 'Update Kegiatan PKB',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#7C3AED',
-    });
-  }
-
-  // Prefer the EAS project ID baked into the app config (set via `eas init` or
-  // `app.json extra.eas.projectId`). In Expo Go the project ID is inferred from
-  // the manifest so we can omit it; in standalone builds it must be provided.
-  const projectId: string | undefined =
-    (Constants.expoConfig?.extra?.eas?.projectId as string | undefined) ??
-    (Constants.easConfig?.projectId as string | undefined);
-
-  try {
-    const { data: token } = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : {},
-    );
-    if (__DEV__) console.log('[push] Expo push token:', token);
-    const authToken = await getToken();
-    if (authToken && token) {
-      await registerPushToken(token, authToken);
-      if (__DEV__) console.log('[push] Token registered with server successfully');
-    }
-  } catch (err) {
-    // Non-fatal — push is a nice-to-have, but surface it in dev so it's never silently lost
-    if (__DEV__) console.warn('[push] getExpoPushTokenAsync failed:', err);
-  }
-}
+// Registration + token-rotation logic lives in hooks/usePushRegistration.ts so
+// it can be unit-tested (AppState foreground re-registration, token failures).
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 
@@ -184,43 +133,9 @@ function RootLayoutNav() {
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
 
-  useEffect(() => {
-    if (isSignedIn) {
-      registerForPushNotifications(getToken);
-    }
-  }, [isSignedIn, getToken]);
-
-  // Re-register silently whenever the device push token changes (OS upgrade,
-  // device reset, app reinstall) so the server always holds a valid token.
-  useEffect(() => {
-    if (!isSignedIn) return;
-    const subscription = Notifications.addPushTokenListener(async ({ data: newToken }) => {
-      try {
-        const authToken = await getToken();
-        if (authToken && newToken) {
-          await registerPushToken(newToken, authToken);
-          if (__DEV__) console.log('[push] Token refreshed silently:', newToken);
-        }
-      } catch (err) {
-        if (__DEV__) console.warn('[push] Silent token refresh failed:', err);
-      }
-    });
-    return () => subscription.remove();
-  }, [isSignedIn, getToken]);
-
-  // Re-register on every foreground event so a rotated token (e.g. after a
-  // system update or device reset) is picked up even without signing out/in.
-  // The PATCH endpoint is idempotent — it skips the DB write when the token
-  // is unchanged, so this is safe to call frequently.
-  useEffect(() => {
-    if (!isSignedIn) return;
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') {
-        registerForPushNotifications(getToken);
-      }
-    });
-    return () => subscription.remove();
-  }, [isSignedIn, getToken]);
+  // Register on sign-in, re-register on OS token rotation and on every
+  // foreground transition (see hooks/usePushRegistration.ts).
+  usePushRegistration(isSignedIn, getToken);
 
   // Handle notification taps: deep-link to the chat screen and open the Exum modal.
   useEffect(() => {
