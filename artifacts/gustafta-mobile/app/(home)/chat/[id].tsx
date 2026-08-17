@@ -1729,7 +1729,12 @@ export default function ChatScreen() {
                 <Text style={{ fontFamily: 'PlusJakartaSans_600SemiBold' }}>{jabker}</Text>
               </Text>
               <Pressable
-                onPress={() => router.push('/(home)/(tabs)/studio')}
+                onPress={() =>
+                  router.push({
+                    pathname: '/(home)/(tabs)/studio',
+                    params: jabker ? { jabker } : {},
+                  })
+                }
                 style={[styles.studioBannerBtn, { borderColor: '#FCD34D', backgroundColor: '#fff' }]}
               >
                 <Text style={{ color: '#B45309', fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold' }}>

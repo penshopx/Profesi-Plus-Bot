@@ -12,6 +12,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLocalSearchParams } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -317,6 +318,14 @@ export default function StudioScreen() {
 
   const [pickerVisible, setPickerVisible] = useState(false);
   const [selectedJabker, setSelectedJabker] = useState('');
+
+  // Preselect the jabker passed from the chat nudge (?jabker=...), e.g. when
+  // the user taps "Buka Studio". Re-applies whenever a new value arrives.
+  const { jabker: jabkerParam } = useLocalSearchParams<{ jabker?: string }>();
+  useEffect(() => {
+    const value = Array.isArray(jabkerParam) ? jabkerParam[0] : jabkerParam;
+    if (value) setSelectedJabker(value);
+  }, [jabkerParam]);
   // Cached analyses loaded from AsyncStorage on mount; used as fallback when offline.
   const [cachedAnalyses, setCachedAnalyses] = useState<StudioAnalysis[]>([]);
   const [cacheLoaded, setCacheLoaded] = useState(false);
