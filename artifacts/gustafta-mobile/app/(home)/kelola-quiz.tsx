@@ -166,26 +166,40 @@ function QuestionCard({
   index,
   colors,
   onEdit,
+  onDelete,
 }: {
   q: QuizQuestionAdmin;
   index: number;
   colors: ReturnType<typeof useColors>;
   onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   return (
     <View style={[qc.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={qc.headerRow}>
         <Text style={[qc.num, { color: colors.mutedForeground }]}>Soal {index + 1}</Text>
-        {onEdit ? (
-          <Pressable
-            onPress={onEdit}
-            hitSlop={8}
-            style={({ pressed }) => [qc.editBtn, { opacity: pressed ? 0.6 : 1 }]}
-          >
-            <Feather name="edit-2" size={13} color={colors.primary} />
-            <Text style={[qc.editText, { color: colors.primary }]}>Edit</Text>
-          </Pressable>
-        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {onEdit ? (
+            <Pressable
+              onPress={onEdit}
+              hitSlop={8}
+              style={({ pressed }) => [qc.editBtn, { opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Feather name="edit-2" size={13} color={colors.primary} />
+              <Text style={[qc.editText, { color: colors.primary }]}>Edit</Text>
+            </Pressable>
+          ) : null}
+          {onDelete ? (
+            <Pressable
+              onPress={onDelete}
+              hitSlop={8}
+              style={({ pressed }) => [qc.editBtn, { opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Feather name="trash-2" size={13} color={colors.destructive} />
+              <Text style={[qc.editText, { color: colors.destructive }]}>Hapus</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
       <Text style={[qc.text, { color: colors.foreground }]}>{q.text}</Text>
       <View style={{ gap: 6, marginTop: 8 }}>
@@ -758,6 +772,40 @@ export default function KelolaQuizScreen() {
     updateMut.mutate({ id: editQuiz.id, questions: editQuestions });
   };
 
+  const makeBlankQuestion = (): QuizQuestionAdmin => ({
+    id: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    text: '',
+    options: ['a', 'b', 'c', 'd'].map((id) => ({ id, text: '' })),
+    correctId: '',
+  });
+
+  const isBlankQuestion = (q: QuizQuestionAdmin) =>
+    !q.text.trim() && q.options.every((o) => !o.text.trim());
+
+  const handleAddQuestion = () => {
+    setGeneratedQuestions((qs) => {
+      setEditingIndex(qs.length);
+      return [...qs, makeBlankQuestion()];
+    });
+  };
+
+  const handleDeleteQuestion = (index: number) => {
+    Alert.alert('Hapus Soal?', `Soal ${index + 1} akan dihapus dari quiz ini.`, [
+      { text: 'Batal', style: 'cancel' },
+      {
+        text: 'Hapus',
+        style: 'destructive',
+        onPress: () => {
+          setGeneratedQuestions((qs) => qs.filter((_, j) => j !== index));
+          setEditingIndex((cur) => {
+            if (cur === null || cur === index) return null;
+            return cur > index ? cur - 1 : cur;
+          });
+        },
+      },
+    ]);
+  };
+
   const handleSave = () => {
     if (!suggestedTitle.trim()) {
       Alert.alert('Judul Quiz', 'Judul tidak boleh kosong.');
@@ -1230,7 +1278,13 @@ export default function KelolaQuizScreen() {
                 setGeneratedQuestions((qs) => qs.map((x, j) => (j === i ? updated : x)));
                 setEditingIndex(null);
               }}
-              onCancel={() => setEditingIndex(null)}
+              onCancel={() => {
+                // Discard a freshly added blank question when its editor is cancelled
+                if (isBlankQuestion(q)) {
+                  setGeneratedQuestions((qs) => qs.filter((_, j) => j !== i));
+                }
+                setEditingIndex(null);
+              }}
             />
           ) : (
             <QuestionCard
@@ -1239,9 +1293,26 @@ export default function KelolaQuizScreen() {
               index={i}
               colors={colors}
               onEdit={() => setEditingIndex(i)}
+              onDelete={() => handleDeleteQuestion(i)}
             />
           ),
         )}
+
+        {/* Add question */}
+        <Pressable
+          onPress={handleAddQuestion}
+          disabled={editingIndex !== null}
+          style={({ pressed }) => [
+            pv.addBtn,
+            {
+              borderColor: colors.primary + '66',
+              opacity: editingIndex !== null ? 0.4 : pressed ? 0.6 : 1,
+            },
+          ]}
+        >
+          <Feather name="plus" size={15} color={colors.primary} />
+          <Text style={[pv.addBtnText, { color: colors.primary }]}>Tambah Soal</Text>
+        </Pressable>
 
         {/* Save */}
         <Pressable
@@ -1454,6 +1525,20 @@ const gf = StyleSheet.create({
 
 const pv = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 16, gap: 12 },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+  },
+  addBtnText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+  },
   titleCard: {
     borderRadius: 16,
     borderWidth: 1,
