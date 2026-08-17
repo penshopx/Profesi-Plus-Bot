@@ -28,7 +28,7 @@ import {
   type QuizFullAdmin, type QuizQuestionAdmin, type QuizCreateInput, type QuizStats, type QuizBulkStat,
   type BrokenAnswersAudit,
 } from "@/lib/api-profile";
-import { buildQuizStatsCsv } from "@/lib/quiz-stats-csv";
+import { buildQuizStatsCsv, buildAllQuizStatsCsv } from "@/lib/quiz-stats-csv";
 
 const ROLE_LABELS: Record<string, string> = {
   user: "Peserta",
@@ -206,6 +206,8 @@ export default function DashboardAdmin() {
   const [aiReviewModal, setAiReviewModal] = useState<{ courseId: string; review: AdminAiReview | null } | null>(null);
   const [askomReviewModal, setAskomReviewModal] = useState<{ courseId: string; review: AdminAskomReview | null } | null>(null);
   const [previewCourseId, setPreviewCourseId] = useState<string | null>(null);
+  const [bulkExporting, setBulkExporting] = useState(false);
+  const [bulkExportError, setBulkExportError] = useState<string | null>(null);
   const [aiDraft, setAiDraft] = useState<AdminAiReviewInput | null>(null);
   const [askomDraft, setAskomDraft] = useState<AdminAskomReviewInput | null>(null);
 
@@ -554,13 +556,57 @@ export default function DashboardAdmin() {
               <p className="text-sm text-muted-foreground">
                 Buat dan kelola quiz untuk berbagai jabatan kerja. AI bisa generate soal otomatis.
               </p>
-              <button
-                onClick={() => { setQuizEditing(null); setQuizModalOpen(true); }}
-                className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                <Plus className="w-3.5 h-3.5" /> Buat Quiz
-              </button>
+              <div className="flex items-center gap-2">
+                {quizList.length > 0 && (
+                  <button
+                    onClick={async () => {
+                      setBulkExporting(true);
+                      setBulkExportError(null);
+                      try {
+                        const statsList = await Promise.all(
+                          quizList.map((q) => getAdminQuizStats(q.id)),
+                        );
+                        const blob = new Blob(["\uFEFF" + buildAllQuizStatsCsv(statsList)], {
+                          type: "text/csv;charset=utf-8;",
+                        });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = "statistik-semua-quiz.csv";
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      } catch {
+                        setBulkExportError("Gagal mengunduh statistik semua quiz. Coba lagi.");
+                      } finally {
+                        setBulkExporting(false);
+                      }
+                    }}
+                    disabled={bulkExporting}
+                    className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 text-foreground disabled:opacity-50"
+                    title="Unduh statistik seluruh quiz sebagai satu CSV"
+                  >
+                    {bulkExporting
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Download className="w-3.5 h-3.5" />}
+                    {bulkExporting ? "Mengekspor..." : "Export semua"}
+                  </button>
+                )}
+                <button
+                  onClick={() => { setQuizEditing(null); setQuizModalOpen(true); }}
+                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Buat Quiz
+                </button>
+              </div>
             </div>
+
+            {bulkExportError && (
+              <div className="text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-2.5">
+                {bulkExportError}
+              </div>
+            )}
 
             {quizLoading ? (
               <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />)}</div>
