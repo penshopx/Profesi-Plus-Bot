@@ -7,8 +7,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, Pressable, StyleSheet, ScrollView, TextInput,
-  ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
+  ActivityIndicator, KeyboardAvoidingView, Platform, 
 } from 'react-native';
+import { showAlert } from '@/lib/alert';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -130,12 +131,12 @@ export default function AplEditScreen() {
     mutationFn: (f: FormState) => updateMyAplProfile(toPatchBody(f)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['apl-profile'] });
-      Alert.alert('Tersimpan', 'Profil APL 01 berhasil disimpan.', [
+      showAlert('Tersimpan', 'Profil APL 01 berhasil disimpan.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
     },
     onError: (e: unknown) => {
-      Alert.alert('Gagal menyimpan', e instanceof Error ? e.message : 'Coba lagi.');
+      showAlert('Gagal menyimpan', e instanceof Error ? e.message : 'Coba lagi.');
     },
   });
 
@@ -154,7 +155,7 @@ export default function AplEditScreen() {
     const errs = validateAplForm(form);
     setErrors(errs);
     if (Object.keys(errs).length > 0) {
-      Alert.alert('Periksa isian', Object.values(errs).join('\n'));
+      showAlert('Periksa isian', Object.values(errs).join('\n'));
       return;
     }
     saveMut.mutate(form);

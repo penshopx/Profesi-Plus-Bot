@@ -10,8 +10,9 @@ import {
   Platform,
   Modal,
   ScrollView,
-  Alert,
+  
 } from 'react-native';
+import { showAlert } from '@/lib/alert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -409,7 +410,7 @@ export function ExumModal({
   // ── Refresh: if gaps are known, confirm before regenerating
   const handleRefresh = useCallback(() => {
     if (coverageGaps.length > 0) {
-      Alert.alert(
+      showAlert(
         'Unit tanpa bukti kuis',
         `${coverageGaps.length} unit yang diklaim belum punya percobaan kuis yang lulus. Ringkasan akan tetap dibuat, namun bukti untuk unit-unit tersebut mungkin lebih tipis.\n\nLanjutkan?`,
         [
@@ -1409,7 +1410,7 @@ export default function ChatScreen() {
       try {
         await appendOutbox(conversationId, item);
       } catch {
-        Alert.alert('Tidak dapat menyimpan pesan', 'Coba lagi atau periksa penyimpanan perangkat.');
+        showAlert('Tidak dapat menyimpan pesan', 'Coba lagi atau periksa penyimpanan perangkat.');
         return;
       }
       setMessages((prev) => [...prev, { ...item, role: 'user', queued: true }]);
@@ -1473,13 +1474,13 @@ export default function ChatScreen() {
         } else {
           // Whisper returned an empty transcript — warn the user so they know
           // the recording didn't capture anything and can try again.
-          Alert.alert(
+          showAlert(
             'Rekaman tidak terdeteksi',
             'Tidak ada suara yang berhasil ditranskripsi. Pastikan mikrofon tidak terhalang dan coba rekam ulang.',
           );
         }
       } catch {
-        Alert.alert('Transkrip gagal', 'Tidak dapat memproses rekaman. Coba lagi.');
+        showAlert('Transkrip gagal', 'Tidak dapat memproses rekaman. Coba lagi.');
       } finally {
         setIsTranscribing(false);
       }
@@ -1487,7 +1488,7 @@ export default function ChatScreen() {
       try {
         const { granted } = await Audio.requestPermissionsAsync();
         if (!granted) {
-          Alert.alert('Izin mikrofon diperlukan', 'Buka Pengaturan dan izinkan akses mikrofon.');
+          showAlert('Izin mikrofon diperlukan', 'Buka Pengaturan dan izinkan akses mikrofon.');
           return;
         }
         await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
@@ -1498,7 +1499,7 @@ export default function ChatScreen() {
         setIsRecording(true);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       } catch {
-        Alert.alert('Gagal memulai rekaman', 'Pastikan mikrofon tersedia.');
+        showAlert('Gagal memulai rekaman', 'Pastikan mikrofon tersedia.');
       }
     }
   }, [isDone, isRecording, getToken]);
@@ -1513,7 +1514,7 @@ export default function ChatScreen() {
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
-      Alert.alert('Gagal', 'Tidak dapat melanjutkan fase saat ini.');
+      showAlert('Gagal', 'Tidak dapat melanjutkan fase saat ini.');
     } finally {
       setIsAdvancing(false);
     }

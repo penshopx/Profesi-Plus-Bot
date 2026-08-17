@@ -17,9 +17,10 @@ import {
   TextInput,
   ActivityIndicator,
   Switch,
-  Alert,
+  
   Platform,
 } from 'react-native';
+import { showAlert } from '@/lib/alert';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -335,17 +336,17 @@ function QuestionEditForm({
 
   const handleSave = () => {
     if (!text.trim()) {
-      Alert.alert('Soal Tidak Valid', 'Teks soal tidak boleh kosong.');
+      showAlert('Soal Tidak Valid', 'Teks soal tidak boleh kosong.');
       return;
     }
     for (const opt of options) {
       if (!opt.text.trim()) {
-        Alert.alert('Soal Tidak Valid', `Opsi ${opt.id.toUpperCase()} tidak boleh kosong.`);
+        showAlert('Soal Tidak Valid', `Opsi ${opt.id.toUpperCase()} tidak boleh kosong.`);
         return;
       }
     }
     if (!correctId || !options.some((o) => o.id === correctId)) {
-      Alert.alert('Soal Tidak Valid', 'Pilih jawaban yang benar.');
+      showAlert('Soal Tidak Valid', 'Pilih jawaban yang benar.');
       return;
     }
     onSave({
@@ -679,7 +680,7 @@ export default function KelolaQuizScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin-quiz-stats'] });
     },
     onError: (err: Error) => {
-      Alert.alert('Gagal', err.message);
+      showAlert('Gagal', err.message);
     },
   });
 
@@ -699,7 +700,7 @@ export default function KelolaQuizScreen() {
       setView('preview');
     },
     onError: (err: Error) => {
-      Alert.alert('Gagal Generate', err.message);
+      showAlert('Gagal Generate', err.message);
     },
   });
 
@@ -723,10 +724,10 @@ export default function KelolaQuizScreen() {
       setEditingIndex(null);
       setSuggestedTitle('');
       setForm({ jabker: '', skkUnitCode: '', skkUnitName: '', quizType: 'learning', count: 10 });
-      Alert.alert('Berhasil', 'Quiz berhasil disimpan dan diaktifkan.');
+      showAlert('Berhasil', 'Quiz berhasil disimpan dan diaktifkan.');
     },
     onError: (err: Error) => {
-      Alert.alert('Gagal Simpan', err.message);
+      showAlert('Gagal Simpan', err.message);
     },
   });
 
@@ -741,10 +742,10 @@ export default function KelolaQuizScreen() {
       setEditQuestions([]);
       setEditQuestionIndex(null);
       setEditDirty(false);
-      Alert.alert('Berhasil', 'Perubahan soal berhasil disimpan.');
+      showAlert('Berhasil', 'Perubahan soal berhasil disimpan.');
     },
     onError: (err: Error) => {
-      Alert.alert('Gagal Simpan', err.message);
+      showAlert('Gagal Simpan', err.message);
     },
   });
 
@@ -756,7 +757,7 @@ export default function KelolaQuizScreen() {
 
   const handleGenerate = () => {
     if (!form.jabker.trim()) {
-      Alert.alert('Form Tidak Lengkap', 'Jabatan Kerja wajib diisi.');
+      showAlert('Form Tidak Lengkap', 'Jabatan Kerja wajib diisi.');
       return;
     }
     generateMut.mutate();
@@ -782,7 +783,7 @@ export default function KelolaQuizScreen() {
       setEditDirty(false);
     };
     if (editDirty) {
-      Alert.alert('Buang Perubahan?', 'Perubahan soal yang belum disimpan akan hilang.', [
+      showAlert('Buang Perubahan?', 'Perubahan soal yang belum disimpan akan hilang.', [
         { text: 'Batal', style: 'cancel' },
         { text: 'Buang', style: 'destructive', onPress: leave },
       ]);
@@ -795,7 +796,7 @@ export default function KelolaQuizScreen() {
     if (!editQuiz) return;
     const validationError = validateQuizQuestions(editQuestions);
     if (validationError) {
-      Alert.alert('Soal Tidak Valid', validationError);
+      showAlert('Soal Tidak Valid', validationError);
       return;
     }
     updateMut.mutate({ id: editQuiz.id, questions: editQuestions });
@@ -819,7 +820,7 @@ export default function KelolaQuizScreen() {
   };
 
   const handleDeleteQuestion = (index: number) => {
-    Alert.alert('Hapus Soal?', `Soal ${index + 1} akan dihapus dari quiz ini.`, [
+    showAlert('Hapus Soal?', `Soal ${index + 1} akan dihapus dari quiz ini.`, [
       { text: 'Batal', style: 'cancel' },
       {
         text: 'Hapus',
@@ -837,12 +838,12 @@ export default function KelolaQuizScreen() {
 
   const handleSave = () => {
     if (!suggestedTitle.trim()) {
-      Alert.alert('Judul Quiz', 'Judul tidak boleh kosong.');
+      showAlert('Judul Quiz', 'Judul tidak boleh kosong.');
       return;
     }
     const validationError = validateQuizQuestions(generatedQuestions);
     if (validationError) {
-      Alert.alert('Soal Tidak Valid', validationError);
+      showAlert('Soal Tidak Valid', validationError);
       return;
     }
     saveMut.mutate(suggestedTitle);

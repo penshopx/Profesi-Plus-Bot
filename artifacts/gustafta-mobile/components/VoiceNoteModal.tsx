@@ -18,10 +18,11 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
-  Alert,
+  
   ScrollView,
   KeyboardAvoidingView,
 } from 'react-native';
+import { showAlert } from '@/lib/alert';
 import { Audio } from 'expo-av';
 import { useAuth } from '@clerk/expo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -276,7 +277,7 @@ export default function VoiceNoteModal({
 
   const handleDiscard = useCallback(() => {
     if (stage === 'recording') {
-      Alert.alert('Hentikan Rekaman?', 'Rekaman akan dibuang.', [
+      showAlert('Hentikan Rekaman?', 'Rekaman akan dibuang.', [
         { text: 'Lanjut Rekam', style: 'cancel' },
         {
           text: 'Buang',

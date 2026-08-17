@@ -7,9 +7,10 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  View, Text, Pressable, ScrollView, StyleSheet, TextInput, Alert,
+  View, Text, Pressable, ScrollView, StyleSheet, TextInput, 
   Modal, ActivityIndicator, FlatList,
 } from 'react-native';
+import { showAlert } from '@/lib/alert';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -189,7 +190,7 @@ function SkkManager({ skk, onUpdate, activityId, colors, onDirtyChange }: {
   });
 
   function addUnit() {
-    if (!skkCode.trim() || !skkName.trim()) { Alert.alert('Isi kode dan nama unit SKK'); return; }
+    if (!skkCode.trim() || !skkName.trim()) { showAlert('Isi kode dan nama unit SKK'); return; }
     const newSkk = [...skk, { skkCode: skkCode.trim(), skkName: skkName.trim(), jabkerName: jabkerName.trim() || undefined }];
     updateMut.mutate(newSkk);
     setSkkCode(''); setSkkName(''); setJabkerName('');
@@ -402,7 +403,7 @@ function DocUploadSection({ activityId, activityStatus, docs, onRefresh, colors 
 
       onRefresh();
     } catch (err) {
-      Alert.alert('Upload tidak lengkap', (err as Error).message);
+      showAlert('Upload tidak lengkap', (err as Error).message);
     } finally {
       setUploading(null);
     }
@@ -413,7 +414,7 @@ function DocUploadSection({ activityId, activityStatus, docs, onRefresh, colors 
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permRes.status !== 'granted') {
-      Alert.alert('Izin diperlukan', useCamera
+      showAlert('Izin diperlukan', useCamera
         ? 'Izin kamera diperlukan untuk mengambil foto.'
         : 'Izin galeri diperlukan untuk memilih foto/video.');
       return;
@@ -453,14 +454,14 @@ function DocUploadSection({ activityId, activityStatus, docs, onRefresh, colors 
       const downloadURL = await getDocDownloadUrl(doc.objectPath);
       await WebBrowser.openBrowserAsync(downloadURL, { presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN });
     } catch (err) {
-      Alert.alert('Gagal membuka dokumen', (err as Error).message);
+      showAlert('Gagal membuka dokumen', (err as Error).message);
     } finally {
       setOpening(null);
     }
   }
 
   async function handleDelete(docId: number) {
-    Alert.alert('Hapus dokumen?', 'Dokumen ini akan dihapus permanen.', [
+    showAlert('Hapus dokumen?', 'Dokumen ini akan dihapus permanen.', [
       { text: 'Batal', style: 'cancel' },
       {
         text: 'Hapus', style: 'destructive',
@@ -470,7 +471,7 @@ function DocUploadSection({ activityId, activityStatus, docs, onRefresh, colors 
             await deleteKegiatanDoc(activityId, docId);
             onRefresh();
           } catch (err) {
-            Alert.alert('Gagal menghapus', (err as Error).message);
+            showAlert('Gagal menghapus', (err as Error).message);
           } finally {
             setDeleting(null);
           }
@@ -482,14 +483,14 @@ function DocUploadSection({ activityId, activityStatus, docs, onRefresh, colors 
   function showUploadOptions(docType: string) {
     if (docType === 'foto') {
       // Photo documentation: camera or gallery (images/video)
-      Alert.alert('Unggah Foto Dokumentasi', undefined, [
+      showAlert('Unggah Foto Dokumentasi', undefined, [
         { text: 'Ambil Foto (Kamera)', onPress: () => pickWithImagePicker(docType, true) },
         { text: 'Pilih dari Galeri', onPress: () => pickWithImagePicker(docType, false) },
         { text: 'Batal', style: 'cancel' },
       ]);
     } else {
       // Other doc types: PDF/image via document picker, or camera for photos
-      Alert.alert('Unggah Dokumen', 'Pilih file PDF atau gambar', [
+      showAlert('Unggah Dokumen', 'Pilih file PDF atau gambar', [
         { text: 'Pilih File (PDF/Gambar)', onPress: () => pickWithDocumentPicker(docType) },
         { text: 'Foto dengan Kamera', onPress: () => pickWithImagePicker(docType, true) },
         { text: 'Batal', style: 'cancel' },
@@ -722,7 +723,7 @@ export function ActivityFormModal({ visible, initial, prefill, onClose, onSaved,
       onClose();
       return;
     }
-    Alert.alert(
+    showAlert(
       'Buang perubahan?',
       'Perubahan yang belum disimpan akan hilang.',
       [
@@ -750,9 +751,9 @@ export function ActivityFormModal({ visible, initial, prefill, onClose, onSaved,
   }
 
   async function handleSave() {
-    if (!form.namaKegiatan.trim()) { Alert.alert('Nama kegiatan wajib diisi'); return; }
+    if (!form.namaKegiatan.trim()) { showAlert('Nama kegiatan wajib diisi'); return; }
     if (!form.tanggalMulai || !/^\d{4}-\d{2}-\d{2}$/.test(form.tanggalMulai)) {
-      Alert.alert('Tanggal mulai harus dalam format YYYY-MM-DD'); return;
+      showAlert('Tanggal mulai harus dalam format YYYY-MM-DD'); return;
     }
     const body: CreateKegiatanBody = {
       namaKegiatan: form.namaKegiatan.trim(),
@@ -937,7 +938,7 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
 
   const confirmClose = useCallback(() => {
     if (skkFormDirtyRef.current) {
-      Alert.alert(
+      showAlert(
         'Buang isian unit SKK?',
         'Unit SKK yang sedang Anda ketik belum disimpan dan akan hilang.',
         [
@@ -1013,12 +1014,12 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
     try {
       await ajukanKegiatanPkb(activity.id);
       qc.invalidateQueries({ queryKey: ['kegiatan'] });
-      Alert.alert('Berhasil', activity.status === 'ditolak'
+      showAlert('Berhasil', activity.status === 'ditolak'
         ? 'Dokumentasi diajukan ulang untuk verifikasi.'
         : 'Dokumentasi berhasil diajukan untuk verifikasi.');
       onClose();
     } catch (err) {
-      Alert.alert('Gagal', (err as Error).message);
+      showAlert('Gagal', (err as Error).message);
     } finally {
       setSubmitting(false);
     }
@@ -1154,7 +1155,7 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
                 )}
                 {canEdit && (
                   <Pressable
-                    onPress={() => Alert.alert('Hapus kegiatan?', 'Tindakan ini tidak dapat dibatalkan.', [
+                    onPress={() => showAlert('Hapus kegiatan?', 'Tindakan ini tidak dapat dibatalkan.', [
                       { text: 'Batal', style: 'cancel' },
                       { text: 'Hapus', style: 'destructive', onPress: () => deleteMut.mutate() },
                     ])}
@@ -1343,7 +1344,7 @@ export default function KegiatanScreen({ isTab = false }: KegiatanScreenProps) {
         if (activeDeepLinkId.current !== id) return;
         if (lastHandledDeepLinkId.current === id) return;
         lastHandledDeepLinkId.current = id;
-        Alert.alert(
+        showAlert(
           'Kegiatan tidak ditemukan',
           'Kegiatan dari notifikasi tidak dapat dimuat. Coba muat ulang daftar kegiatan.',
         );

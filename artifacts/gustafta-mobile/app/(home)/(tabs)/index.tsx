@@ -9,8 +9,9 @@ import {
   Modal,
   Platform,
   RefreshControl,
-  Alert,
+  
 } from 'react-native';
+import { showAlert } from '@/lib/alert';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
@@ -485,10 +486,10 @@ export default function SessionsScreen() {
   const handleDelete = useCallback(
     (id: number) => {
       if (!isOnline) {
-        Alert.alert('Offline', 'Tidak dapat menghapus sesi saat offline.');
+        showAlert('Offline', 'Tidak dapat menghapus sesi saat offline.');
         return;
       }
-      Alert.alert('Hapus sesi?', 'Sesi ini akan dihapus permanen.', [
+      showAlert('Hapus sesi?', 'Sesi ini akan dihapus permanen.', [
         { text: 'Batal', style: 'cancel' },
         {
           text: 'Hapus',
@@ -502,7 +503,7 @@ export default function SessionsScreen() {
 
   const handleNewSession = useCallback(() => {
     if (!isOnline) {
-      Alert.alert('Offline', 'Tidak dapat membuat sesi baru saat offline.');
+      showAlert('Offline', 'Tidak dapat membuat sesi baru saat offline.');
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

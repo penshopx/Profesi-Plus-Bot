@@ -7,8 +7,9 @@ import {
   ScrollView,
   Platform,
   ActivityIndicator,
-  Alert,
+  
 } from 'react-native';
+import { showAlert } from '@/lib/alert';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUser, useClerk } from '@clerk/expo';
 import { useColors } from '@/hooks/useColors';
@@ -178,7 +179,7 @@ export default function ProfileScreen() {
       }
     } catch (err) {
       console.error('APL print error:', err);
-      Alert.alert(
+      showAlert(
         'Gagal membuat PDF',
         'Coba lagi atau periksa penyimpanan perangkat.'
       );

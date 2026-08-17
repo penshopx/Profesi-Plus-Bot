@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, Pressable, StyleSheet, ScrollView, TextInput,
-  Modal, Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
+  Modal, ActivityIndicator, KeyboardAvoidingView, Platform,
   FlatList, RefreshControl,
 } from 'react-native';
+import { showAlert } from '@/lib/alert';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
@@ -244,7 +245,7 @@ function FormModal({
 
   function handleClose() {
     if (isDirty()) {
-      Alert.alert(
+      showAlert(
         'Perubahan belum disimpan',
         'Keluar?',
         [
@@ -458,7 +459,7 @@ export default function ProjectBrainScreen() {
       setEditTarget(null);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
-    onError: () => Alert.alert('Gagal', 'Tidak dapat menyimpan entri. Coba lagi.'),
+    onError: () => showAlert('Gagal', 'Tidak dapat menyimpan entri. Coba lagi.'),
   });
 
   const delMut = useMutation({
@@ -467,7 +468,7 @@ export default function ProjectBrainScreen() {
       qc.invalidateQueries({ queryKey: ['project-brain'] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     },
-    onError: () => Alert.alert('Gagal', 'Tidak dapat menghapus entri.'),
+    onError: () => showAlert('Gagal', 'Tidak dapat menghapus entri.'),
   });
 
   const pinMut = useMutation({
@@ -477,11 +478,11 @@ export default function ProjectBrainScreen() {
       qc.invalidateQueries({ queryKey: ['project-brain'] });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     },
-    onError: () => Alert.alert('Gagal', 'Tidak dapat mengubah sematan entri.'),
+    onError: () => showAlert('Gagal', 'Tidak dapat mengubah sematan entri.'),
   });
 
   function confirmDelete(entry: ProjectBrainEntry) {
-    Alert.alert(
+    showAlert(
       'Hapus Entri',
       `"${entry.title}" akan dihapus permanen.`,
       [
