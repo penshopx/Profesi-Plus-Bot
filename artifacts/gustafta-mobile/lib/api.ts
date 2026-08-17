@@ -1127,3 +1127,28 @@ export async function adminCreateQuiz(data: {
   });
   return res.json();
 }
+
+/**
+ * Partially update a saved quiz. Used by kelola-quiz to fix questions in
+ * quizzes that are already saved — send the full updated `questions` array.
+ */
+export async function adminUpdateQuiz(
+  id: number,
+  data: Partial<{
+    title: string;
+    description: string | null;
+    jabker: string | null;
+    skkUnitCode: string | null;
+    skkUnitName: string | null;
+    quizType: 'learning' | 'proficiency';
+    passingScore: number;
+    questions: QuizQuestionAdmin[];
+    isActive: boolean;
+  }>,
+): Promise<QuizAdminSummary> {
+  const res = await apiFetch(`/quizzes/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}

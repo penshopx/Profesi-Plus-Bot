@@ -30,6 +30,7 @@ import {
   adminToggleQuiz,
   adminGenerateQuestions,
   adminCreateQuiz,
+  adminUpdateQuiz,
   type QuizAdminSummary,
   type QuizQuestionAdmin,
 } from '@/lib/api';
@@ -40,12 +41,14 @@ function QuizRow({
   quiz,
   onToggle,
   onStats,
+  onEditQuestions,
   toggling,
   colors,
 }: {
   quiz: QuizAdminSummary;
   onToggle: (id: number, next: boolean) => void;
   onStats: (id: number) => void;
+  onEditQuestions: (quiz: QuizAdminSummary) => void;
   toggling: boolean;
   colors: ReturnType<typeof useColors>;
 }) {
@@ -77,17 +80,30 @@ function QuizRow({
           Lulus ≥ {quiz.passingScore}%
           {Array.isArray(quiz.questions) ? ` · ${quiz.questions.length} soal` : ''}
         </Text>
-        <Pressable
-          onPress={() => onStats(quiz.id)}
-          hitSlop={6}
-          style={({ pressed }) => [
-            qr.statsBtn,
-            { borderColor: colors.border, opacity: pressed ? 0.6 : 1 },
-          ]}
-        >
-          <Feather name="bar-chart-2" size={13} color={colors.primary} />
-          <Text style={[qr.statsText, { color: colors.primary }]}>Statistik</Text>
-        </Pressable>
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          <Pressable
+            onPress={() => onStats(quiz.id)}
+            hitSlop={6}
+            style={({ pressed }) => [
+              qr.statsBtn,
+              { borderColor: colors.border, opacity: pressed ? 0.6 : 1 },
+            ]}
+          >
+            <Feather name="bar-chart-2" size={13} color={colors.primary} />
+            <Text style={[qr.statsText, { color: colors.primary }]}>Statistik</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => onEditQuestions(quiz)}
+            hitSlop={6}
+            style={({ pressed }) => [
+              qr.statsBtn,
+              { borderColor: colors.border, opacity: pressed ? 0.6 : 1 },
+            ]}
+          >
+            <Feather name="edit-2" size={13} color={colors.primary} />
+            <Text style={[qr.statsText, { color: colors.primary }]}>Edit Soal</Text>
+          </Pressable>
+        </View>
       </View>
       <Switch
         value={quiz.isActive}
@@ -499,7 +515,7 @@ const qe = StyleSheet.create({
 
 // ─── Generate form ─────────────────────────────────────────────────────────────
 
-type GenView = 'list' | 'generate' | 'preview';
+type GenView = 'list' | 'generate' | 'preview' | 'edit';
 
 interface GenForm {
   jabker: string;
@@ -586,6 +602,12 @@ export default function KelolaQuizScreen() {
   const [suggestedTitle, setSuggestedTitle] = useState('');
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
 
+  // ── Saved-quiz question editing ───────────────────────────────────────────────
+  const [editQuiz, setEditQuiz] = useState<QuizAdminSummary | null>(null);
+  const [editQuestions, setEditQuestions] = useState<QuizQuestionAdmin[]>([]);
+  const [editQuestionIndex, setEditQuestionIndex] = useState<number | null>(null);
+  const [editDirty, setEditDirty] = useState(false);
+
   // ── Queries ──────────────────────────────────────────────────────────────────
 
   const {
@@ -666,6 +688,23 @@ export default function KelolaQuizScreen() {
     },
   });
 
+  const updateMut = useMutation({
+    mutationFn: ({ id, questions }: { id: number; questions: QuizQuestionAdmin[] }) =>
+      adminUpdateQuiz(id, { questions }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-quizzes'] });
+      setView('list');
+      setEditQuiz(null);
+      setEditQuestions([]);
+      setEditQuestionIndex(null);
+      setEditDirty(false);
+      Alert.alert('Berhasil', 'Perubahan soal berhasil disimpan.');
+    },
+    onError: (err: Error) => {
+      Alert.alert('Gagal Simpan', err.message);
+    },
+  });
+
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
   const handleToggle = (id: number, next: boolean) => {
@@ -678,6 +717,45 @@ export default function KelolaQuizScreen() {
       return;
     }
     generateMut.mutate();
+  };
+
+  const handleEditQuestions = (quiz: QuizAdminSummary) => {
+    const qs = Array.isArray(quiz.questions)
+      ? (quiz.questions as QuizQuestionAdmin[])
+      : [];
+    setEditQuiz(quiz);
+    setEditQuestions(qs.map((q) => ({ ...q, options: q.options.map((o) => ({ ...o })) })));
+    setEditQuestionIndex(null);
+    setEditDirty(false);
+    setView('edit');
+  };
+
+  const handleEditBack = () => {
+    const leave = () => {
+      setView('list');
+      setEditQuiz(null);
+      setEditQuestions([]);
+      setEditQuestionIndex(null);
+      setEditDirty(false);
+    };
+    if (editDirty) {
+      Alert.alert('Buang Perubahan?', 'Perubahan soal yang belum disimpan akan hilang.', [
+        { text: 'Batal', style: 'cancel' },
+        { text: 'Buang', style: 'destructive', onPress: leave },
+      ]);
+    } else {
+      leave();
+    }
+  };
+
+  const handleEditSave = () => {
+    if (!editQuiz) return;
+    const validationError = validateQuizQuestions(editQuestions);
+    if (validationError) {
+      Alert.alert('Soal Tidak Valid', validationError);
+      return;
+    }
+    updateMut.mutate({ id: editQuiz.id, questions: editQuestions });
   };
 
   const handleSave = () => {
@@ -781,6 +859,7 @@ export default function KelolaQuizScreen() {
                   key={q.id}
                   quiz={q}
                   onToggle={handleToggle}
+                  onEditQuestions={handleEditQuestions}
                   onStats={(id) =>
                     router.push({
                       pathname: '/(home)/quiz-stats/[id]',
@@ -797,6 +876,102 @@ export default function KelolaQuizScreen() {
           <Text style={[ls.hint, { color: colors.mutedForeground }]}>
             Toggle switch untuk mengaktifkan atau menonaktifkan quiz. Quiz non-aktif tidak muncul ke pengguna.
           </Text>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ── Render: Edit saved quiz questions ─────────────────────────────────────────
+
+  if (view === 'edit' && editQuiz) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <View
+          style={[
+            hdr.bar,
+            { paddingTop: topPad + 8, borderBottomColor: colors.border, backgroundColor: colors.background },
+          ]}
+        >
+          <Pressable onPress={handleEditBack} style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}>
+            <Feather name="arrow-left" size={22} color={colors.foreground} />
+          </Pressable>
+          <Text style={[hdr.title, { color: colors.foreground }]} numberOfLines={1}>
+            Edit Soal
+          </Text>
+          <View style={{ width: 80 }} />
+        </View>
+
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[pv.content, { paddingBottom: insets.bottom + 24 }]}
+        >
+          <View style={[pv.titleCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[pv.titleLabel, { color: colors.mutedForeground }]}>Quiz Tersimpan</Text>
+            <Text style={[pv.titleInput, { color: colors.foreground, borderBottomColor: colors.border }]}>
+              {editQuiz.title}
+            </Text>
+            <Text style={[pv.meta, { color: colors.mutedForeground }]}>
+              {editQuestions.length} soal · {editQuiz.quizType === 'learning' ? 'Learning' : 'Proficiency'}
+              {editQuiz.jabker ? ` · ${editQuiz.jabker}` : ''}
+            </Text>
+          </View>
+
+          {editQuestions.length === 0 ? (
+            <View style={{ alignItems: 'center', marginTop: 40, gap: 8 }}>
+              <Feather name="inbox" size={40} color={colors.mutedForeground} />
+              <Text style={[ls.emptyText, { color: colors.mutedForeground }]}>
+                Quiz ini belum memiliki soal
+              </Text>
+            </View>
+          ) : (
+            editQuestions.map((q, i) =>
+              editQuestionIndex === i ? (
+                <QuestionEditForm
+                  key={q.id}
+                  q={q}
+                  index={i}
+                  colors={colors}
+                  onSave={(updated) => {
+                    setEditQuestions((qs) => qs.map((x, j) => (j === i ? updated : x)));
+                    setEditQuestionIndex(null);
+                    setEditDirty(true);
+                  }}
+                  onCancel={() => setEditQuestionIndex(null)}
+                />
+              ) : (
+                <QuestionCard
+                  key={q.id}
+                  q={q}
+                  index={i}
+                  colors={colors}
+                  onEdit={() => setEditQuestionIndex(i)}
+                />
+              ),
+            )
+          )}
+
+          {editQuestions.length > 0 ? (
+            <Pressable
+              onPress={handleEditSave}
+              disabled={updateMut.isPending || !editDirty}
+              style={({ pressed }) => [
+                pv.saveBtn,
+                {
+                  backgroundColor: editDirty ? colors.primary : colors.muted,
+                  opacity: pressed || updateMut.isPending ? 0.75 : 1,
+                },
+              ]}
+            >
+              {updateMut.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Feather name="save" size={16} color={editDirty ? '#fff' : colors.mutedForeground} />
+              )}
+              <Text style={[pv.saveBtnText, { color: editDirty ? '#fff' : colors.mutedForeground }]}>
+                {updateMut.isPending ? 'Menyimpan…' : 'Simpan Perubahan'}
+              </Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
       </View>
     );
