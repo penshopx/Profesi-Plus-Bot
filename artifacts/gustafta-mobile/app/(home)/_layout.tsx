@@ -46,6 +46,13 @@ export default function HomeLayout() {
         }}
       />
       <Stack.Screen
+        name="apl-claims"
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      />
+      <Stack.Screen
         name="apl-edit"
         options={{
           headerShown: false,

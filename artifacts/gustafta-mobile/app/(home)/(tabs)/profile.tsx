@@ -325,6 +325,24 @@ export default function ProfileScreen() {
         />
       </Pressable>
 
+      {/* APL 02 claims management */}
+      <Pressable
+        testID="btn-manage-claims"
+        onPress={() => router.push('/(home)/apl-claims' as any)}
+        style={({ pressed }) => [
+          styles.infoCard,
+          { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+        ]}
+      >
+        <InfoRow
+          icon="award"
+          label="Klaim Kompetensi APL 02"
+          value="Kelola unit SKK →"
+          colors={colors}
+          chevron
+        />
+      </Pressable>
+
       {/* APL form print */}
       <Pressable
         onPress={handlePrintApl}

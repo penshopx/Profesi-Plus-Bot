@@ -900,6 +900,56 @@ export async function getMyAplClaims(): Promise<AplClaim[]> {
   return res.json();
 }
 
+/** Creates an APL 02 competency claim (POST /profiles/me/claims). */
+export async function createAplClaim(data: {
+  skkUnitCode: string;
+  skkUnitName: string;
+  jabker: string;
+  jenjang?: string;
+  pencapaian?: string;
+  buktiUtama?: string;
+  jenisBukti?: string;
+  catatanTambahan?: string;
+}): Promise<AplClaim> {
+  const res = await apiFetch('/profiles/me/claims', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+/** Updates an APL 02 competency claim (PATCH /profiles/me/claims/:id). */
+export async function updateAplClaim(
+  id: number,
+  data: Partial<Omit<AplClaim, 'id'>>,
+): Promise<AplClaim> {
+  const res = await apiFetch(`/profiles/me/claims/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+/** Deletes an APL 02 competency claim (DELETE /profiles/me/claims/:id). */
+export async function deleteAplClaim(id: number): Promise<void> {
+  await apiFetch(`/profiles/me/claims/${id}`, { method: 'DELETE' });
+}
+
+export interface SkkUnitsResponse {
+  jabker: string;
+  isKnown: boolean;
+  jenjang?: string;
+  klasifikasi?: string;
+  subklasifikasi?: string;
+  units: { code: string; name: string }[];
+}
+
+/** Returns the SKK unit list for a jabker (GET /skk/units?jabker=…). */
+export async function fetchSkkUnits(jabker: string): Promise<SkkUnitsResponse> {
+  const res = await apiFetch(`/skk/units?jabker=${encodeURIComponent(jabker)}`);
+  return res.json();
+}
+
 export interface QuizCoverageGap {
   skkUnitCode: string;
   skkUnitName: string;
