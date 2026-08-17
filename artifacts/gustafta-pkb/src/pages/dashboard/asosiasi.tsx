@@ -50,12 +50,19 @@ interface ChecklistRecord {
   penyelenggaraValid: boolean; catatan?: string | null; checkedAt?: string | null;
 }
 
+interface ChecklistHistoryEntry {
+  id: number; suratUndangan: boolean; daftarHadir: boolean; foto: boolean;
+  penyelenggaraValid: boolean; catatan?: string | null; outcome: string;
+  checkedAt: string; checkedByName?: string | null;
+}
+
 interface SubmissionFull extends Submission {
   namaMateri?: string; tempatKegiatan?: string; uraianSingkat?: string;
   linkRekaman?: string; jpPkb?: number;
   skk: { skkCode: string; skkName: string }[];
   docs: { id: number; docType: string; filename: string; objectPath: string }[];
   checklist: ChecklistRecord | null;
+  checklistHistory: ChecklistHistoryEntry[];
 }
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -223,6 +230,58 @@ function ChecklistForm({
   );
 }
 
+// ─── Riwayat checklist sebelumnya ────────────────────────────────────────────
+
+function ChecklistHistorySection({ history }: { history: ChecklistHistoryEntry[] }) {
+  if (!history || history.length === 0) return null;
+  return (
+    <div>
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+        Riwayat Pemeriksaan Sebelumnya
+      </h3>
+      <div className="space-y-2">
+        {history.map((h, i) => {
+          const verified = h.outcome === "diverifikasi";
+          const date = new Date(h.checkedAt).toLocaleString("id-ID", {
+            day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+          });
+          return (
+            <div key={h.id} className="rounded-xl border border-border bg-card p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
+                  verified
+                    ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                    : "bg-rose-100 text-rose-700 border-rose-200"
+                }`}>
+                  {verified ? "Dokumen Lengkap ✓" : "Perlu Perbaikan"}
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  #{i + 1} · {date}{h.checkedByName ? ` · ${h.checkedByName}` : ""}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {CHECKLIST_ITEMS.map(({ key, label }) => (
+                  <div key={key} className="flex items-center gap-1.5 text-xs">
+                    {h[key]
+                      ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      : <XCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />}
+                    <span className={h[key] ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+                  </div>
+                ))}
+              </div>
+              {h.catatan && (
+                <p className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-2.5 py-1.5">
+                  <span className="font-medium text-foreground">Catatan:</span> {h.catatan}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Submission detail view ───────────────────────────────────────────────────
 
 function SubmissionDetail({ id, onBack }: { id: number; onBack: () => void }) {
@@ -326,6 +385,9 @@ function SubmissionDetail({ id, onBack }: { id: number; onBack: () => void }) {
             </div>
           </div>
         )}
+
+        {/* Riwayat checklist sebelumnya */}
+        <ChecklistHistorySection history={sub.checklistHistory ?? []} />
 
         {/* Checklist form */}
         <ChecklistForm sub={sub} existing={sub.checklist} onSaved={() => refetch()} />

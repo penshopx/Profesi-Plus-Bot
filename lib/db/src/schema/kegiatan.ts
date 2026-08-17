@@ -158,6 +158,30 @@ export const pkbActivityChecklist = pgTable("pkb_activity_checklist", {
 
 export type PkbActivityChecklist = typeof pkbActivityChecklist.$inferSelect;
 
+// ─── Riwayat checklist — snapshot tiap kali checklist difinalisasi ────────────
+// Setiap kali Asosiasi menyimpan checklist (hasil: diverifikasi/ditolak), satu
+// baris snapshot ditulis di sini. Reset checklist saat pengajuan ulang tidak
+// menyentuh tabel ini, sehingga verifier tetap bisa melihat hasil sebelumnya.
+
+export const pkbActivityChecklistHistory = pgTable("pkb_activity_checklist_history", {
+  id:                 serial("id").primaryKey(),
+  activityId:         integer("activity_id").notNull().references(() => pkbActivities.id, { onDelete: "cascade" }),
+  checkedBy:          integer("checked_by").references(() => users.id),
+
+  suratUndangan:      boolean("surat_undangan").notNull().default(false),
+  daftarHadir:        boolean("daftar_hadir").notNull().default(false),
+  foto:               boolean("foto").notNull().default(false),
+  penyelenggaraValid: boolean("penyelenggara_valid").notNull().default(false),
+  catatan:            text("catatan"),
+
+  // Hasil finalisasi checklist: "diverifikasi" | "ditolak"
+  outcome:            text("outcome").notNull(),
+  checkedAt:          timestamp("checked_at", { withTimezone: true }).notNull(),
+  createdAt:          timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type PkbActivityChecklistHistory = typeof pkbActivityChecklistHistory.$inferSelect;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type PkbActivity    = typeof pkbActivities.$inferSelect;

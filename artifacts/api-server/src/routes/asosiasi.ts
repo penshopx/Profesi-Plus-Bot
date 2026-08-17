@@ -20,7 +20,9 @@ import { eq, inArray, desc } from "drizzle-orm";
 import {
   db, users,
   pkbActivities, pkbActivitySkk, pkbActivityDocs, pkbActivityJourney, pkbActivityChecklist,
+  pkbActivityChecklistHistory,
 } from "@workspace/db";
+import { asc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { sendPushNotification } from "../lib/push";
 
@@ -99,14 +101,31 @@ router.get("/asosiasi/submissions/:id", requireAuth, requireAsosiasi, async (req
 
   if (!act) return res.status(404).json({ error: "not found" });
 
-  const [skk, docs, journey, checklist] = await Promise.all([
+  const [skk, docs, journey, checklist, checklistHistory] = await Promise.all([
     db.select().from(pkbActivitySkk).where(eq(pkbActivitySkk.activityId, id)),
     db.select().from(pkbActivityDocs).where(eq(pkbActivityDocs.activityId, id)),
     db.select().from(pkbActivityJourney).where(eq(pkbActivityJourney.activityId, id)).orderBy(desc(pkbActivityJourney.createdAt)),
     db.select().from(pkbActivityChecklist).where(eq(pkbActivityChecklist.activityId, id)).limit(1),
+    // Riwayat checklist yang sudah difinalisasi, urut kronologis (tertua dulu)
+    db
+      .select({
+        id:                 pkbActivityChecklistHistory.id,
+        suratUndangan:      pkbActivityChecklistHistory.suratUndangan,
+        daftarHadir:        pkbActivityChecklistHistory.daftarHadir,
+        foto:               pkbActivityChecklistHistory.foto,
+        penyelenggaraValid: pkbActivityChecklistHistory.penyelenggaraValid,
+        catatan:            pkbActivityChecklistHistory.catatan,
+        outcome:            pkbActivityChecklistHistory.outcome,
+        checkedAt:          pkbActivityChecklistHistory.checkedAt,
+        checkedByName:      users.name,
+      })
+      .from(pkbActivityChecklistHistory)
+      .leftJoin(users, eq(pkbActivityChecklistHistory.checkedBy, users.id))
+      .where(eq(pkbActivityChecklistHistory.activityId, id))
+      .orderBy(asc(pkbActivityChecklistHistory.checkedAt)),
   ]);
 
-  res.json({ ...act, skk, docs, journey, checklist: checklist[0] ?? null });
+  res.json({ ...act, skk, docs, journey, checklist: checklist[0] ?? null, checklistHistory });
 });
 
 // ─── POST /asosiasi/submissions/:id/checklist ─────────────────────────────────
@@ -172,6 +191,20 @@ router.post("/asosiasi/submissions/:id/checklist", requireAuth, requireAsosiasi,
       askomVerifiedBy: allClear ? verifierId : null,
       updatedAt: now,
     }).where(eq(pkbActivities.id, id));
+
+    // Archive a snapshot of this finalized checklist so past results survive
+    // the reset that happens on resubmission (history view for verifiers).
+    await tx.insert(pkbActivityChecklistHistory).values({
+      activityId: id,
+      checkedBy: verifierId,
+      suratUndangan: !!suratUndangan,
+      daftarHadir: !!daftarHadir,
+      foto: !!foto,
+      penyelenggaraValid: !!penyelenggaraValid,
+      catatan: catatan ?? null,
+      outcome: newStatus,
+      checkedAt: now,
+    });
 
     await tx.insert(pkbActivityJourney).values({
       activityId: id,

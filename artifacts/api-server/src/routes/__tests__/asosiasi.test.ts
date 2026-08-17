@@ -79,6 +79,7 @@ vi.mock("@workspace/db", () => {
     pkbActivityDocs:      { activityId: "activityId", id: "id" },
     pkbActivityJourney:   { activityId: "activityId", createdAt: "createdAt" },
     pkbActivityChecklist: { id: "id", activityId: "activityId" },
+    pkbActivityChecklistHistory: { id: "id", activityId: "activityId", checkedBy: "checkedBy", suratUndangan: "suratUndangan", daftarHadir: "daftarHadir", foto: "foto", penyelenggaraValid: "penyelenggaraValid", catatan: "catatan", outcome: "outcome", checkedAt: "checkedAt" },
   };
 });
 
@@ -86,6 +87,7 @@ vi.mock("drizzle-orm", () => ({
   eq:      vi.fn().mockReturnValue({}),
   and:     vi.fn().mockReturnValue({}),
   desc:    vi.fn().mockReturnValue({}),
+  asc:     vi.fn().mockReturnValue({}),
   inArray: vi.fn().mockReturnValue({}),
 }));
 
@@ -153,8 +155,8 @@ describe("POST /api/asosiasi/submissions/:id/checklist — happy path", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true, status: "diverifikasi" });
     expect(transactionCalls).toBe(1);
-    // checklist insert (new record) + journey insert
-    expect(txInsert).toHaveBeenCalledTimes(2);
+    // checklist insert (new record) + history snapshot + journey insert
+    expect(txInsert).toHaveBeenCalledTimes(3);
     // activity status update
     expect(txUpdate).toHaveBeenCalledTimes(1);
     // no writes outside the transaction
@@ -173,8 +175,8 @@ describe("POST /api/asosiasi/submissions/:id/checklist — happy path", () => {
     expect(res.body.status).toBe("diverifikasi");
     // checklist update + activity update
     expect(txUpdate).toHaveBeenCalledTimes(2);
-    // journey insert only
-    expect(txInsert).toHaveBeenCalledTimes(1);
+    // history snapshot + journey insert
+    expect(txInsert).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -189,7 +191,7 @@ describe("POST /api/asosiasi/submissions/:id/checklist — rejection path", () =
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true, status: "ditolak" });
     expect(transactionCalls).toBe(1);
-    expect(txInsert).toHaveBeenCalledTimes(2); // checklist + journey
+    expect(txInsert).toHaveBeenCalledTimes(3); // checklist + history snapshot + journey
     expect(txUpdate).toHaveBeenCalledTimes(1); // activity status
   });
 

@@ -62,6 +62,7 @@ vi.mock("@workspace/db", () => {
     pkbActivityDocs:    { activityId: "activityId" },
     pkbActivityJourney: { activityId: "activityId", createdAt: "createdAt" },
     pkbActivityChecklist: { id: "id", activityId: "activityId" },
+    pkbActivityChecklistHistory: { id: "id", activityId: "activityId", checkedBy: "checkedBy", suratUndangan: "suratUndangan", daftarHadir: "daftarHadir", foto: "foto", penyelenggaraValid: "penyelenggaraValid", catatan: "catatan", outcome: "outcome", checkedAt: "checkedAt" },
   };
 });
 
@@ -69,6 +70,7 @@ vi.mock("drizzle-orm", () => ({
   eq:      vi.fn().mockReturnValue({}),
   and:     vi.fn().mockReturnValue({}),
   desc:    vi.fn().mockReturnValue({}),
+  asc:     vi.fn().mockReturnValue({}),
   inArray: vi.fn().mockReturnValue({}),
   sql:     vi.fn().mockReturnValue({}),
 }));
