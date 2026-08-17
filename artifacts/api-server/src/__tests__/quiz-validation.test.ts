@@ -219,6 +219,55 @@ describe("validateQuestions — correctId matches an option", () => {
   });
 });
 
+// ── duplicate option IDs ──────────────────────────────────────────────────────
+
+describe("validateQuestions — duplicate option IDs", () => {
+  it("rejects a question with duplicate option ids", () => {
+    const qs = [makeQuestion({
+      options: [
+        { id: "a", text: "Opsi satu" },
+        { id: "a", text: "Opsi dua" },
+        { id: "b", text: "Opsi tiga" },
+      ],
+      correctId: "a",
+    })];
+    const err = validateQuestions(qs);
+    expect(err).toMatch(/Soal #1/);
+    expect(err).toMatch(/ID opsi "A" duplikat/i);
+  });
+
+  it("rejects an option missing an id", () => {
+    const qs = [makeQuestion({
+      options: [
+        { id: "a", text: "Opsi satu" },
+        { text: "Tanpa id" },
+      ],
+      correctId: "a",
+    })];
+    expect(validateQuestions(qs)).toMatch(/setiap opsi harus memiliki ID/i);
+  });
+
+  it("reports the correct question number for a later duplicate", () => {
+    const qs = [
+      makeQuestion({ id: "q1", text: "Soal pertama?" }),
+      makeQuestion({
+        id: "q2",
+        text: "Soal kedua?",
+        options: [
+          { id: "x", text: "Satu" },
+          { id: "x", text: "Dua" },
+        ],
+        correctId: "x",
+      }),
+    ];
+    expect(validateQuestions(qs)).toMatch(/Soal #2/);
+  });
+
+  it("accepts distinct option ids", () => {
+    expect(validateQuestions([makeQuestion()])).toBeNull();
+  });
+});
+
 // ── malformed shapes ──────────────────────────────────────────────────────────
 
 describe("validateQuestions — malformed shapes", () => {

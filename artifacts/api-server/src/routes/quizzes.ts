@@ -294,6 +294,19 @@ export function validateQuestions(questions: unknown, requireNonEmpty = false): 
       return `Soal #${num}: minimal harus ada 2 pilihan jawaban.`;
     }
 
+    // Option IDs must be unique within a question — a duplicate would make
+    // the selected/correct answer ambiguous.
+    const seenOptionIds = new Set<string>();
+    for (const opt of qObj["options"] as { id?: unknown }[]) {
+      if (typeof opt.id !== "string" || !opt.id) {
+        return `Soal #${num}: setiap opsi harus memiliki ID.`;
+      }
+      if (seenOptionIds.has(opt.id)) {
+        return `Soal #${num}: ID opsi "${opt.id.toUpperCase()}" duplikat.`;
+      }
+      seenOptionIds.add(opt.id);
+    }
+
     // correctId
     if (typeof qObj["correctId"] !== "string" || !qObj["correctId"]) {
       return `Soal #${num}: jawaban benar belum dipilih.`;
