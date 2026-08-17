@@ -16,6 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getMyAplProfile, updateMyAplProfile, type AplProfile } from '@/lib/api';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { parseYmd, formatYmd } from '@/lib/apl-dates';
 
 const AGAMA_OPTIONS = ['Islam', 'Kristen Protestan', 'Kristen Katolik', 'Hindu', 'Buddha', 'Konghucu'];
 const PENDIDIKAN_OPTIONS = ['SD', 'SMP', 'SMA/SMK', 'D1', 'D2', 'D3', 'D4', 'S1', 'S2', 'S3'];
@@ -187,7 +189,7 @@ export default function AplEditScreen() {
           <Section title="Identitas Diri" icon="user" colors={colors}>
             <Field label="NIK (16 digit)" value={form.nik} onChange={set('nik')} error={errors.nik} colors={colors} keyboardType="number-pad" maxLength={16} placeholder="3271XXXXXXXXXXXX" />
             <Field label="Tempat Lahir" value={form.tempatLahir} onChange={set('tempatLahir')} colors={colors} />
-            <Field label="Tanggal Lahir (YYYY-MM-DD)" value={form.tanggalLahir} onChange={set('tanggalLahir')} error={errors.tanggalLahir} colors={colors} placeholder="1990-01-31" />
+            <DateField label="Tanggal Lahir" value={form.tanggalLahir} onChange={set('tanggalLahir')} error={errors.tanggalLahir} colors={colors} placeholder="1990-01-31" />
             <ChipPicker
               label="Jenis Kelamin"
               value={form.jenisKelamin}
@@ -240,7 +242,7 @@ export default function AplEditScreen() {
 
           <Section title="Sertifikat Kompetensi Kerja (SKK)" icon="award" colors={colors}>
             <Field label="Nomor SKK" value={form.nomorSkk} onChange={set('nomorSkk')} colors={colors} placeholder="SKK-XXXX-XXXX" />
-            <Field label="Masa Berlaku SKK (YYYY-MM-DD)" value={form.masaBerlakuSkk} onChange={set('masaBerlakuSkk')} error={errors.masaBerlakuSkk} colors={colors} placeholder="2027-12-31" />
+            <DateField label="Masa Berlaku SKK" value={form.masaBerlakuSkk} onChange={set('masaBerlakuSkk')} error={errors.masaBerlakuSkk} colors={colors} placeholder="2027-12-31" />
             <Field label="Lembaga Sertifikasi (LSP)" value={form.lembagaSertifikasi} onChange={set('lembagaSertifikasi')} colors={colors} placeholder="LSP Konstruksi Indonesia" />
           </Section>
 
@@ -326,6 +328,97 @@ function Field({
   );
 }
 
+function DateField({
+  label, value, onChange, colors, error, placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  colors: ReturnType<typeof useColors>;
+  error?: string;
+  placeholder?: string;
+}) {
+  const [show, setShow] = useState(false);
+
+  // Web: keep a plain text input (native picker isn't supported there).
+  if (Platform.OS === 'web') {
+    return (
+      <Field
+        label={`${label} (YYYY-MM-DD)`}
+        value={value}
+        onChange={onChange}
+        error={error}
+        colors={colors}
+        placeholder={placeholder}
+      />
+    );
+  }
+
+  return (
+    <View style={{ gap: 5 }}>
+      <Text style={[st.label, { color: colors.mutedForeground }]}>{label}</Text>
+      <Pressable
+        onPress={() => setShow(true)}
+        style={[
+          st.input,
+          st.dateInput,
+          {
+            backgroundColor: colors.background,
+            borderColor: error ? colors.destructive : colors.border,
+          },
+        ]}
+      >
+        <Text
+          style={{
+            fontSize: 14,
+            fontFamily: 'PlusJakartaSans_400Regular',
+            color: value ? colors.foreground : colors.mutedForeground + '88',
+          }}
+        >
+          {value || placeholder || 'Pilih tanggal'}
+        </Text>
+        <Feather name="calendar" size={16} color={colors.mutedForeground} />
+      </Pressable>
+      {error ? <Text style={[st.error, { color: colors.destructive }]}>{error}</Text> : null}
+      {show && Platform.OS === 'ios' && (
+        <View style={[st.iosPickerWrap, { borderColor: colors.border, backgroundColor: colors.background }]}>
+          <DateTimePicker
+            value={parseYmd(value) ?? new Date()}
+            mode="date"
+            display="spinner"
+            // iOS spinner fires onChange on every wheel move — update value, keep picker open.
+            onChange={(_event, date) => {
+              if (date) onChange(formatYmd(date));
+            }}
+          />
+          <Pressable
+            onPress={() => {
+              // Confirm the currently shown date even if the user never moved a wheel.
+              if (!parseYmd(value)) onChange(formatYmd(new Date()));
+              setShow(false);
+            }}
+            style={[st.iosDoneBtn, { backgroundColor: colors.primary }]}
+          >
+            <Text style={st.iosDoneText}>Selesai</Text>
+          </Pressable>
+        </View>
+      )}
+      {show && Platform.OS !== 'ios' && (
+        <DateTimePicker
+          value={parseYmd(value) ?? new Date()}
+          mode="date"
+          display="default"
+          // Android shows a modal dialog; onChange fires once on OK/Cancel.
+          onChange={(event, date) => {
+            setShow(false);
+            if (event.type === 'set' && date) onChange(formatYmd(date));
+          }}
+        />
+      )}
+    </View>
+  );
+}
+
 function ChipPicker({
   label, value, options, onChange, colors,
 }: {
@@ -385,6 +478,24 @@ const st = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     fontFamily: 'PlusJakartaSans_400Regular',
+  },
+  iosPickerWrap: {
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+    alignItems: 'center',
+    paddingBottom: 10,
+  },
+  iosDoneBtn: {
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  iosDoneText: { color: '#fff', fontSize: 14, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  dateInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   error: { fontSize: 12, fontFamily: 'PlusJakartaSans_400Regular' },
   row: { flexDirection: 'row', gap: 10 },

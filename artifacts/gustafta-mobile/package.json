@@ -72,6 +72,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "@react-native-community/datetimepicker": "8.4.4",
     "@tanstack/query-async-storage-persister": "^5.101.4",
     "@tanstack/react-query-persist-client": "^5.101.4",
     "expo-av": "^16.0.8",
