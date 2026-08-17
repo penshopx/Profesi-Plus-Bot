@@ -380,6 +380,10 @@ export default function StudioScreen() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['studio-analyses'] });
         queryClient.invalidateQueries({ queryKey: ['my-usage'] });
+        // Hide the chat nudge immediately: the banner caches
+        // ['competency-analysis-check', jabker] for 5 minutes, so invalidate
+        // it (prefix match covers every jabker) right after a new analysis.
+        queryClient.invalidateQueries({ queryKey: ['competency-analysis-check'] });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       },
     });
