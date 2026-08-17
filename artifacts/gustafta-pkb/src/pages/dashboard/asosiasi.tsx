@@ -27,12 +27,21 @@ import { useToast } from "@/hooks/use-toast";
 
 const API = "/api";
 
+class ApiError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(body.error ?? res.statusText, res.status);
+  }
   return res.json();
 }
 
@@ -147,7 +156,13 @@ function ChecklistForm({
     try {
       const result = await apiFetch<{ success: boolean; status: string }>(
         `/asosiasi/submissions/${sub.id}/checklist`,
-        { method: "POST", body: JSON.stringify({ ...checks, catatan: catatan || null }) },
+        {
+          method: "POST",
+          // expectedUpdatedAt = the revision this officer saw when the page
+          // loaded; the server rejects with 409 if another officer decided
+          // first (even if both decisions produce the same status).
+          body: JSON.stringify({ ...checks, catatan: catatan || null, expectedUpdatedAt: sub.updatedAt }),
+        },
       );
       toast({
         title: result.status === "diverifikasi"
@@ -158,7 +173,19 @@ function ChecklistForm({
       qc.invalidateQueries({ queryKey: ["asosiasi-detail", sub.id] });
       onSaved();
     } catch (err: unknown) {
-      toast({ title: "Gagal menyimpan", description: String(err), variant: "destructive" });
+      if (err instanceof ApiError && err.status === 409) {
+        // Another officer decided first — refetch so this officer reviews the
+        // fresh state instead of seeing a false success.
+        toast({
+          title: "Sudah diperiksa verifikator lain",
+          description: err.message,
+          variant: "destructive",
+        });
+        qc.invalidateQueries({ queryKey: ["asosiasi-submissions"] });
+        qc.invalidateQueries({ queryKey: ["asosiasi-detail", sub.id] });
+      } else {
+        toast({ title: "Gagal menyimpan", description: String(err), variant: "destructive" });
+      }
     } finally {
       setSaving(false);
     }

@@ -32,6 +32,10 @@ let txShouldFailOnInsert = false;
 let selectCallCount = 0;
 const selectResponses: unknown[][] = [];
 let txSelectResponse: unknown[] = [];
+// What tx.update(...).returning() resolves with. The conditional activity
+// status update checks this: [] simulates "another officer already
+// transitioned the status" (0 rows matched the WHERE status guard).
+let txUpdateResponse: unknown[] = [{ id: 10 }];
 
 vi.mock("@workspace/db", () => {
   function chain(resolveWith: unknown, onResolve?: () => void) {
@@ -50,7 +54,7 @@ vi.mock("@workspace/db", () => {
 
   const txMock = {
     select: vi.fn().mockImplementation(() => chain(txSelectResponse)),
-    update: vi.fn().mockImplementation(() => chain([], () => txUpdate())),
+    update: vi.fn().mockImplementation(() => chain(txUpdateResponse, () => txUpdate())),
     insert: vi.fn().mockImplementation(() => chain([], () => {
       if (txShouldFailOnInsert) throw new Error("boom: journey insert failed");
       txInsert();
@@ -126,12 +130,15 @@ async function buildApp(role = "asosiasi") {
  *  (tx select: existing checklist — via txSelectResponse)
  *  2nd outer select: owner lookup for push
  */
+const REVISION = new Date("2026-08-17T10:00:00.000Z");
+
 function prime(status: string, opts: { existingChecklist?: boolean; pushToken?: string | null } = {}) {
   selectCallCount = 0;
   selectResponses.length = 0;
-  selectResponses.push([{ id: 10, status, userId: 42 }]);
+  selectResponses.push([{ id: 10, status, userId: 42, updatedAt: REVISION }]);
   selectResponses.push([{ id: 42, expoPushToken: opts.pushToken ?? null }]);
   txSelectResponse = opts.existingChecklist ? [{ id: 1 }] : [];
+  txUpdateResponse = [{ id: 10 }];
 }
 
 beforeEach(() => {
@@ -253,6 +260,113 @@ describe("POST /api/asosiasi/submissions/:id/checklist — guards", () => {
 
     expect(res.status).toBe(403);
     expect(transactionCalls).toBe(0);
+  });
+});
+
+describe("POST /api/asosiasi/submissions/:id/checklist — concurrent decisions", () => {
+  it("returns 409 when expectedUpdatedAt no longer matches (officer saw a stale page)", async () => {
+    // Officer B loaded the page before officer A's decision landed; the
+    // activity's revision timestamp has since moved on.
+    prime("diverifikasi");
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/api/asosiasi/submissions/10/checklist")
+      .send({ ...fullChecklist, expectedUpdatedAt: "2026-08-17T09:00:00.000Z" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/verifikator lain/i);
+    expect(res.body.currentStatus).toBe("diverifikasi");
+    // rejected before any write
+    expect(transactionCalls).toBe(0);
+    expect(txInsert).not.toHaveBeenCalled();
+    expect(txUpdate).not.toHaveBeenCalled();
+  });
+
+  it("detects a same-outcome race: second all-clear save on an already-'diverifikasi' activity → 409", async () => {
+    // Both officers verify; the status never changes, only updatedAt does.
+    // A status-only guard would let the second save silently overwrite.
+    prime("diverifikasi", { existingChecklist: true });
+    txUpdateResponse = []; // first writer already bumped updatedAt → 0 rows match
+    selectResponses[1] = [{ status: "diverifikasi" }];
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/api/asosiasi/submissions/10/checklist")
+      .send({ ...fullChecklist, expectedUpdatedAt: REVISION.toISOString() });
+
+    expect(res.status).toBe(409);
+    expect(res.body.currentStatus).toBe("diverifikasi");
+    expect(txInsert).not.toHaveBeenCalled(); // no duplicate history/journey rows
+  });
+
+  it("detects a same-outcome race: second rejection on an already-'ditolak' activity → 409", async () => {
+    prime("ditolak", { existingChecklist: true });
+    txUpdateResponse = [];
+    selectResponses[1] = [{ status: "ditolak" }];
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/api/asosiasi/submissions/10/checklist")
+      .send({ ...fullChecklist, foto: false, catatan: "Foto masih kurang", expectedUpdatedAt: REVISION.toISOString() });
+
+    expect(res.status).toBe(409);
+    expect(res.body.currentStatus).toBe("ditolak");
+    expect(txInsert).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for a malformed expectedUpdatedAt", async () => {
+    prime("diajukan");
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/api/asosiasi/submissions/10/checklist")
+      .send({ ...fullChecklist, expectedUpdatedAt: "not-a-date" });
+
+    expect(res.status).toBe(400);
+    expect(transactionCalls).toBe(0);
+  });
+
+  it("returns 409 and rolls back when the conditional status update matches 0 rows (write-time race)", async () => {
+    // Both requests read "diajukan"; the first one wins the write. For the
+    // second, the conditional UPDATE ... WHERE status = 'diajukan' matches
+    // nothing.
+    prime("diajukan");
+    txUpdateResponse = []; // 0 rows updated → conflict
+    // fresh status lookup for the 409 body (2nd outer select replaces owner lookup)
+    selectResponses[1] = [{ status: "diverifikasi" }];
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/api/asosiasi/submissions/10/checklist")
+      .send({ ...fullChecklist, expectedUpdatedAt: REVISION.toISOString() });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/verifikator lain/i);
+    expect(res.body.currentStatus).toBe("diverifikasi");
+    expect(transactionCalls).toBe(1);
+    // conflict aborts before checklist/history/journey writes
+    expect(txInsert).not.toHaveBeenCalled();
+  });
+
+  it("still guards with the freshly-read revision when the client sends no expectedUpdatedAt (legacy clients)", async () => {
+    prime("diajukan");
+    txUpdateResponse = [];
+    selectResponses[1] = [{ status: "ditolak" }];
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/api/asosiasi/submissions/10/checklist")
+      .send(fullChecklist);
+
+    expect(res.status).toBe(409);
+    expect(res.body.currentStatus).toBe("ditolak");
+    expect(txInsert).not.toHaveBeenCalled();
+  });
+
+  it("succeeds when expectedUpdatedAt matches the current revision", async () => {
+    prime("diajukan");
+    const app = await buildApp();
+    const res = await request(app)
+      .post("/api/asosiasi/submissions/10/checklist")
+      .send({ ...fullChecklist, expectedUpdatedAt: REVISION.toISOString() });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ success: true, status: "diverifikasi" });
   });
 });
 

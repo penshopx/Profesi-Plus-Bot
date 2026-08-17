@@ -41,7 +41,9 @@ vi.mock("@workspace/db", () => {
   const tx = {
     select: vi.fn().mockImplementation(() => chainFor([])), // no existing checklist → insert path
     insert: vi.fn().mockImplementation(() => chainFor([])),
-    update: vi.fn().mockImplementation(() => chainFor([])),
+    // returning() on the conditional status update must yield a row, or the
+    // route treats it as a concurrent-write conflict (409)
+    update: vi.fn().mockImplementation(() => chainFor([{ id: 10 }])),
   };
 
   const dbMock = {

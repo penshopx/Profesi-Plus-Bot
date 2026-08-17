@@ -22,4 +22,5 @@
 - [Deep-link dedup races](deeplink-dedup-races.md) — mark deep-link ids handled only at terminal state; separate in-flight ref + active-id ref so re-runs and newer taps neither drop nor misroute.
 - [React Native Jest setup](react-native-jest-setup.md) — bypass RNTL + test-renderer ConcurrentRoot act() leakage; use react-test-renderer directly for mutation tests; two-phase act() required.
 - [Drizzle push TTY prompt](drizzle-push-tty-prompt.md) — non-interactive push dies on create-vs-rename prompt; create the new table via SQL manually, then re-push.
+- [Optimistic concurrency revision guard](optimistic-concurrency-revision.md) — condition conflict-detecting UPDATEs on updatedAt/version, not status; status-only guards miss same-outcome races.
 - [Refund-confirmed retrySafe](refund-confirmed-retry.md) — only claim "credit not lost / retry safe" after the refund write is confirmed; never key it off HTTP status alone.

@@ -16,7 +16,7 @@
  */
 
 import { Router } from "express";
-import { eq, inArray, desc } from "drizzle-orm";
+import { eq, and, inArray, desc } from "drizzle-orm";
 import {
   db, users,
   pkbActivities, pkbActivitySkk, pkbActivityDocs, pkbActivityJourney, pkbActivityChecklist,
@@ -133,15 +133,37 @@ router.get("/asosiasi/submissions/:id", requireAuth, requireAsosiasi, async (req
 router.post("/asosiasi/submissions/:id/checklist", requireAuth, requireAsosiasi, async (req, res) => {
   const id = parseInt(req.params.id, 10);
 
-  const [act] = await db.select({ id: pkbActivities.id, status: pkbActivities.status, userId: pkbActivities.userId })
+  const [act] = await db.select({ id: pkbActivities.id, status: pkbActivities.status, userId: pkbActivities.userId, updatedAt: pkbActivities.updatedAt })
     .from(pkbActivities).where(eq(pkbActivities.id, id)).limit(1);
   if (!act) return res.status(404).json({ error: "not found" });
   if (!["diajukan", "diverifikasi", "ditolak"].includes(act.status)) {
     return res.status(400).json({ error: "Kegiatan belum diajukan ke Asosiasi." });
   }
 
-  const { suratUndangan, daftarHadir, foto, penyelenggaraValid, catatan } = req.body;
+  const { suratUndangan, daftarHadir, foto, penyelenggaraValid, catatan, expectedUpdatedAt } = req.body;
   const verifierId = req.dbUser!.id;
+
+  const CONFLICT_MESSAGE =
+    "Kegiatan ini baru saja diperiksa oleh verifikator lain. Muat ulang halaman untuk melihat hasil terbaru sebelum menyimpan.";
+
+  // Optimistic concurrency, phase 1 (stale page): the client sends the
+  // updatedAt it displayed to the officer. A status-only check would miss
+  // same-outcome races (e.g. two officers both re-verifying an activity that
+  // is already "diverifikasi" — the status never changes), so we compare the
+  // revision timestamp instead. If another officer's decision already landed
+  // since the page was loaded, surface a 409 instead of silently overwriting.
+  if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== null) {
+    const expected = new Date(expectedUpdatedAt);
+    if (Number.isNaN(expected.getTime())) {
+      return res.status(400).json({ error: "expectedUpdatedAt tidak valid." });
+    }
+    if (expected.getTime() !== act.updatedAt.getTime()) {
+      return res.status(409).json({ error: CONFLICT_MESSAGE, currentStatus: act.status });
+    }
+  }
+  // Phase 2 (write-time race) conditions the UPDATE on the exact revision we
+  // just read — see the transaction below.
+  const guardUpdatedAt = act.updatedAt;
   const allClear = suratUndangan && daftarHadir && foto && penyelenggaraValid;
   const newStatus = allClear ? "diverifikasi" : "ditolak";
   const now = new Date();
@@ -151,27 +173,67 @@ router.post("/asosiasi/submissions/:id/checklist", requireAuth, requireAsosiasi,
     return res.status(400).json({ error: "Catatan wajib diisi jika ada item checklist yang belum lengkap." });
   }
 
-  // All three writes (checklist upsert, status transition, journey entry) run
+  // All writes (status transition, checklist upsert, journey entry) run
   // in ONE transaction: a crash between any two would otherwise leave the
   // activity in an inconsistent state (e.g. checklist saved but status stale).
-  await db.transaction(async (tx) => {
-    // Upsert checklist (one record per activity)
-    const existing = await tx.select({ id: pkbActivityChecklist.id })
-      .from(pkbActivityChecklist).where(eq(pkbActivityChecklist.activityId, id)).limit(1);
+  //
+  // The status transition is a CONDITIONAL update (WHERE updatedAt =
+  // guardUpdatedAt): if a second officer's request raced past the read above,
+  // the first writer bumped updatedAt, so the condition fails, zero rows
+  // update, and we roll everything back with a 409 instead of silently
+  // letting the last writer win — even when both decisions would produce the
+  // same status.
+  class ChecklistConflictError extends Error {}
 
-    if (existing.length > 0) {
-      await tx.update(pkbActivityChecklist).set({
-        checkedBy: verifierId,
-        suratUndangan: !!suratUndangan,
-        daftarHadir: !!daftarHadir,
-        foto: !!foto,
-        penyelenggaraValid: !!penyelenggaraValid,
-        catatan: catatan ?? null,
-        checkedAt: now,
+  try {
+    await db.transaction(async (tx) => {
+      // Conditional status transition — the concurrency guard. Run first so a
+      // conflict aborts before any other write happens.
+      const updated = await tx.update(pkbActivities).set({
+        status: newStatus,
+        askomNote: catatan ?? null,
+        askomVerifiedAt: allClear ? now : null,
+        askomVerifiedBy: allClear ? verifierId : null,
         updatedAt: now,
-      }).where(eq(pkbActivityChecklist.activityId, id));
-    } else {
-      await tx.insert(pkbActivityChecklist).values({
+      })
+        .where(and(eq(pkbActivities.id, id), eq(pkbActivities.updatedAt, guardUpdatedAt)))
+        .returning({ id: pkbActivities.id });
+
+      if (updated.length === 0) {
+        throw new ChecklistConflictError(CONFLICT_MESSAGE);
+      }
+
+      // Upsert checklist (one record per activity)
+      const existing = await tx.select({ id: pkbActivityChecklist.id })
+        .from(pkbActivityChecklist).where(eq(pkbActivityChecklist.activityId, id)).limit(1);
+
+      if (existing.length > 0) {
+        await tx.update(pkbActivityChecklist).set({
+          checkedBy: verifierId,
+          suratUndangan: !!suratUndangan,
+          daftarHadir: !!daftarHadir,
+          foto: !!foto,
+          penyelenggaraValid: !!penyelenggaraValid,
+          catatan: catatan ?? null,
+          checkedAt: now,
+          updatedAt: now,
+        }).where(eq(pkbActivityChecklist.activityId, id));
+      } else {
+        await tx.insert(pkbActivityChecklist).values({
+          activityId: id,
+          checkedBy: verifierId,
+          suratUndangan: !!suratUndangan,
+          daftarHadir: !!daftarHadir,
+          foto: !!foto,
+          penyelenggaraValid: !!penyelenggaraValid,
+          catatan: catatan ?? null,
+          checkedAt: now,
+        });
+      }
+
+      // Archive a snapshot of this finalized checklist so past results survive
+      // the reset that happens on resubmission (history view for verifiers).
+      await tx.insert(pkbActivityChecklistHistory).values({
         activityId: id,
         checkedBy: verifierId,
         suratUndangan: !!suratUndangan,
@@ -179,42 +241,29 @@ router.post("/asosiasi/submissions/:id/checklist", requireAuth, requireAsosiasi,
         foto: !!foto,
         penyelenggaraValid: !!penyelenggaraValid,
         catatan: catatan ?? null,
+        outcome: newStatus,
         checkedAt: now,
       });
+
+      await tx.insert(pkbActivityJourney).values({
+        activityId: id,
+        event: newStatus,
+        label: allClear
+          ? "Dokumen diverifikasi lengkap oleh Asosiasi"
+          : "Dokumen perlu perbaikan — catatan dari Asosiasi",
+        metadata: { suratUndangan, daftarHadir, foto, penyelenggaraValid, catatan, verifierId },
+      });
+    });
+  } catch (err) {
+    if (err instanceof ChecklistConflictError) {
+      // Another officer's decision landed between our read and write — the
+      // transaction rolled back, nothing was overwritten.
+      const [fresh] = await db.select({ status: pkbActivities.status })
+        .from(pkbActivities).where(eq(pkbActivities.id, id)).limit(1);
+      return res.status(409).json({ error: CONFLICT_MESSAGE, currentStatus: fresh?.status ?? null });
     }
-
-    // Transition status + journey
-    await tx.update(pkbActivities).set({
-      status: newStatus,
-      askomNote: catatan ?? null,
-      askomVerifiedAt: allClear ? now : null,
-      askomVerifiedBy: allClear ? verifierId : null,
-      updatedAt: now,
-    }).where(eq(pkbActivities.id, id));
-
-    // Archive a snapshot of this finalized checklist so past results survive
-    // the reset that happens on resubmission (history view for verifiers).
-    await tx.insert(pkbActivityChecklistHistory).values({
-      activityId: id,
-      checkedBy: verifierId,
-      suratUndangan: !!suratUndangan,
-      daftarHadir: !!daftarHadir,
-      foto: !!foto,
-      penyelenggaraValid: !!penyelenggaraValid,
-      catatan: catatan ?? null,
-      outcome: newStatus,
-      checkedAt: now,
-    });
-
-    await tx.insert(pkbActivityJourney).values({
-      activityId: id,
-      event: newStatus,
-      label: allClear
-        ? "Dokumen diverifikasi lengkap oleh Asosiasi"
-        : "Dokumen perlu perbaikan — catatan dari Asosiasi",
-      metadata: { suratUndangan, daftarHadir, foto, penyelenggaraValid, catatan, verifierId },
-    });
-  });
+    throw err;
+  }
 
   // Non-blocking push notification to activity owner
   const [owner] = await db
