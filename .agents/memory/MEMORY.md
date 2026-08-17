@@ -24,4 +24,5 @@
 - [Drizzle push TTY prompt](drizzle-push-tty-prompt.md) — non-interactive push dies on create-vs-rename prompt; create the new table via SQL manually, then re-push.
 - [Optimistic concurrency revision guard](optimistic-concurrency-revision.md) — condition conflict-detecting UPDATEs on updatedAt/version, not status; status-only guards miss same-outcome races.
 - [Refund-confirmed retrySafe](refund-confirmed-retry.md) — only claim "credit not lost / retry safe" after the refund write is confirmed; never key it off HTTP status alone.
+- [React types dedupe](react-types-dedupe.md) — keep one @types/react (~19.1.x, Expo-compatible) via catalog + pnpm override; two versions cause cryptic ref-typing errors.
 - [Cross-platform alert wrapper](cross-platform-alert.md) — Alert.alert is a no-op on react-native-web; always use showAlert from @/lib/alert, forwarding only provided args.
