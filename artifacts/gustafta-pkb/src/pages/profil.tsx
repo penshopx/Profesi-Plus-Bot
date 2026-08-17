@@ -5,7 +5,7 @@
  * APL 02: Daftar unit kompetensi yang diklaim beserta bukti dan status proficiency
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@clerk/react";
 import { Link } from "wouter";
@@ -14,7 +14,7 @@ import {
   type Profile, type CompetencyClaim,
 } from "@/lib/api-profile";
 import { fetchJabkerList, fetchSkkUnits } from "@/lib/api";
-import { getMissingAplFields, getAplCompleteness } from "@/lib/apl-fields";
+import { getMissingAplFields, getAplCompleteness, APL01_FIELDS } from "@/lib/apl-fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -276,9 +276,9 @@ function APL01Form({ profile, onSave }: { profile: Profile; onSave: () => void }
           <F label="Tempat Lahir" id="tempatLahir" />
           <F label="Tanggal Lahir" id="tanggalLahir" type="date" />
           <div className="space-y-1.5">
-            <Label>Jenis Kelamin</Label>
+            <Label htmlFor="jenisKelamin">Jenis Kelamin</Label>
             <Select value={form.jenisKelamin ?? ""} onValueChange={(v) => set("jenisKelamin", v)}>
-              <SelectTrigger><SelectValue placeholder="Pilih..." /></SelectTrigger>
+              <SelectTrigger id="jenisKelamin"><SelectValue placeholder="Pilih..." /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="L">Laki-laki</SelectItem>
                 <SelectItem value="P">Perempuan</SelectItem>
@@ -286,9 +286,9 @@ function APL01Form({ profile, onSave }: { profile: Profile; onSave: () => void }
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Agama</Label>
+            <Label htmlFor="agama">Agama</Label>
             <Select value={form.agama ?? ""} onValueChange={(v) => set("agama", v)}>
-              <SelectTrigger><SelectValue placeholder="Pilih..." /></SelectTrigger>
+              <SelectTrigger id="agama"><SelectValue placeholder="Pilih..." /></SelectTrigger>
               <SelectContent>
                 {AGAMA_OPTIONS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
               </SelectContent>
@@ -305,8 +305,9 @@ function APL01Form({ profile, onSave }: { profile: Profile; onSave: () => void }
           <span>Alamat Tempat Tinggal</span>
         </div>
         <div className="space-y-1.5">
-          <Label>Alamat Lengkap</Label>
+          <Label htmlFor="alamat">Alamat Lengkap</Label>
           <Textarea
+            id="alamat"
             placeholder="Jl. ..."
             value={(form.alamat as string) ?? ""}
             onChange={(e) => set("alamat", e.target.value)}
@@ -334,9 +335,9 @@ function APL01Form({ profile, onSave }: { profile: Profile; onSave: () => void }
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label>Jenjang Pendidikan</Label>
+            <Label htmlFor="jenjangPendidikan">Jenjang Pendidikan</Label>
             <Select value={form.jenjangPendidikan ?? ""} onValueChange={(v) => set("jenjangPendidikan", v)}>
-              <SelectTrigger><SelectValue placeholder="Pilih..." /></SelectTrigger>
+              <SelectTrigger id="jenjangPendidikan"><SelectValue placeholder="Pilih..." /></SelectTrigger>
               <SelectContent>
                 {PENDIDIKAN_OPTIONS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
               </SelectContent>
@@ -360,8 +361,9 @@ function APL01Form({ profile, onSave }: { profile: Profile; onSave: () => void }
           <F label="Tahun Mulai Bekerja" id="tahunMulaiBekerja" type="number" placeholder="2015" />
         </div>
         <div className="space-y-1.5">
-          <Label>Alamat Perusahaan</Label>
+          <Label htmlFor="alamatPerusahaan">Alamat Perusahaan</Label>
           <Textarea
+            id="alamatPerusahaan"
             placeholder="Jl. ..."
             value={(form.alamatPerusahaan as string) ?? ""}
             onChange={(e) => set("alamatPerusahaan", e.target.value)}
@@ -641,6 +643,8 @@ export default function ProfilPage() {
   const [missingFields, setMissingFields] = useState<string[] | null>(null);
   const [dateDialogOpen, setDateDialogOpen] = useState(false);
   const [signDate, setSignDate] = useState("");
+  const [activeTab, setActiveTab] = useState("apl01");
+  const skipDialogRestoreFocus = useRef(false);
 
   const userName = user?.fullName ?? "—";
   const email = user?.primaryEmailAddress?.emailAddress ?? "—";
@@ -663,6 +667,31 @@ export default function ProfilPage() {
     } else {
       openDateDialog();
     }
+  }
+
+  /**
+   * Close the incomplete-profile dialog, switch to the APL 01 tab, and
+   * scroll/focus the first blank required field (Input, Textarea, or
+   * SelectTrigger — all carry id={field key}).
+   */
+  function goToFirstBlankField() {
+    skipDialogRestoreFocus.current = true;
+    setMissingFields(null);
+    setActiveTab("apl01");
+    if (!profile) return;
+    const p = profile as unknown as Record<string, unknown>;
+    const firstBlank = APL01_FIELDS.find((f) => {
+      const v = p[f.key];
+      return v === null || v === undefined || (typeof v === "string" && v.trim() === "");
+    });
+    if (!firstBlank) return;
+    // Wait for the dialog to unmount and the tab content to render
+    setTimeout(() => {
+      const el = document.getElementById(firstBlank.key);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.focus({ preventScroll: true });
+    }, 250);
   }
 
   function confirmPrint() {
@@ -703,7 +732,15 @@ export default function ProfilPage() {
 
         {/* Incomplete-profile print confirmation */}
         <Dialog open={missingFields !== null} onOpenChange={(open) => { if (!open) setMissingFields(null); }}>
-          <DialogContent className="max-w-md">
+          <DialogContent
+            className="max-w-md"
+            onCloseAutoFocus={(e) => {
+              if (skipDialogRestoreFocus.current) {
+                e.preventDefault();
+                skipDialogRestoreFocus.current = false;
+              }
+            }}
+          >
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <AlertCircle className="h-5 w-5 text-amber-500" />
@@ -727,7 +764,7 @@ export default function ProfilPage() {
               </p>
             </div>
             <DialogFooter className="gap-2 sm:gap-0">
-              <Button variant="outline" onClick={() => setMissingFields(null)}>
+              <Button variant="outline" onClick={goToFirstBlankField}>
                 Kembali Lengkapi
               </Button>
               <Button
@@ -812,7 +849,7 @@ export default function ProfilPage() {
         )}
 
         {/* Tabs */}
-        <Tabs defaultValue="apl01">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="w-full grid grid-cols-2">
             <TabsTrigger value="apl01">APL 01 — Profil Diri</TabsTrigger>
             <TabsTrigger value="apl02">APL 02 — Kompetensi</TabsTrigger>
