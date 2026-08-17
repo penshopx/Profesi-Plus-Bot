@@ -1054,6 +1054,19 @@ export async function listAdminQuizzes(): Promise<QuizAdminSummary[]> {
   return res.json();
 }
 
+/** Bulk aggregate stats per quiz (attempts, avg score, pass rate) — one request. */
+export type QuizAggregateStats = {
+  quizId: number;
+  totalAttempts: number;
+  avgScore: number;
+  passRate: number;
+};
+
+export async function listAdminQuizStats(): Promise<QuizAggregateStats[]> {
+  const res = await apiFetch('/quizzes/admin/all-stats');
+  return res.json();
+}
+
 export async function adminToggleQuiz(
   id: number,
   isActive: boolean,

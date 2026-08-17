@@ -27,6 +27,8 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
   listAdminQuizzes,
+  listAdminQuizStats,
+  type QuizAggregateStats,
   adminToggleQuiz,
   adminGenerateQuestions,
   adminCreateQuiz,
@@ -34,11 +36,14 @@ import {
   type QuizAdminSummary,
   type QuizQuestionAdmin,
 } from '@/lib/api';
+import { formatQuizStatsLine } from '@/lib/quizStats';
 
 // ─── Quiz list item ────────────────────────────────────────────────────────────
 
 function QuizRow({
   quiz,
+  stats,
+  statsReady,
   onToggle,
   onStats,
   onEditQuestions,
@@ -46,12 +51,15 @@ function QuizRow({
   colors,
 }: {
   quiz: QuizAdminSummary;
+  stats?: QuizAggregateStats;
+  statsReady: boolean;
   onToggle: (id: number, next: boolean) => void;
   onStats: (id: number) => void;
   onEditQuestions: (quiz: QuizAdminSummary) => void;
   toggling: boolean;
   colors: ReturnType<typeof useColors>;
 }) {
+  const statsLine = formatQuizStatsLine(stats, statsReady);
   const typeLabel = quiz.quizType === 'proficiency' ? 'Proficiency' : 'Learning';
   const typeColor = quiz.quizType === 'proficiency' ? colors.accent : colors.primary;
 
@@ -80,6 +88,11 @@ function QuizRow({
           Lulus ≥ {quiz.passingScore}%
           {Array.isArray(quiz.questions) ? ` · ${quiz.questions.length} soal` : ''}
         </Text>
+        {statsLine ? (
+          <Text style={[qr.sub, { color: statsLine.hasActivity ? colors.primary : colors.mutedForeground }]}>
+            {statsLine.text}
+          </Text>
+        ) : null}
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
           <Pressable
             onPress={() => onStats(quiz.id)}
@@ -635,6 +648,19 @@ export default function KelolaQuizScreen() {
     retry: 1,
   });
 
+  // Bulk aggregate stats (attempts / pass rate per quiz) — single request.
+  // Non-blocking: rows render without stats if this fails or is still loading.
+  const { data: quizStats, isSuccess: statsReady } = useQuery({
+    queryKey: ['admin-quiz-stats'],
+    queryFn: listAdminQuizStats,
+    retry: 1,
+  });
+  const statsByQuizId = React.useMemo(() => {
+    const m = new Map<number, QuizAggregateStats>();
+    for (const s of quizStats ?? []) m.set(s.quizId, s);
+    return m;
+  }, [quizStats]);
+
   // ── Mutations ─────────────────────────────────────────────────────────────────
 
   const toggleMut = useMutation({
@@ -650,6 +676,7 @@ export default function KelolaQuizScreen() {
         return next;
       });
       queryClient.invalidateQueries({ queryKey: ['admin-quizzes'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-quiz-stats'] });
     },
     onError: (err: Error) => {
       Alert.alert('Gagal', err.message);
@@ -690,6 +717,7 @@ export default function KelolaQuizScreen() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-quizzes'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-quiz-stats'] });
       setView('list');
       setGeneratedQuestions([]);
       setEditingIndex(null);
@@ -707,6 +735,7 @@ export default function KelolaQuizScreen() {
       adminUpdateQuiz(id, { questions }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-quizzes'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-quiz-stats'] });
       setView('list');
       setEditQuiz(null);
       setEditQuestions([]);
@@ -882,7 +911,10 @@ export default function KelolaQuizScreen() {
                 Gagal memuat daftar quiz
               </Text>
               <Pressable
-                onPress={() => refetch()}
+                onPress={() => {
+                  refetch();
+                  queryClient.invalidateQueries({ queryKey: ['admin-quiz-stats'] });
+                }}
                 style={[ls.retryBtn, { borderColor: colors.border }]}
               >
                 <Text style={{ color: colors.primary, fontFamily: 'PlusJakartaSans_500Medium' }}>
@@ -906,6 +938,8 @@ export default function KelolaQuizScreen() {
                 <QuizRow
                   key={q.id}
                   quiz={q}
+                  stats={statsByQuizId.get(q.id)}
+                  statsReady={statsReady}
                   onToggle={handleToggle}
                   onEditQuestions={handleEditQuestions}
                   onStats={(id) =>
