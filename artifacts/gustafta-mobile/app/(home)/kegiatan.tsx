@@ -972,10 +972,19 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
   });
 
   // Restart the polling window whenever the activity is edited (updatedAt
-  // changes) — an edit may retrigger auto-mapping on the server.
+  // changes) — an edit may retrigger auto-mapping on the server. Track when
+  // the window expires so the UI can stop claiming mapping is "in progress".
+  const [skkPollExpired, setSkkPollExpired] = useState(false);
   useEffect(() => {
     skkPollStartRef.current = Date.now();
+    setSkkPollExpired(false);
+    const t = setTimeout(() => setSkkPollExpired(true), SKK_POLL_WINDOW_MS);
+    return () => clearTimeout(t);
   }, [detail?.updatedAt]);
+
+  // Mapping is only actually "in progress" while the poll window is alive and
+  // the activity is still in an auto-mappable status.
+  const skkPollingActive = !skkPollExpired && !['diajukan', 'diverifikasi'].includes(activity.status);
 
   // When the detail query returns auto-mapped SKK and the local list is still
   // empty, adopt the server result and refresh the activity list badge.
@@ -1102,6 +1111,27 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
               <Text style={[s.sectionLabel, { color: colors.mutedForeground }]}>
                 Mapping SKK (Field 5) — {skk.length} unit
               </Text>
+              {skk.length === 0 && (
+                skkPollingActive ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <ActivityIndicator size="small" color={colors.mutedForeground} />
+                    <Text style={{ fontSize: 12, fontFamily: 'PlusJakartaSans_400Regular', fontStyle: 'italic', color: colors.mutedForeground, flex: 1 }}>
+                      Platform sedang memetakan SKK secara otomatis…
+                    </Text>
+                  </View>
+                ) : activity.status !== 'diverifikasi' ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+                    <Feather name="alert-circle" size={14} color="#B45309" style={{ marginTop: 1 }} />
+                    <Text style={{ fontSize: 12, fontFamily: 'PlusJakartaSans_400Regular', color: '#B45309', flex: 1 }}>
+                      Pemetaan otomatis belum menemukan hasil. Tambahkan unit SKK secara manual lewat tombol di bawah.
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={{ fontSize: 12, fontFamily: 'PlusJakartaSans_400Regular', fontStyle: 'italic', color: colors.mutedForeground, marginBottom: 10 }}>
+                    Belum ada unit SKK yang dipetakan.
+                  </Text>
+                )
+              )}
               <SkkManager skk={skk} onUpdate={setSkk} activityId={activity.id} colors={colors} onDirtyChange={handleSkkDirtyChange} />
 
               {/* Actions */}
@@ -1184,6 +1214,7 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
             // polling window and refetch the detail so results appear without
             // a manual refresh, even if the initial window already expired.
             skkPollStartRef.current = Date.now();
+            setSkkPollExpired(false);
             qc.invalidateQueries({ queryKey: ['kegiatan-detail', activity.id] });
             onEdited(updated);
           }}

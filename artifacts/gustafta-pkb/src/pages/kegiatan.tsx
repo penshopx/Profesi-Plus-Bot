@@ -562,10 +562,19 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
   });
 
   // Restart the polling window whenever the activity is edited (updatedAt
-  // changes) — an edit may retrigger auto-mapping on the server.
+  // changes) — an edit may retrigger auto-mapping on the server. Track when
+  // the window expires so the UI can stop claiming mapping is "in progress".
+  const [skkPollExpired, setSkkPollExpired] = useState(false);
   useEffect(() => {
     skkPollStartRef.current = Date.now();
+    setSkkPollExpired(false);
+    const t = setTimeout(() => setSkkPollExpired(true), SKK_POLL_WINDOW_MS);
+    return () => clearTimeout(t);
   }, [full.updatedAt]);
+
+  // Mapping is only actually "in progress" while the poll window is alive and
+  // the activity is still in an auto-mappable status.
+  const skkPollingActive = !skkPollExpired && !["diajukan", "diverifikasi"].includes(full.status);
 
   // When auto-mapped SKK arrives, sync the list view (SKK count badge).
   const skkCount = (full.skk ?? []).length;
@@ -820,7 +829,19 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
                 )}
 
                 {(full.skk ?? []).length === 0 && skkSuggestions.length === 0 && (
-                  <p className="text-xs text-muted-foreground italic">Platform sedang memetakan SKK secara otomatis. Klik "Saran dari AI" untuk memicu ulang.</p>
+                  skkPollingActive ? (
+                    <p className="text-xs text-muted-foreground italic flex items-center gap-1.5">
+                      <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                      Platform sedang memetakan SKK secara otomatis…
+                    </p>
+                  ) : full.status !== "diverifikasi" ? (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>Pemetaan otomatis belum menemukan hasil. Klik <strong>"Saran dari AI"</strong> untuk mendapatkan rekomendasi unit SKK.</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">Belum ada unit SKK yang dipetakan.</p>
+                  )
                 )}
               </div>
 
