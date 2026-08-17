@@ -283,6 +283,9 @@ export async function generateExum(
   /** True when the quiz context builder failed during generation — the Exum
    * was produced without quiz evidence and may be weaker. */
   quizContextUnavailable?: boolean;
+  /** Personalisation blocks that failed to load during generation
+   * (e.g. ["profile", "kegiatan"]) — the Exum was produced without that data. */
+  unavailableContextBlocks?: string[];
 }> {
   const res = await apiFetch('/chat/generate-exum', {
     method: 'POST',

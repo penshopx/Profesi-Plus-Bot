@@ -723,7 +723,11 @@ router.post("/chat/generate-exum", exumRateLimiter, async (req, res): Promise<vo
       }, req.log).catch(() => {/* already logged inside helper */});
     }
 
-    res.json({ content, conversationId, quizContextUnavailable });
+    // unavailableContextBlocks lists every monitored personalisation block that
+    // failed to load (and whose data the user actually has), so the clients can
+    // show a targeted warning banner. quizContextUnavailable is kept for
+    // backwards compatibility with older clients.
+    res.json({ content, conversationId, quizContextUnavailable, unavailableContextBlocks: lostBlocks });
   } catch (err) {
     const refunded = await refundReservation();
     req.log.error({ err }, "Generate Exum error");

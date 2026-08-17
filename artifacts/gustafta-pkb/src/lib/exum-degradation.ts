@@ -25,3 +25,25 @@ export function parseExumDegradation(content: string): ParsedExum {
     degradationNote: match[1].trim(),
   };
 }
+
+/**
+ * Human-readable labels for the personalisation blocks the server reports in
+ * `unavailableContextBlocks`. Must cover the server's monitored block ids
+ * (quiz, profile, competency, kegiatan); unknown ids fall through as-is.
+ */
+const EXUM_BLOCK_LABELS: Record<string, string> = {
+  quiz: "data skor quiz",
+  profile: "data profil APL 01",
+  competency: "hasil analisis kompetensi (Studio Kompetensi)",
+  kegiatan: "catatan kegiatan PKB",
+};
+
+/** "profile, kegiatan" → "Data profil APL 01 dan catatan kegiatan PKB". */
+export function formatExumMissingBlocks(blocks: string[]): string {
+  const labels = blocks.map((b) => EXUM_BLOCK_LABELS[b] ?? b);
+  const joined =
+    labels.length <= 1
+      ? (labels[0] ?? "")
+      : `${labels.slice(0, -1).join(", ")} dan ${labels[labels.length - 1]}`;
+  return joined.charAt(0).toUpperCase() + joined.slice(1);
+}

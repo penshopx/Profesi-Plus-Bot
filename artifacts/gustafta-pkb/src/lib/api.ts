@@ -213,7 +213,14 @@ export async function patchEvidence(
 
 export async function generateExum(
   conversationId: number
-): Promise<{ content: string; conversationId: number; quizContextUnavailable?: boolean }> {
+): Promise<{
+  content: string;
+  conversationId: number;
+  quizContextUnavailable?: boolean;
+  /** Personalisation blocks that failed to load during generation
+   * (e.g. ["profile", "kegiatan"]) — the Exum was produced without that data. */
+  unavailableContextBlocks?: string[];
+}> {
   const r = await fetch(`${BASE}/chat/generate-exum`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

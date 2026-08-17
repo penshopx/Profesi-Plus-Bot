@@ -260,6 +260,7 @@ describe("POST /api/chat/generate-exum — quiz-failure warning contract", () =>
 
     expect(res.status).toBe(200);
     expect(res.body.quizContextUnavailable).toBe(true);
+    expect(res.body.unavailableContextBlocks).toEqual(["quiz"]);
     expect(res.body.content).toContain(EXUM_BODY);
     expect(res.body.content).toContain(FOOTER_MARKER);
     expect(res.body.content).toMatch(QUIZ_FOOTER_LABEL);
@@ -276,6 +277,7 @@ describe("POST /api/chat/generate-exum — quiz-failure warning contract", () =>
 
     expect(res.status).toBe(200);
     expect(res.body.quizContextUnavailable).toBe(false);
+    expect(res.body.unavailableContextBlocks).toEqual([]);
     expect(res.body.content).toBe(EXUM_BODY);
     expect(res.body.content).not.toContain(FOOTER_MARKER);
     expect(res.body.content).not.toMatch(QUIZ_FOOTER_LABEL);
@@ -310,6 +312,7 @@ describe("POST /api/chat/generate-exum — quiz-failure warning contract", () =>
 
     expect(res.status).toBe(200);
     expect(res.body.quizContextUnavailable).toBe(false);
+    expect(res.body.unavailableContextBlocks).toEqual([]);
     expect(res.body.content).toBe(EXUM_BODY);
     expect(res.body.content).not.toContain(FOOTER_MARKER);
   });

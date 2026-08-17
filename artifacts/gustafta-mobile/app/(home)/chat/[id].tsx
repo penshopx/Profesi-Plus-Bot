@@ -33,7 +33,7 @@ import {
   type Message,
   type QuizCoverageGap,
 } from '@/lib/api';
-import { parseExumDegradation } from '@/lib/exum-degradation';
+import { parseExumDegradation, formatExumMissingBlocks } from '@/lib/exum-degradation';
 import { saveProjectBrainUsage } from '@/lib/project-brain-usage';
 import { Audio } from 'expo-av';
 import { useAuth } from '@clerk/expo';
@@ -333,9 +333,9 @@ export function ExumModal({
   /** True while the background coverage check for an already-generated Exum is in flight.
    * Refresh is disabled until this resolves so the gap gate cannot be bypassed. */
   const [coverageLoading, setCoverageLoading] = useState(false);
-  /** True when the server reported the quiz context builder failed during the
-   * last generation (quizContextUnavailable) — the Exum lacks quiz evidence. */
-  const [quizWarning, setQuizWarning] = useState(false);
+  /** Personalisation blocks the server reported as failed during the last
+   * generation (unavailableContextBlocks) — the Exum lacks that data. */
+  const [missingBlocks, setMissingBlocks] = useState<string[]>([]);
   // Split the context-degradation footer (if any) out of the Exum so it renders
   // as a distinct amber warning callout instead of ordinary body text.
   const parsedExum = useMemo(() => parseExumDegradation(content), [content]);
@@ -355,7 +355,11 @@ export function ExumModal({
       setGenError('');
       setCreditsSafe(false);
       const result = await generateExum(conversationId);
-      setQuizWarning(result.quizContextUnavailable === true);
+      // Prefer the block list; fall back to the legacy quiz flag for older servers.
+      setMissingBlocks(
+        result.unavailableContextBlocks ??
+          (result.quizContextUnavailable === true ? ['quiz'] : []),
+      );
       setContent(result.content);
       onGenerated?.(result.content);
       setPhase('done');
@@ -424,7 +428,7 @@ export function ExumModal({
     if (!visible) return;
     if (existingContent) {
       setContent(existingContent);
-      setQuizWarning(false);
+      setMissingBlocks([]);
       setPhase('done');
       // Load gaps in background for the informational banner.
       // Refresh is blocked (coverageLoading=true) until this settles so the
@@ -439,7 +443,7 @@ export function ExumModal({
         .finally(() => setCoverageLoading(false));
     } else {
       setContent('');
-      setQuizWarning(false);
+      setMissingBlocks([]);
       setCoverageGaps([]);
       setClaimsCount(null);
       setGapsExpanded(false);
@@ -736,13 +740,13 @@ export function ExumModal({
               </View>
             )}
             {coverageGaps.length > 0 && <GapList />}
-            {quizWarning && (
+            {missingBlocks.length > 0 && (
               <View style={em.degradationBanner} testID="exum-quiz-warning">
                 <Feather name="alert-triangle" size={16} color="#92400E" style={{ marginTop: 2 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={em.degradationText}>
-                    <Text style={{ fontFamily: 'PlusJakartaSans_700Bold' }}>Data kuis tidak dapat dimuat. </Text>
-                    Exum ini dibuat tanpa hasil kuismu, sehingga buktinya mungkin lebih lemah.
+                    <Text style={{ fontFamily: 'PlusJakartaSans_700Bold' }}>{formatExumMissingBlocks(missingBlocks)} tidak dapat dimuat. </Text>
+                    Exum ini dibuat tanpa data tersebut, sehingga isinya mungkin kurang lengkap.
                   </Text>
                   <Pressable
                     onPress={handleRefresh}
