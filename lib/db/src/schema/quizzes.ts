@@ -31,6 +31,7 @@ export const quizzes = pgTable("quizzes", {
   // Context — used to scope quizzes to a jabker or unit
   jabker: text("jabker"),            // e.g. "ahli_k3_konstruksi" (null = applies to all)
   skkUnitCode: text("skk_unit_code"), // link to a specific SKK unit if applicable
+  skkUnitName: text("skk_unit_name"), // human-readable unit name shown in the admin form
 
   quizType: text("quiz_type").notNull().default("learning"),  // QuizType
   passingScore: integer("passing_score").notNull().default(70), // % to pass
