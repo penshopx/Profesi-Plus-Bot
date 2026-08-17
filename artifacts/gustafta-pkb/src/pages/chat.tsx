@@ -1213,6 +1213,8 @@ export default function ChatPage() {
   // a passing quiz attempt, shown during synthesis/done phases.
   const [gapsExpanded, setGapsExpanded] = useState(false);
   const [gapBannerDismissed, setGapBannerDismissed] = useState(false);
+  // #233: informational "no APL 02 claims yet" nudge dismissal (blue banner)
+  const [noClaimsBannerDismissed, setNoClaimsBannerDismissed] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
@@ -1304,6 +1306,9 @@ export default function ChatPage() {
     staleTime: 60 * 1000,
   });
   const coverageGaps = quizCoverage?.gaps ?? [];
+  // #233: total APL 02 claims — when 0, show the informational "no claims yet"
+  // nudge (blue) instead of the amber gap warning, mirroring the mobile ExumModal.
+  const coverageClaimsCount = quizCoverage?.claimsCount ?? null;
 
   // Studio Kompetensi nudge — server canonicalises the jabker via findJabkerGroup
   // so the match is always exact (by jabkerId). Gate banner only on success so we
@@ -1846,6 +1851,31 @@ export default function ChatPage() {
             </button>
             <button onClick={() => setExumQuizWarning(false)} className="shrink-0 p-1.5 hover:opacity-70" title="Tutup peringatan">
               <X className="w-3.5 h-3.5 text-amber-700" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* No-claims nudge (#233) — informational, mirrors mobile ExumModal's no_claims phase */}
+      {inSynthesisOrDone && coverageClaimsCount === 0 && !noClaimsBannerDismissed && (
+        <div className="border-b border-blue-200 bg-blue-50/80 px-4 py-2.5 shrink-0">
+          <div className="max-w-3xl mx-auto flex items-center gap-2 flex-wrap">
+            <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
+            <span className="text-sm text-blue-800 flex-1 min-w-[200px]">
+              <strong>Belum ada klaim kompetensi.</strong>{" "}
+              <span className="hidden sm:inline">
+                Isi klaim APL 02 Anda terlebih dahulu agar Exum bisa memuat bukti kompetensi yang lebih kuat.
+              </span>
+            </span>
+            <a
+              href="/profil"
+              className="flex items-center gap-1.5 bg-white border border-blue-300 text-blue-700 px-3 py-1.5 rounded-xl text-xs font-semibold hover:bg-blue-100 transition-colors"
+              title="Buka halaman profil untuk mengisi klaim APL 02"
+            >
+              <Shield className="w-3.5 h-3.5" /> Isi Klaim APL 02
+            </a>
+            <button onClick={() => setNoClaimsBannerDismissed(true)} className="shrink-0 p-1.5 hover:opacity-70" title="Tutup pemberitahuan">
+              <X className="w-3.5 h-3.5 text-blue-700" />
             </button>
           </div>
         </div>

@@ -252,7 +252,7 @@ export interface QuizCoverageGap {
   quizTitle: string | null;
 }
 
-export async function getQuizCoverage(): Promise<{ gaps: QuizCoverageGap[] }> {
+export async function getQuizCoverage(): Promise<{ gaps: QuizCoverageGap[]; claimsCount?: number }> {
   return (await f("/profiles/me/quiz-coverage")).json();
 }
 
