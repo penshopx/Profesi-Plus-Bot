@@ -69,7 +69,7 @@ export default function QuizScreen() {
           : Haptics.NotificationFeedbackType.Warning,
       );
       // Quiz evidence changed — coverage gaps and summaries may be stale.
-      queryClient.invalidateQueries({ queryKey: ['quiz-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['my-quiz-summary'] });
     },
   });
 

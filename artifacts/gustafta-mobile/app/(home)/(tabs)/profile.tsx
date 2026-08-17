@@ -295,6 +295,24 @@ export default function ProfileScreen() {
         />
       </Pressable>
 
+      {/* Quiz list shortcut */}
+      <Pressable
+        testID="btn-goto-quiz-list"
+        onPress={() => router.push('/(home)/quiz' as any)}
+        style={({ pressed }) => [
+          styles.infoCard,
+          { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+        ]}
+      >
+        <InfoRow
+          icon="help-circle"
+          label="Kuis Kompetensi"
+          value="Lihat semua kuis →"
+          colors={colors}
+          chevron
+        />
+      </Pressable>
+
       {/* APL 01 edit */}
       <Pressable
         testID="btn-edit-apl"

@@ -3,7 +3,7 @@
  *
  * Covers the pass/fail badge logic (badge must come from the POST attempt,
  * never the pre), delta display, pre-only state, proficiency rows, jabker
- * filtering, the empty state with its marketplace link, and the error state.
+ * filtering, the empty state with its quiz-list link, and the error state.
  *
  * Uses react-test-renderer directly (see .agents/memory/react-native-jest-setup.md).
  */
@@ -228,14 +228,14 @@ describe('QuizSummaryPanel', () => {
     expect(allText(root)).toContain('2/2 lulus');
   });
 
-  it('empty state shows hint text, "Belum ada quiz" count, and marketplace link', () => {
+  it('empty state shows hint text, "Belum ada quiz" count, and quiz-list link', () => {
     mockQueryState = { data: [], isLoading: false, isError: false };
     const root = renderPanel();
     openPanel(root);
     const t = allText(root);
     expect(t).toContain('Belum ada quiz');
     expect(t).toContain('Kamu belum mengerjakan quiz apapun');
-    expect(t).toContain('Kerjakan quiz di Marketplace');
+    expect(t).toContain('Lihat daftar kuis yang tersedia');
 
     const link = root.root.find(
       (n) =>
@@ -246,7 +246,7 @@ describe('QuizSummaryPanel', () => {
     act(() => {
       link.props.onPress();
     });
-    expect(mockPush).toHaveBeenCalledWith('/(home)/(tabs)/marketplace');
+    expect(mockPush).toHaveBeenCalledWith('/(home)/quiz');
   });
 
   it('jabker filter that removes everything also shows the empty state', () => {
@@ -261,7 +261,7 @@ describe('QuizSummaryPanel', () => {
     openPanel(root);
     const t = allText(root);
     expect(t).toContain('Belum ada quiz');
-    expect(t).toContain('Kerjakan quiz di Marketplace');
+    expect(t).toContain('Lihat daftar kuis yang tersedia');
   });
 
   it('error state shows the failure message and no empty-state link', () => {
@@ -270,7 +270,7 @@ describe('QuizSummaryPanel', () => {
     openPanel(root);
     const t = allText(root);
     expect(t).toContain('Gagal memuat data quiz');
-    expect(t).not.toContain('Kerjakan quiz di Marketplace');
+    expect(t).not.toContain('Lihat daftar kuis yang tersedia');
     // No count in the header while there's no data
     expect(t).not.toContain('lulus');
   });

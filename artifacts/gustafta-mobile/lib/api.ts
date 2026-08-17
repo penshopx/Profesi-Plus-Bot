@@ -940,6 +940,25 @@ export interface QuizFull {
   questions: QuizPublicQuestion[];
 }
 
+/** One active quiz as returned by the list endpoint (no questions). */
+export type QuizListItem = Omit<QuizFull, 'questions'>;
+
+/**
+ * Lists all active quizzes (questions stripped server-side).
+ * Optional filters: jabker and quiz type.
+ */
+export async function listQuizzes(params?: {
+  jabker?: string;
+  type?: 'learning' | 'proficiency';
+}): Promise<QuizListItem[]> {
+  const qs = new URLSearchParams();
+  if (params?.jabker) qs.set('jabker', params.jabker);
+  if (params?.type) qs.set('type', params.type);
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await apiFetch(`/quizzes${suffix}`);
+  return res.json();
+}
+
 /** Fetches one active quiz with its questions (answers stripped server-side). */
 export async function getQuiz(id: number): Promise<QuizFull> {
   const res = await apiFetch(`/quizzes/${id}`);

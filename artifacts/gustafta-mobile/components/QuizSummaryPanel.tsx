@@ -184,13 +184,13 @@ export function QuizSummaryPanel({
                 saat membuat Exum.
               </Text>
               <Pressable
-                onPress={() => router.push('/(home)/(tabs)/marketplace')}
+                onPress={() => router.push('/(home)/quiz' as any)}
                 style={s.linkRow}
                 accessibilityRole="button"
               >
                 <Feather name="external-link" size={13} color={colors.primary} />
                 <Text style={[s.linkText, { color: colors.primary }]}>
-                  Kerjakan quiz di Marketplace
+                  Lihat daftar kuis yang tersedia
                 </Text>
               </Pressable>
             </View>
