@@ -319,6 +319,9 @@ export function ExumModal({
   /** True while the background coverage check for an already-generated Exum is in flight.
    * Refresh is disabled until this resolves so the gap gate cannot be bypassed. */
   const [coverageLoading, setCoverageLoading] = useState(false);
+  /** True when the server reported the quiz context builder failed during the
+   * last generation (quizContextUnavailable) — the Exum lacks quiz evidence. */
+  const [quizWarning, setQuizWarning] = useState(false);
   // Split the context-degradation footer (if any) out of the Exum so it renders
   // as a distinct amber warning callout instead of ordinary body text.
   const parsedExum = useMemo(() => parseExumDegradation(content), [content]);
@@ -338,6 +341,7 @@ export function ExumModal({
       setGenError('');
       setCreditsSafe(false);
       const result = await generateExum(conversationId);
+      setQuizWarning(result.quizContextUnavailable === true);
       setContent(result.content);
       onGenerated?.(result.content);
       setPhase('done');
@@ -406,6 +410,7 @@ export function ExumModal({
     if (!visible) return;
     if (existingContent) {
       setContent(existingContent);
+      setQuizWarning(false);
       setPhase('done');
       // Load gaps in background for the informational banner.
       // Refresh is blocked (coverageLoading=true) until this settles so the
@@ -420,6 +425,7 @@ export function ExumModal({
         .finally(() => setCoverageLoading(false));
     } else {
       setContent('');
+      setQuizWarning(false);
       setCoverageGaps([]);
       setClaimsCount(null);
       setGapsExpanded(false);
@@ -716,6 +722,30 @@ export function ExumModal({
               </View>
             )}
             {coverageGaps.length > 0 && <GapList />}
+            {quizWarning && (
+              <View style={em.degradationBanner} testID="exum-quiz-warning">
+                <Feather name="alert-triangle" size={16} color="#92400E" style={{ marginTop: 2 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={em.degradationText}>
+                    <Text style={{ fontFamily: 'PlusJakartaSans_700Bold' }}>Data kuis tidak dapat dimuat. </Text>
+                    Exum ini dibuat tanpa hasil kuismu, sehingga buktinya mungkin lebih lemah.
+                  </Text>
+                  <Pressable
+                    onPress={handleRefresh}
+                    disabled={coverageLoading}
+                    style={em.quizWarningBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel="Generate ulang Exum (menggunakan 1 kredit)"
+                    testID="exum-quiz-warning-retry"
+                  >
+                    <Feather name="refresh-cw" size={12} color="#92400E" />
+                    <Text style={em.quizWarningBtnText}>
+                      Generate Ulang (menggunakan 1 kredit)
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
             {parsedExum.degradationNote && (
               <View style={em.degradationBanner}>
                 <Feather name="alert-triangle" size={16} color="#92400E" style={{ marginTop: 2 }} />
@@ -768,6 +798,24 @@ const em = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     fontFamily: 'PlusJakartaSans_400Regular',
+    color: '#92400E',
+  },
+  quizWarningBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    backgroundColor: '#FDE68A',
+  },
+  quizWarningBtnText: {
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_700Bold',
     color: '#92400E',
   },
   // ── Quota badge ─────────────────────────────────────────────────────────────

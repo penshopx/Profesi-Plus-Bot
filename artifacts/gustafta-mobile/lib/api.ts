@@ -278,7 +278,12 @@ export async function getMyUsage(): Promise<UsageInfo> {
 
 export async function generateExum(
   conversationId: number,
-): Promise<{ content: string }> {
+): Promise<{
+  content: string;
+  /** True when the quiz context builder failed during generation — the Exum
+   * was produced without quiz evidence and may be weaker. */
+  quizContextUnavailable?: boolean;
+}> {
   const res = await apiFetch('/chat/generate-exum', {
     method: 'POST',
     body: JSON.stringify({ conversationId }),
