@@ -17,6 +17,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getMyPlan, listProjectBrain, getMyAplProfile, getMyAplClaims, getMe } from '@/lib/api';
 import { buildAplHtml } from '@/lib/apl-html';
+import { getAplCompleteness } from '@workspace/apl-fields';
 import { clearUserMarketplaceCaches } from '@/lib/marketplaceCache';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -137,19 +138,11 @@ export default function ProfileScreen() {
 
   const isAdmin = meData?.role === 'admin';
 
-  // Completeness — same fields as web CompletenessBar (profil.tsx)
-  const aplCompleteness = React.useMemo(() => {
-    if (!aplProfile) return null;
-    const fields = [
-      aplProfile.nik, aplProfile.tanggalLahir, aplProfile.jenisKelamin,
-      aplProfile.alamat, aplProfile.kotaKabupaten, aplProfile.provinsi,
-      aplProfile.jenjangPendidikan, aplProfile.namaInstitusi,
-      aplProfile.namaPerusahaan, aplProfile.jabatanSekarang,
-      aplProfile.nomorSkk,
-    ];
-    const filled = fields.filter(Boolean).length;
-    return Math.round((filled / fields.length) * 100);
-  }, [aplProfile]);
+  // Completeness — shared field list with web CompletenessBar (@workspace/apl-fields)
+  const aplCompleteness = React.useMemo(
+    () => (aplProfile ? getAplCompleteness(aplProfile) : null),
+    [aplProfile],
+  );
 
   const handleSignOut = async () => {
     // Clear user-scoped marketplace caches so watch history never leaks to
