@@ -289,11 +289,39 @@ router.delete("/kegiatan/:id", requireAuth, async (req, res) => {
   if (!userId) return res.status(401).json({ error: "user not found" });
 
   const id = parseInt(req.params.id, 10);
-  const [existing] = await db.select({ id: pkbActivities.id, userId: pkbActivities.userId })
+  const [existing] = await db
+    .select({ id: pkbActivities.id, userId: pkbActivities.userId, marketplaceId: pkbActivities.marketplaceId })
     .from(pkbActivities).where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
   if (!existing) return res.status(404).json({ error: "not found" });
 
   await db.delete(pkbActivities).where(eq(pkbActivities.id, id));
+
+  // When the deleted activity was linked to a marketplace course, remove the
+  // auto-created watch entries — but only if no other PKB activity by the same
+  // user still references the same course (same "still referenced" check as PATCH).
+  if (existing.marketplaceId) {
+    const [stillReferenced] = await db
+      .select({ id: pkbActivities.id })
+      .from(pkbActivities)
+      .where(and(
+        eq(pkbActivities.userId, userId),
+        eq(pkbActivities.marketplaceId, existing.marketplaceId),
+      ))
+      .limit(1);
+    if (!stillReferenced) {
+      await Promise.all([
+        db.delete(marketplaceWatches).where(and(
+          eq(marketplaceWatches.userId, userId),
+          eq(marketplaceWatches.courseId, existing.marketplaceId),
+        )),
+        db.delete(marketplaceWatched).where(and(
+          eq(marketplaceWatched.userId, userId),
+          eq(marketplaceWatched.courseId, existing.marketplaceId),
+        )),
+      ]);
+    }
+  }
+
   res.json({ success: true });
 });
 
