@@ -43,6 +43,8 @@ interface Activity {
   penyelenggara?: string; namaInstruktur?: string; uraianSingkat?: string;
   linkRekaman?: string; status: string; jenisPkb?: string; jpPkb?: number;
   marketplaceId?: string; askomNote?: string | null; createdAt: string; updatedAt: string;
+  unsurKegiatan?: string | null; sifatKegiatan?: string | null;
+  isPendidikanNonformal?: boolean; angkaKredit?: number | null;
   skk: SkkUnit[]; docCount?: number; latestJourney?: JourneyEntry | null;
   docs?: ActivityDoc[]; journey?: JourneyEntry[]; checklist?: ChecklistRecord | null;
 }
@@ -334,6 +336,10 @@ function ActivityFormModal({ mode, initial, prefill, onClose, onSaved }: {
     jpPkb:           initial?.jpPkb           ?? "",
     uraianSingkat:   initial?.uraianSingkat   ?? "",
     linkRekaman:     initial?.linkRekaman     ?? "",
+    unsurKegiatan:   initial?.unsurKegiatan   ?? "",
+    sifatKegiatan:   initial?.sifatKegiatan   ?? "",
+    isPendidikanNonformal: initial?.isPendidikanNonformal ?? false,
+    angkaKredit:     initial?.angkaKredit != null ? String(initial.angkaKredit) : "",
   });
   const [skk, setSkk] = useState<SkkUnit[]>(initial?.skk ?? []);
 
@@ -351,6 +357,10 @@ function ActivityFormModal({ mode, initial, prefill, onClose, onSaved }: {
       const payload = {
         ...form,
         jpPkb: form.jpPkb ? Number(form.jpPkb) : undefined,
+        unsurKegiatan: form.unsurKegiatan || null,
+        sifatKegiatan: form.sifatKegiatan || null,
+        isPendidikanNonformal: form.isPendidikanNonformal === true,
+        angkaKredit: form.angkaKredit ? Number(form.angkaKredit) : null,
         // Marketplace link — auto-marks course as watched server-side when present
         ...(prefill ? {
           marketplaceId:    prefill.marketplaceId,
@@ -453,6 +463,53 @@ function ActivityFormModal({ mode, initial, prefill, onClose, onSaved }: {
                   <Input type="number" min="1" value={form.jpPkb} onChange={e => set("jpPkb", e.target.value)}
                     placeholder="Jam pelajaran" />
                 </div>
+              </div>
+
+              {/* Atribut komposisi Nilai Kredit — Pasal 20 Permen PUPR 12/2021 */}
+              <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Atribut Nilai Kredit <span className="normal-case font-normal">(Pasal 20 Permen PUPR 12/2021)</span>
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Unsur Kegiatan</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[["utama","Utama"],["penunjang","Penunjang"]].map(([v, l]) => (
+                        <button key={v} type="button" onClick={() => set("unsurKegiatan", form.unsurKegiatan === v ? "" : v)}
+                          className={`py-1.5 rounded-lg border text-[11px] font-medium transition-colors ${form.unsurKegiatan === v ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40"}`}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Sifat Kegiatan</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[["khusus","Khusus"],["umum","Umum"]].map(([v, l]) => (
+                        <button key={v} type="button" onClick={() => set("sifatKegiatan", form.sifatKegiatan === v ? "" : v)}
+                          className={`py-1.5 rounded-lg border text-[11px] font-medium transition-colors ${form.sifatKegiatan === v ? "bg-primary text-primary-foreground border-primary" : "border-border hover:border-primary/40"}`}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 items-end">
+                  <div>
+                    <label className="text-[11px] font-semibold text-muted-foreground mb-1 block">Perkiraan Angka Kredit (SKPK)</label>
+                    <Input type="number" min="0" step="0.1" value={form.angkaKredit}
+                      onChange={e => set("angkaKredit", e.target.value)} placeholder="mis. 12.8" />
+                  </div>
+                  <label className="flex items-center gap-2 text-[11px] text-muted-foreground pb-2 cursor-pointer">
+                    <input type="checkbox" checked={form.isPendidikanNonformal}
+                      onChange={e => set("isPendidikanNonformal", e.target.checked)}
+                      className="w-3.5 h-3.5 accent-[var(--primary)]" />
+                    Termasuk pendidikan nonformal
+                  </label>
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-snug">
+                  Sifat <strong>khusus</strong> = materi sesuai subklasifikasi SKK Anda. Atribut ini dipakai pemeriksa komposisi Nilai Kredit (utama ≥75%, nonformal ≤25%, terverifikasi ≥60%, khusus ≥60%).
+                </p>
               </div>
             </>
           )}
@@ -580,7 +637,7 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
   const skkCount = (full.skk ?? []).length;
   useEffect(() => {
     if (skkCount > 0) {
-      queryClient.invalidateQueries({ queryKey: ["kegiatan"] });
+      queryClient.invalidateQueries({ queryKey: ["kegiatan"] }); queryClient.invalidateQueries({ queryKey: ["kegiatan-komposisi"] });
     }
   }, [skkCount, queryClient]);
 
@@ -594,7 +651,7 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
     try {
       await apiFetch(`/kegiatan/${full.id}/ajukan`, { method: "POST" });
       toast({ title: full.status === "ditolak" ? "Dokumentasi diajukan ulang untuk verifikasi" : "Dokumentasi berhasil diajukan untuk verifikasi" });
-      queryClient.invalidateQueries({ queryKey: ["kegiatan"] });
+      queryClient.invalidateQueries({ queryKey: ["kegiatan"] }); queryClient.invalidateQueries({ queryKey: ["kegiatan-komposisi"] });
       refetch();
     } catch (err: unknown) {
       toast({ title: "Gagal mengajukan", description: String(err), variant: "destructive" });
@@ -629,7 +686,7 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
     const updated = [...existing, { skkCode: s.skkCode, skkName: s.skkName, jabkerName: s.jabkerName }];
     try {
       await apiFetch(`/kegiatan/${full.id}/skk`, { method: "PUT", body: JSON.stringify({ skk: updated }) });
-      queryClient.invalidateQueries({ queryKey: ["kegiatan"] });
+      queryClient.invalidateQueries({ queryKey: ["kegiatan"] }); queryClient.invalidateQueries({ queryKey: ["kegiatan-komposisi"] });
       refetch();
       setSkkSuggestions(prev => prev.filter(x => x.skkCode !== s.skkCode));
     } catch (err: unknown) {
@@ -639,7 +696,7 @@ function ActivityDetail({ activity, onClose, onEdit, onDeleted }: {
 
   const deleteMut = useMutation({
     mutationFn: () => apiFetch(`/kegiatan/${full.id}`, { method: "DELETE" }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["kegiatan"] }); onDeleted(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["kegiatan"] }); queryClient.invalidateQueries({ queryKey: ["kegiatan-komposisi"] }); onDeleted(); },
   });
 
   const allDocs = full.docs ?? [];
@@ -955,6 +1012,95 @@ function ActivityCard({ activity, onClick }: { activity: Activity; onClick: () =
   );
 }
 
+// ─── Komposisi Nilai Kredit (Pasal 20 Permen PUPR 12/2021) ────────────────────
+
+interface KomposisiRule {
+  id: string; label: string; requirement: string;
+  actualPct: number; thresholdPct: number; direction: "min" | "max";
+  ok: boolean; detail: string;
+}
+interface KomposisiSummary {
+  reference: string; totalAngkaKredit: number;
+  countedActivities: number; totalActivities: number;
+  missingAngkaKredit: number; missingAtribut: number;
+  allOk: boolean; rules: KomposisiRule[];
+}
+
+function KomposisiCard() {
+  const { data } = useQuery<KomposisiSummary>({
+    queryKey: ["kegiatan-komposisi"],
+    queryFn: () => apiFetch("/kegiatan/komposisi"),
+    staleTime: 30 * 1000,
+  });
+  if (!data) return null;
+
+  const incomplete = data.missingAngkaKredit + data.missingAtribut > 0;
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 mb-6 space-y-3">
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <div>
+          <h2 className="text-sm font-bold flex items-center gap-2">
+            <Award className="w-4 h-4 text-primary" /> Komposisi Nilai Kredit
+          </h2>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            {data.reference} — total {data.totalAngkaKredit} SKPK dari {data.countedActivities} kegiatan terhitung
+          </p>
+        </div>
+        {data.countedActivities > 0 && (
+          <span className={`text-[10px] font-semibold px-2 py-1 rounded-full border ${
+            data.allOk
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : "bg-amber-50 text-amber-700 border-amber-200"
+          }`}>
+            {data.allOk ? "Semua syarat komposisi terpenuhi" : "Komposisi belum memenuhi syarat"}
+          </span>
+        )}
+      </div>
+
+      {data.countedActivities === 0 ? (
+        <p className="text-xs text-muted-foreground bg-muted/30 rounded-xl px-3 py-2.5">
+          Isi <strong>Perkiraan Angka Kredit</strong> serta atribut <strong>unsur</strong> dan <strong>sifat</strong> pada setiap kegiatan agar komposisi dapat dihitung.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {data.rules.map(r => (
+            <div key={r.id} className={`rounded-xl border p-3 space-y-1.5 ${r.ok ? "border-emerald-200 bg-emerald-50/50" : "border-rose-200 bg-rose-50/50"}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold flex items-center gap-1.5">
+                  {r.ok
+                    ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    : <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
+                  {r.label}
+                </span>
+                <span className={`text-[11px] font-bold ${r.ok ? "text-emerald-700" : "text-rose-600"}`}>
+                  {r.actualPct}% <span className="font-normal text-muted-foreground">/ {r.requirement}</span>
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div className={`h-full rounded-full ${r.ok ? "bg-emerald-500" : "bg-rose-400"}`}
+                  style={{ width: `${Math.min(100, r.actualPct)}%` }} />
+              </div>
+              <p className="text-[10px] text-muted-foreground">{r.detail}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {incomplete && data.totalActivities > 0 && (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>
+            {data.missingAngkaKredit > 0 && <>{data.missingAngkaKredit} kegiatan belum punya perkiraan Angka Kredit. </>}
+            {data.missingAtribut > 0 && <>{data.missingAtribut} kegiatan belum punya atribut unsur/sifat. </>}
+            Kegiatan tersebut tidak ikut dihitung — lengkapi lewat tombol Edit.
+          </span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function KegiatanPage() {
@@ -1031,6 +1177,9 @@ export default function KegiatanPage() {
           </div>
         )}
 
+        {/* Pemeriksa komposisi Nilai Kredit */}
+        {activities.length > 0 && <KomposisiCard />}
+
         {/* Status filter chips */}
         {activities.length > 0 && (
           <div className="flex gap-2 mb-5 flex-wrap">
@@ -1091,7 +1240,7 @@ export default function KegiatanPage() {
       {showForm && (
         <ActivityFormModal mode="create" prefill={marketplacePrefill} onClose={() => { setShowForm(false); setMarketplacePrefill(undefined); }}
           onSaved={(a) => {
-            queryClient.invalidateQueries({ queryKey: ["kegiatan"] });
+            queryClient.invalidateQueries({ queryKey: ["kegiatan"] }); queryClient.invalidateQueries({ queryKey: ["kegiatan-komposisi"] });
             setShowForm(false);
             setMarketplacePrefill(undefined);
             setDetailActivity(a);
@@ -1100,7 +1249,7 @@ export default function KegiatanPage() {
       {editActivity && (
         <ActivityFormModal mode="edit" initial={editActivity} onClose={() => setEditActivity(null)}
           onSaved={(a) => {
-            queryClient.invalidateQueries({ queryKey: ["kegiatan"] });
+            queryClient.invalidateQueries({ queryKey: ["kegiatan"] }); queryClient.invalidateQueries({ queryKey: ["kegiatan-komposisi"] });
             setEditActivity(null);
             setDetailActivity(a);
           }} />

@@ -17,6 +17,7 @@ import { eq, and, desc, inArray } from "drizzle-orm";
 import { consumeUploadToken, issueUploadToken } from "../lib/uploadTokenStore";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendPushNotification } from "../lib/push";
+import { computeKomposisi, validateKomposisiAttrs } from "../lib/komposisi";
 
 const router = Router();
 
@@ -139,6 +140,36 @@ router.get("/kegiatan", requireAuth, async (req, res) => {
   res.json(result);
 });
 
+// ─── GET /api/kegiatan/komposisi — pemeriksa komposisi Nilai Kredit ───────────
+// Pasal 20 ayat 4-7 Permen PUPR 12/2021: perpanjangan SKK mensyaratkan bukan
+// hanya total SKPK, tetapi juga komposisinya:
+//   1. Unsur kegiatan utama >= 75% (penunjang <= 25%)
+//   2. Pendidikan nonformal <= 25%
+//   3. Kegiatan terverifikasi >= 60%
+//   4. Kegiatan (sifat) khusus >= 60%
+// Bobot per kegiatan = angkaKredit (perkiraan SKPK). "Terverifikasi" diambil
+// dari status verifikasi Asosiasi di aplikasi.
+// NOTE: harus terdaftar SEBELUM route /kegiatan/:id agar tidak tertelan.
+
+router.get("/kegiatan/komposisi", requireAuth, async (req, res) => {
+  const userId = await getUserId(req.auth!.userId);
+  if (!userId) return res.status(401).json({ error: "user not found" });
+
+  const activities = await db
+    .select({
+      id:                    pkbActivities.id,
+      status:                pkbActivities.status,
+      unsurKegiatan:         pkbActivities.unsurKegiatan,
+      sifatKegiatan:         pkbActivities.sifatKegiatan,
+      isPendidikanNonformal: pkbActivities.isPendidikanNonformal,
+      angkaKredit:           pkbActivities.angkaKredit,
+    })
+    .from(pkbActivities)
+    .where(eq(pkbActivities.userId, userId));
+
+  res.json(computeKomposisi(activities));
+});
+
 // ─── GET /api/kegiatan/:id — full detail ──────────────────────────────────────
 
 router.get("/kegiatan/:id", requireAuth, async (req, res) => {
@@ -171,11 +202,15 @@ router.post("/kegiatan", requireAuth, async (req, res) => {
     namaMateri, penyelenggara, namaInstruktur, marketplaceId,
     courseTitle, courseProvider, courseJabkerList, courseSkkTagsList,
     uraianSingkat, linkRekaman, jenisPkb, jpPkb,
+    unsurKegiatan, sifatKegiatan, isPendidikanNonformal, angkaKredit,
   } = req.body;
 
   if (!namaKegiatan || !tanggalMulai) {
     return res.status(400).json({ error: "namaKegiatan dan tanggalMulai wajib diisi" });
   }
+
+  const komposisiAttrs = validateKomposisiAttrs({ unsurKegiatan, sifatKegiatan, isPendidikanNonformal, angkaKredit });
+  if ("error" in komposisiAttrs) return res.status(400).json({ error: komposisiAttrs.error });
 
   const [act] = await db.insert(pkbActivities).values({
     userId, namaKegiatan, tanggalMulai, tanggalSelesai: tanggalSelesai ?? null,
@@ -184,6 +219,10 @@ router.post("/kegiatan", requireAuth, async (req, res) => {
     namaInstruktur: namaInstruktur ?? null, marketplaceId: marketplaceId ?? null,
     uraianSingkat: uraianSingkat ?? null, linkRekaman: linkRekaman ?? null,
     jenisPkb: jenisPkb ?? null, jpPkb: jpPkb ?? null,
+    unsurKegiatan: komposisiAttrs.unsurKegiatan ?? null,
+    sifatKegiatan: komposisiAttrs.sifatKegiatan ?? null,
+    isPendidikanNonformal: komposisiAttrs.isPendidikanNonformal === true,
+    angkaKredit: komposisiAttrs.angkaKredit ?? null,
     status: "draft",
   }).returning();
 
@@ -230,6 +269,11 @@ router.patch("/kegiatan/:id", requireAuth, async (req, res) => {
   for (const key of allowed) {
     if (key in req.body) updates[key] = req.body[key];
   }
+
+  // Atribut komposisi Nilai Kredit — divalidasi (enum/boolean/angka positif).
+  const komposisiAttrs = validateKomposisiAttrs(req.body);
+  if ("error" in komposisiAttrs) return res.status(400).json({ error: komposisiAttrs.error });
+  Object.assign(updates, komposisiAttrs);
 
   await db.update(pkbActivities).set(updates).where(eq(pkbActivities.id, id));
   if ("linkRekaman" in req.body && req.body.linkRekaman && !existing.linkRekaman) {

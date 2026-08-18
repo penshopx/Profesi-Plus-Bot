@@ -7,7 +7,7 @@
  */
 
 import {
-  pgTable, serial, integer, text, date, timestamp, jsonb, boolean,
+  pgTable, serial, integer, text, date, timestamp, jsonb, boolean, real,
 } from "drizzle-orm/pg-core";
 import { users } from "./users";
 
@@ -80,6 +80,16 @@ export const pkbActivities = pgTable("pkb_activities", {
   status:          text("status").notNull().default("draft"),
   jenisPkb:        text("jenis_pkb"),                // "seminar" | "webinar" | "diklatkerja" | "workshop" | "kursus" | "mandiri"
   jpPkb:           integer("jp_pkb"),                // jam pelajaran / kredit PKB
+
+  // ── Atribut komposisi Nilai Kredit (Pasal 20 Permen PUPR 12/2021) ─────────
+  // unsur: "utama" | "penunjang" — unsur kegiatan (Pasal 3-8)
+  unsurKegiatan:        text("unsur_kegiatan"),
+  // sifat: "khusus" | "umum" — materi sesuai subklasifikasi atau tidak
+  sifatKegiatan:        text("sifat_kegiatan"),
+  // true = kegiatan tergolong pendidikan nonformal (maks 25% dari Nilai Kredit)
+  isPendidikanNonformal: boolean("is_pendidikan_nonformal").notNull().default(false),
+  // Perkiraan Angka Kredit (SKPK) kegiatan — dasar bobot perhitungan komposisi
+  angkaKredit:          real("angka_kredit"),
 
   // ── Verification (formerly ASKOM — now Asosiasi) ──────────────────────────
   // Asosiasi verifies document completeness (surat undangan, daftar hadir, foto)
