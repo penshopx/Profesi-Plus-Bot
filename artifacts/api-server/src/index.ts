@@ -2,7 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { clearStalePushTokens } from "./lib/push-cleanup";
+import { clearStalePushTokens, schedulePushTokenCleanup } from "./lib/push-cleanup";
 import { pool } from "@workspace/db";
 import { pruneExpiredRateLimitCounters } from "./lib/pgRateLimitStore";
 import { cleanupOrphanedUploads, UPLOAD_CLEANUP_INTERVAL_MS } from "./lib/upload-cleanup";
@@ -112,17 +112,8 @@ async function cleanupExpiredRateLimits(): Promise<void> {
   }
 }
 
-/** Run stale push-token cleanup once, then every 24 hours. */
-const PUSH_TOKEN_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+/** Run stale push-token cleanup once, then every 24 hours (see lib/push-cleanup). */
 let pushTokenCleanupInterval: NodeJS.Timeout | undefined;
-
-function schedulePushTokenCleanup(): void {
-  pushTokenCleanupInterval = setInterval(() => {
-    void clearStalePushTokens(logger);
-  }, PUSH_TOKEN_CLEANUP_INTERVAL_MS);
-  // Don't let the timer keep the process alive on its own.
-  pushTokenCleanupInterval.unref?.();
-}
 
 /** Run expired rate-limit row cleanup every hour (also runs once at startup). */
 const RATE_LIMIT_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
@@ -143,7 +134,7 @@ migrateAskomRoleToUser()
   .then(() => {
     // Fire-and-forget: startup shouldn't block on a full GCS listing.
     void cleanupOrphanedUploads(logger);
-    schedulePushTokenCleanup();
+    pushTokenCleanupInterval = schedulePushTokenCleanup(logger);
     scheduleRateLimitCleanup();
     scheduleUploadCleanup();
     const server = app.listen(port, (err) => {

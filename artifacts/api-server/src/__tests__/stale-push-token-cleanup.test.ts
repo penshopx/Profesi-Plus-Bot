@@ -9,7 +9,7 @@
  *  - DB failure is caught and logged as a warning (non-fatal)
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ── Captured WHERE and SET arguments ─────────────────────────────────────────
 const mockSet = vi.fn();
@@ -143,5 +143,95 @@ describe("clearStalePushTokens", () => {
       expect.objectContaining({ err: chainError }),
       expect.any(String),
     );
+  });
+});
+
+// ── Interval resilience ───────────────────────────────────────────────────────
+describe("schedulePushTokenCleanup", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function advanceOneInterval(intervalMs: number) {
+    await vi.advanceTimersByTimeAsync(intervalMs);
+    // Flush the Promise.resolve().then(...).catch(...) chain.
+    await Promise.resolve();
+  }
+
+  it("keeps running subsequent scheduled runs after a rejected cleanup run", async () => {
+    const { schedulePushTokenCleanup } = await import("../lib/push-cleanup.js");
+    const log = makeLog();
+    const runCleanup = vi
+      .fn<(l: never) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("boom: run 1 failed"))
+      .mockResolvedValue(undefined);
+
+    const intervalMs = 1000;
+    const timer = schedulePushTokenCleanup(log as never, intervalMs, runCleanup as never);
+    try {
+      await advanceOneInterval(intervalMs);
+      expect(runCleanup).toHaveBeenCalledTimes(1);
+      // Failure is logged via the logger, not thrown.
+      expect(log.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ err: expect.objectContaining({ message: "boom: run 1 failed" }) }),
+        expect.any(String),
+      );
+
+      // The next two scheduled runs still happen.
+      await advanceOneInterval(intervalMs);
+      await advanceOneInterval(intervalMs);
+      expect(runCleanup).toHaveBeenCalledTimes(3);
+    } finally {
+      clearInterval(timer);
+    }
+  });
+
+  it("survives a synchronous throw from the cleanup function", async () => {
+    const { schedulePushTokenCleanup } = await import("../lib/push-cleanup.js");
+    const log = makeLog();
+    const runCleanup = vi.fn((): Promise<void> => {
+      if (runCleanup.mock.calls.length === 1) {
+        throw new Error("sync boom");
+      }
+      return Promise.resolve();
+    });
+
+    const intervalMs = 1000;
+    const timer = schedulePushTokenCleanup(log as never, intervalMs, runCleanup as never);
+    try {
+      await advanceOneInterval(intervalMs);
+      expect(runCleanup).toHaveBeenCalledTimes(1);
+      expect(log.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ err: expect.objectContaining({ message: "sync boom" }) }),
+        expect.any(String),
+      );
+
+      await advanceOneInterval(intervalMs);
+      expect(runCleanup).toHaveBeenCalledTimes(2);
+    } finally {
+      clearInterval(timer);
+    }
+  });
+
+  it("consecutive failures are each logged and never cancel the interval", async () => {
+    const { schedulePushTokenCleanup } = await import("../lib/push-cleanup.js");
+    const log = makeLog();
+    const runCleanup = vi.fn(() => Promise.reject(new Error("always fails")));
+
+    const intervalMs = 1000;
+    const timer = schedulePushTokenCleanup(log as never, intervalMs, runCleanup as never);
+    try {
+      await advanceOneInterval(intervalMs);
+      await advanceOneInterval(intervalMs);
+      await advanceOneInterval(intervalMs);
+      expect(runCleanup).toHaveBeenCalledTimes(3);
+      expect(log.warn).toHaveBeenCalledTimes(3);
+    } finally {
+      clearInterval(timer);
+    }
   });
 });
