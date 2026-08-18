@@ -29,6 +29,7 @@ import {
   type PkbActivityDoc, type PkbJourneyEntry,
 } from '@/lib/api';
 import { retryWithBackoff } from '@/lib/retry';
+import { useAuth } from '@clerk/expo';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -734,9 +735,16 @@ export function ActivityFormModal({ visible, initial, prefill, onClose, onSaved,
   }
 
   const qc = useQueryClient();
+  const { userId } = useAuth();
   const createMut = useMutation({
     mutationFn: (data: CreateKegiatanBody) => createKegiatanPkb(data),
-    onSuccess: (act) => { qc.invalidateQueries({ queryKey: ['kegiatan'] }); onSaved(act); },
+    onSuccess: (act) => {
+      qc.invalidateQueries({ queryKey: ['kegiatan'] });
+      if (prefill?.marketplaceId && userId) {
+        qc.invalidateQueries({ queryKey: ['marketplace-watched', userId] });
+      }
+      onSaved(act);
+    },
   });
   const updateMut = useMutation({
     mutationFn: (data: Partial<CreateKegiatanBody>) => updateKegiatanPkb(initial!.id, data),

@@ -37,6 +37,8 @@ module.exports = {
     '^@expo/vector-icons$': '<rootDir>/__mocks__/@expo/vector-icons.js',
     '^@expo/vector-icons/(.*)$': '<rootDir>/__mocks__/@expo/vector-icons.js',
     '^react-native-safe-area-context$': '<rootDir>/__mocks__/react-native-safe-area-context.js',
+    '^@clerk/expo$': '<rootDir>/__mocks__/@clerk/expo.js',
+    '^@clerk/expo/(.*)$': '<rootDir>/__mocks__/@clerk/expo.js',
     // Silence asset imports (fonts, images)
     '\\.(jpg|jpeg|png|gif|svg|ttf|otf|woff|woff2)$': '<rootDir>/__mocks__/fileMock.js',
   },
