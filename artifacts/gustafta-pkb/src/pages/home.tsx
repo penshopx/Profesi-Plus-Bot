@@ -59,6 +59,7 @@ interface MarketplaceCtx {
   namaMateri: string;
   penyelenggara: string;
   jabker: string;
+  skkTags?: { code: string; name: string }[];
   isWatched: boolean;
 }
 
@@ -473,6 +474,30 @@ export default function Home() {
                     dari <span className="font-semibold">{marketplaceCtx.penyelenggara}</span>
                     {marketplaceCtx.isWatched ? " yang sudah Anda tonton" : ""}.
                   </p>
+                  {marketplaceCtx.skkTags && marketplaceCtx.skkTags.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-800/70 mb-1">
+                        Unit SKK yang akan dibahas
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {marketplaceCtx.skkTags.slice(0, 3).map((t) => (
+                          <span
+                            key={t.code}
+                            title={`${t.code} — ${t.name}`}
+                            className="inline-flex items-center gap-1 bg-blue-100 border border-blue-200 text-blue-800 text-[10px] font-medium px-1.5 py-0.5 rounded-md max-w-full"
+                          >
+                            <span className="font-semibold shrink-0">{t.code}</span>
+                            <span className="truncate max-w-[180px]">{t.name}</span>
+                          </span>
+                        ))}
+                        {marketplaceCtx.skkTags.length > 3 && (
+                          <span className="text-[10px] text-blue-600 font-medium px-1 py-0.5">
+                            +{marketplaceCtx.skkTags.length - 3} lainnya
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => { setMarketplaceCtx(null); clearMarketplaceCtxStorage(); }}
