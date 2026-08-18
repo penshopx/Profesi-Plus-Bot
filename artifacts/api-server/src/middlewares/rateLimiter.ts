@@ -223,3 +223,34 @@ export function createCatalogRateLimiter(overrides: LimiterOverrides = {}) {
 
 /** Production singleton. */
 export const catalogRateLimiter = createCatalogRateLimiter();
+
+// ── helpbotRateLimiter ────────────────────────────────────────────────────────
+
+export const helpbotRateLimitStore = new PgRateLimitStore(pool, { prefix: "helpbot" });
+
+/**
+ * Anonymous helpbot (Asisten Gustafta) rate limiter — IP-based, backed by
+ * PostgreSQL so counters survive restarts and are shared across instances
+ * (denial-of-wallet protection for the LLM keys). Configurable via:
+ *
+ *   HELPBOT_RATE_LIMIT_MAX        — max requests per window (default 10)
+ *   HELPBOT_RATE_LIMIT_WINDOW_MS  — window length in ms (default 60000 = 1min)
+ */
+export function createHelpbotRateLimiter(overrides: LimiterOverrides = {}) {
+  return rateLimit({
+    windowMs: envPositiveInt("HELPBOT_RATE_LIMIT_WINDOW_MS", 60 * 1000),
+    limit: envPositiveInt("HELPBOT_RATE_LIMIT_MAX", 10),
+    keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: {
+      error: "Terlalu banyak permintaan. Coba lagi sebentar lagi.",
+      code: "rate_limit_helpbot",
+    },
+    skip: overrides.skip ?? (() => process.env.NODE_ENV === "test"),
+    store: overrides.store ?? helpbotRateLimitStore,
+  });
+}
+
+/** Production singleton. */
+export const helpbotRateLimiter = createHelpbotRateLimiter();

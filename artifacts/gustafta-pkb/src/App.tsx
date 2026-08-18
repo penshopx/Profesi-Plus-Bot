@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { FloatingHelpBot } from "@/components/FloatingHelpBot";
 import ProfilPage from "@/pages/profil";
 import QuizPage from "@/pages/quiz";
 import MarketplacePage from "@/pages/marketplace";
@@ -208,6 +209,7 @@ function ClerkProviderWithRoutes() {
         <TooltipProvider>
           <OfflineBanner />
           <Router />
+          <FloatingHelpBot />
           <Toaster />
         </TooltipProvider>
       </QueryClientProvider>

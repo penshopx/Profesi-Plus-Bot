@@ -853,7 +853,7 @@ function buildExumPrompt(
       .map((e) => `${e.skkUnitCode} — ${e.skkUnitName}`)
   )].join("\n  - ");
 
-  return `Kamu adalah penulis profesional yang ahli dalam membuat Executive Summary (Exum) PKB (Pengembangan Keprofesian Berkelanjutan) sesuai Permen PUPR No. 12 Tahun 2021 dan SK Dirjen Bina Konstruksi No. 114 Tahun 2024.
+  return `Kamu adalah penulis profesional yang ahli dalam membuat Executive Summary (Exum) PKB (Pengembangan Keprofesian Berkelanjutan) sesuai Permen PUPR No. 12 Tahun 2021, SK Dirjen Bina Konstruksi No. 114 Tahun 2024, dan format resmi Ringkasan Eksekutif dalam SE Dirjen Bina Konstruksi No. 214/SE/Dk/2022.
 
 Berdasarkan transkrip wawancara dan serpihan bukti di bawah ini, buatlah Executive Summary yang lengkap, profesional, dan berkualitas tinggi (setara 10-15 halaman A4).
 
@@ -893,32 +893,34 @@ ${
 **7. REKOMENDASI DAN RENCANA TINDAK LANJUT** (1,5 halaman)
 **8. KESIMPULAN** (0,5 halaman)`
   : mode === "Hybrid"
-    ? `STRUKTUR EXUM (Mode Hybrid — Pengalaman + Hasil Belajar):
-# EXECUTIVE SUMMARY
-## Pengembangan Keprofesian Berkelanjutan — Hybrid (Pengalaman & Pembelajaran)
+    ? `STRUKTUR EXUM (Mode Hybrid — Pengalaman + Hasil Belajar), mengikuti format resmi SE DJBK 214/SE/Dk/2022:
+# RINGKASAN EKSEKUTIF (EXECUTIVE SUMMARY)
+## Pembelajaran Sehubungan dengan Penugasan Kerja
+JUDUL PEMBELAJARAN: [judul spesifik] — Oleh: [nama] (tenaga ahli)
 
-**1. PENDAHULUAN DAN IDENTITAS JABATAN KERJA** (1 halaman)
-**2. RINGKASAN EKSEKUTIF** (1 halaman)
-**3. KONTEKS PROYEK DAN LATAR BELAKANG PEMBELAJARAN** (1,5-2 halaman — gabungkan proyek + motivasi belajar)
-**4. RUANG LINGKUP PEKERJAAN DAN PENGALAMAN LAPANGAN** (1,5-2 halaman — STAR dari proyek utama)
-**5. HASIL PEMBELAJARAN DAN REFLEKSI** (1,5-2 halaman — dari video/webinar/diklatkerja, metode Sokratik)
-**6. SINERGI PENGALAMAN + PENGETAHUAN (BENANG MERAH SKK)** (2-2,5 halaman — bagaimana keduanya saling memperkuat, kaitkan ke unit SKK spesifik)
-**7. CAPAIAN TERUKUR DAN BUKTI KOMPETENSI** (1,5-2 halaman — angka kuantitatif, dokumen ESIMPAN)
-**8. PEMBELAJARAN DAN RENCANA TINDAK LANJUT** (1 halaman)
-**9. KESIMPULAN** (0,5 halaman)`
-    : `STRUKTUR EXUM (Mode Pengalaman Kerja):
-# EXECUTIVE SUMMARY
-## Pengembangan Keprofesian Berkelanjutan — Pengalaman Kerja
+**I. RINCIAN PENUGASAN KERJA** (0,5-1 halaman — WAJIB format SE 214/2022: Nama Pengguna Jasa/Pemberi Kerja, Penempatan [Proyek/Manajerial], Nama Paket Pekerjaan, Alamat Penugasan, Waktu Pelaksanaan [dari-hingga], Posisi Penugasan, Judul Pembelajaran; ambil dari transkrip/serpihan, tandai [perlu dilengkapi TKK] bila tidak diketahui)
+**II. URAIAN TUGAS PEKERJAAN** (1,5-2 halaman — pokok pekerjaan yang dilakukan, STAR dari proyek utama + ruang lingkup lapangan)
+**III. TARGET PENGEMBANGAN KEAHLIAN** (1-1,5 halaman — target keahlian/kemampuan yang hendak dicapai, kaitkan ke unit SKK SK DJBK 114/2024)
+**IV. PEMBELAJARAN SEHUBUNGAN DENGAN PENUGASAN KERJA** (6-9 halaman, jabarkan dalam sub-bagian substansi yang ditemui dan dipelajari:)
+  IV.1 Konteks Proyek dan Latar Belakang Pembelajaran
+  IV.2 Hasil Pembelajaran dan Refleksi (dari video/webinar/diklatkerja, metode Sokratik)
+  IV.3 Sinergi Pengalaman + Pengetahuan (benang merah unit SKK spesifik)
+  IV.4 Capaian Terukur dan Bukti Kompetensi (angka kuantitatif, dokumen)
+  IV.5 Rencana Tindak Lanjut dan Kesimpulan`
+    : `STRUKTUR EXUM (Mode Pengalaman Kerja), mengikuti format resmi SE DJBK 214/SE/Dk/2022:
+# RINGKASAN EKSEKUTIF (EXECUTIVE SUMMARY)
+## Pembelajaran Sehubungan dengan Penugasan Kerja
+JUDUL PEMBELAJARAN: [judul spesifik] — Oleh: [nama] (tenaga ahli)
 
-**1. HALAMAN JUDUL DAN IDENTITAS** (1 halaman)
-**2. RINGKASAN EKSEKUTIF** (1-1,5 halaman)
-**3. LATAR BELAKANG DAN KONTEKS PROYEK** (1,5-2 halaman)
-**4. RUANG LINGKUP DAN PERAN TENAGA KERJA KONSTRUKSI** (1,5-2 halaman)
-**5. TANTANGAN UTAMA DAN ANALISIS MASALAH** (1,5-2 halaman)
-**6. PENDEKATAN DAN METODOLOGI YANG DITERAPKAN** (2-3 halaman)
-**7. CAPAIAN DAN HASIL** (2-3 halaman — sertakan data kuantitatif)
-**8. PEMBELAJARAN DAN REKOMENDASI** (1-1,5 halaman)
-**9. PENUTUP** (0,5 halaman)`
+**I. RINCIAN PENUGASAN KERJA** (0,5-1 halaman — WAJIB format SE 214/2022: Nama Pengguna Jasa/Pemberi Kerja, Penempatan [Proyek/Manajerial], Nama Paket Pekerjaan, Alamat Penugasan, Waktu Pelaksanaan [dari-hingga], Posisi Penugasan, Judul Pembelajaran; ambil dari transkrip/serpihan, tandai [perlu dilengkapi TKK] bila tidak diketahui)
+**II. URAIAN TUGAS PEKERJAAN** (2-3 halaman — ringkasan pokok pekerjaan yang dilakukan: ruang lingkup, peran TKK, uraian tugas utama)
+**III. TARGET PENGEMBANGAN KEAHLIAN** (1-1,5 halaman — target keahlian/kemampuan yang hendak dicapai setelah pembelajaran, kaitkan ke unit SKK SK DJBK 114/2024)
+**IV. PEMBELAJARAN SEHUBUNGAN DENGAN PENUGASAN KERJA** (6-9 halaman, jabarkan dalam sub-bagian substansi yang ditemui dan dipelajari:)
+  IV.1 Tantangan Utama dan Analisis Masalah
+  IV.2 Pendekatan dan Metodologi yang Diterapkan
+  IV.3 Capaian dan Hasil (sertakan data kuantitatif)
+  IV.4 Pembelajaran dan Rekomendasi
+  IV.5 Penutup`
 }
 
 Mulai langsung dengan konten, tanpa pengantar atau catatan tambahan.`;
