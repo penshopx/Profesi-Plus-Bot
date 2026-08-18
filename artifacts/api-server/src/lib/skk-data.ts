@@ -180,33 +180,6 @@ export const SKK_DATA: JabkerGroup[] = [
       { code: "M.71.PLF.005.01", name: "Menyusun Laporan Ahli untuk Litigasi Bangunan", description: "Expert report untuk keperluan litigasi dan sengketa konstruksi" },
     ],
   },
-  {
-    id: "ahli-madya-penilai-laik-fungsi-bg",
-    name: "Ahli Madya Penilai Laik Fungsi Bangunan Gedung",
-    jenjang: "Madya",
-    klasifikasi: "Sipil",
-    subklasifikasi: "Gedung",
-    units: [
-      { code: "M.71.PLF.101.01", name: "Melakukan Pemeriksaan Kelaikan Struktur Bangunan", description: "Inspeksi menyeluruh kondisi struktural bangunan gedung" },
-      { code: "M.71.PLF.102.01", name: "Melakukan Pemeriksaan Kelaikan Sistem Utilitas", description: "Penilaian sistem MEP terhadap standar laik fungsi" },
-      { code: "M.71.PLF.103.01", name: "Melakukan Pemeriksaan Kelaikan Proteksi Kebakaran", description: "Penilaian sistem proteksi kebakaran gedung" },
-      { code: "M.71.PLF.104.01", name: "Menyusun Laporan Hasil Pemeriksaan Laik Fungsi", description: "Penyusunan laporan teknis hasil assessment kelaikan gedung" },
-      { code: "M.71.PLF.105.01", name: "Memberikan Rekomendasi Peningkatan Kelaikan Gedung", description: "Rekomendasi perbaikan teknis untuk pemenuhan laik fungsi" },
-    ],
-  },
-  {
-    id: "ahli-muda-penilai-laik-fungsi-bg",
-    name: "Ahli Muda Penilai Laik Fungsi Bangunan Gedung",
-    jenjang: "Muda",
-    klasifikasi: "Sipil",
-    subklasifikasi: "Gedung",
-    units: [
-      { code: "M.71.PLF.201.01", name: "Melakukan Survei Awal Kondisi Bangunan Gedung", description: "Pemeriksaan visual dan dokumentasi kondisi bangunan" },
-      { code: "M.71.PLF.202.01", name: "Melakukan Pengujian Non-Destruktif Bangunan", description: "Pengujian hammer test, ultrasonic, dan NDT lainnya" },
-      { code: "M.71.PLF.203.01", name: "Mendokumentasikan Temuan Pemeriksaan Bangunan", description: "Pencatatan dan dokumentasi foto hasil pemeriksaan lapangan" },
-      { code: "M.71.PLF.204.01", name: "Menyusun Draft Laporan Kelaikan Fungsi", description: "Penyusunan draft laporan kelaikan berdasarkan temuan lapangan" },
-    ],
-  },
 
   // =====================================================
   // B. KLASIFIKASI: SIPIL — Jalan
@@ -394,8 +367,8 @@ export const SKK_DATA: JabkerGroup[] = [
   // B. KLASIFIKASI: SIPIL — Irigasi dan Rawa
   // =====================================================
   {
-    id: "ahli-utama-perencanaan-irigasi",
-    name: "Ahli Utama Perencanaan Irigasi",
+    id: "ahli-utama-teknik-irigasi",
+    name: "Ahli Utama Teknik Irigasi",
     jenjang: "Utama",
     klasifikasi: "Sipil",
     subklasifikasi: "Irigasi dan Rawa",
@@ -408,8 +381,8 @@ export const SKK_DATA: JabkerGroup[] = [
     ],
   },
   {
-    id: "ahli-madya-perencanaan-irigasi",
-    name: "Ahli Madya Perencanaan Irigasi",
+    id: "ahli-madya-teknik-irigasi",
+    name: "Ahli Madya Teknik Irigasi",
     jenjang: "Madya",
     klasifikasi: "Sipil",
     subklasifikasi: "Irigasi dan Rawa",
@@ -422,8 +395,8 @@ export const SKK_DATA: JabkerGroup[] = [
     ],
   },
   {
-    id: "ahli-muda-perencanaan-irigasi",
-    name: "Ahli Muda Perencanaan Irigasi",
+    id: "ahli-muda-teknik-irigasi",
+    name: "Ahli Muda Teknik Irigasi",
     jenjang: "Muda",
     klasifikasi: "Sipil",
     subklasifikasi: "Irigasi dan Rawa",
@@ -645,19 +618,6 @@ export const SKK_DATA: JabkerGroup[] = [
       { code: "M.71.GEL.105.01", name: "Melakukan Klasifikasi Massa Batuan", description: "Aplikasi RMR, Q-system, dan GSI untuk desain terowongan/lereng" },
     ],
   },
-  {
-    id: "ahli-muda-geologi-konstruksi",
-    name: "Ahli Muda Geologi Pekerjaan Konstruksi",
-    jenjang: "Muda",
-    klasifikasi: "Sipil",
-    subklasifikasi: "Geoteknik dan Pondasi",
-    units: [
-      { code: "M.71.GEL.201.01", name: "Melakukan Survei Geologi Permukaan", description: "Pemetaan kondisi geologi permukaan di lokasi proyek" },
-      { code: "M.71.GEL.202.01", name: "Mengambil dan Mendeskripsikan Sampel Batuan/Tanah", description: "Pengambilan dan deskripsi inti bor (core log) batuan dan tanah" },
-      { code: "M.71.GEL.203.01", name: "Melakukan Pengujian Sifat Fisik dan Mekanik Batuan", description: "Uji UCS, point load, dan Brazilian test pada sampel batuan" },
-      { code: "M.71.GEL.204.01", name: "Mendokumentasikan Data Geologi Proyek", description: "Pencatatan dan dokumentasi data geologi lapangan secara sistematis" },
-    ],
-  },
 
   // =====================================================
   // B. KLASIFIKASI: SIPIL — Terowongan
@@ -687,20 +647,6 @@ export const SKK_DATA: JabkerGroup[] = [
       { code: "M.71.TRW.103.01", name: "Melakukan Monitoring Perilaku Terowongan", description: "Analisis data instrumen dan pemantauan stabilitas terowongan" },
       { code: "M.71.TRW.104.01", name: "Mengelola K3 Khusus Pekerjaan Bawah Tanah", description: "Sistem keselamatan kerja dalam konstruksi terowongan" },
       { code: "M.71.TRW.105.01", name: "Melakukan Inspeksi dan Pemeliharaan Terowongan", description: "Inspeksi berkala dan program pemeliharaan terowongan" },
-    ],
-  },
-  {
-    id: "ahli-muda-teknik-terowongan",
-    name: "Ahli Muda Teknik Terowongan",
-    jenjang: "Muda",
-    klasifikasi: "Sipil",
-    subklasifikasi: "Terowongan",
-    units: [
-      { code: "M.71.TRW.201.01", name: "Mengawasi Pelaksanaan Penggalian Terowongan", description: "Pengawasan metode NATM, TBM, dan blasting terowongan" },
-      { code: "M.71.TRW.202.01", name: "Mengawasi Pekerjaan Perkuatan Terowongan", description: "Pengawasan shotcrete, rockbolt, dan steel rib support" },
-      { code: "M.71.TRW.203.01", name: "Memantau Data Instrumen Terowongan", description: "Pembacaan dan analisis awal data instrumen pemantauan" },
-      { code: "M.71.TRW.204.01", name: "Menerapkan K3 Pekerjaan Bawah Tanah", description: "Penerapan standar keselamatan kerja di dalam terowongan" },
-      { code: "M.71.TRW.205.01", name: "Membuat Laporan Teknis Harian Pekerjaan Terowongan", description: "Pencatatan dan pelaporan kemajuan pekerjaan terowongan" },
     ],
   },
 
@@ -921,8 +867,8 @@ export const SKK_DATA: JabkerGroup[] = [
     ],
   },
   {
-    id: "ahli-utama-plumbing-pompa",
-    name: "Ahli Utama Teknik Plumbing dan Pompa Mekanik",
+    id: "ahli-utama-plambing-pompa",
+    name: "Ahli Utama Teknik Plambing dan Pompa Mekanik",
     jenjang: "Utama",
     klasifikasi: "Mekanikal",
     subklasifikasi: "Plumbing dan Pompa Mekanik",
@@ -934,8 +880,8 @@ export const SKK_DATA: JabkerGroup[] = [
     ],
   },
   {
-    id: "ahli-madya-plumbing-pompa",
-    name: "Ahli Madya Teknik Plumbing dan Pompa Mekanik",
+    id: "ahli-madya-plambing-pompa",
+    name: "Ahli Madya Teknik Plambing dan Pompa Mekanik",
     jenjang: "Madya",
     klasifikasi: "Mekanikal",
     subklasifikasi: "Plumbing dan Pompa Mekanik",
@@ -948,8 +894,8 @@ export const SKK_DATA: JabkerGroup[] = [
     ],
   },
   {
-    id: "ahli-muda-plumbing-pompa",
-    name: "Ahli Muda Teknik Plumbing dan Pompa Mekanik",
+    id: "ahli-muda-plambing-pompa",
+    name: "Ahli Muda Teknik Plambing dan Pompa Mekanik",
     jenjang: "Muda",
     klasifikasi: "Mekanikal",
     subklasifikasi: "Plumbing dan Pompa Mekanik",

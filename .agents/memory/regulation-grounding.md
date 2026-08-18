@@ -9,3 +9,5 @@ Three official docs (user-attached PDFs in attached_assets/) are the regulatory 
 - SK DJBK 114/2024 — jabker nomenclature (old→new mapping), revokes SK 33/2022; huge lampiran, extract with `pdftotext`.
 
 **How to apply:** the condensed knowledge lives in api-server lib `regulation-knowledge.ts` (helpbot system prompt). Exum prompts for Pengalaman/Hybrid modes must keep the SE 214 4-section skeleton. Any new SKPK/composition feature should cite these pasal/lampiran, not invent numbers. pip installs are blocked (PEP 668) — use poppler tools for PDFs.
+
+- SK DJBK 114/2024 (scan; pdftotext works, columns jumbled) is the sole source for valid jabker nomenclature. Per that SK: irigasi = "Teknik Irigasi", spelling "Plambing dan Pompa Mekanik" (subklas stays "Plumbing"), and PLF BG Madya/Muda, Geologi PK Muda, Teknik Terowongan Muda no longer exist — do not reintroduce them in skk-data.
