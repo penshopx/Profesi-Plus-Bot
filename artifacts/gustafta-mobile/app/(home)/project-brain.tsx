@@ -10,7 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import {
   listProjectBrain,
@@ -421,6 +421,20 @@ export default function ProjectBrainScreen() {
     });
     return () => { alive = false; };
   }, []);
+
+  // Refresh badges whenever the screen regains focus (e.g. returning from a
+  // chat while this screen stayed mounted): re-fetch entries so lastUsedAt is
+  // current, and reload the local usage snapshot written by the chat screen.
+  useFocusEffect(
+    React.useCallback(() => {
+      let alive = true;
+      qc.invalidateQueries({ queryKey: ['project-brain'] });
+      loadProjectBrainUsage().then((usage) => {
+        if (alive && usage) setUsedIds(new Set(usage.ids));
+      });
+      return () => { alive = false; };
+    }, [qc]),
+  );
 
   const {
     data: entries = [],
