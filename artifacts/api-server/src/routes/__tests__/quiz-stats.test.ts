@@ -35,7 +35,9 @@ vi.mock("@workspace/db", () => {
     update: vi.fn().mockImplementation(() => chain(() => [])),
     insert: vi.fn().mockImplementation(() => {
       const c = chain(() => [{ id: 99, ...(insertedValues ?? {}) }]);
-      const origValues = c["values"] as ReturnType<typeof vi.fn>;
+      const origValues = c["values"] as (
+        value: Record<string, unknown>,
+      ) => unknown;
       c["values"] = vi.fn().mockImplementation((v: Record<string, unknown>) => {
         insertedValues = v;
         return origValues(v);

@@ -16,6 +16,7 @@
 import React from 'react';
 import { create, act } from 'react-test-renderer';
 import type { ReactTestRenderer } from 'react-test-renderer';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // ── Mock native/expo modules that cannot load under Node ─────────────────────
 jest.mock('expo-router', () => ({
@@ -62,16 +63,24 @@ function apiError(message: string, status: number, retrySafe: boolean) {
 }
 
 async function mountModal(props: Partial<React.ComponentProps<typeof ExumModal>> = {}) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
   let root!: ReactTestRenderer;
   await act(async () => {
     root = create(
-      <ExumModal
-        visible
-        conversationId={1}
-        onClose={jest.fn()}
-        colors={COLORS as never}
-        {...props}
-      />,
+      <QueryClientProvider client={queryClient}>
+        <ExumModal
+          visible
+          conversationId={1}
+          onClose={jest.fn()}
+          colors={COLORS as never}
+          {...props}
+        />
+      </QueryClientProvider>,
     );
     await new Promise<void>((r) => setTimeout(r, 50));
   });

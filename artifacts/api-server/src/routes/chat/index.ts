@@ -50,6 +50,14 @@ async function loadOwnedConversation(
   return conv;
 }
 
+function parseRouteId(value: string | string[] | undefined): number {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    return Number.NaN;
+  }
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : Number.NaN;
+}
+
 // ─── Conversations ────────────────────────────────────────────────────────────
 
 router.get("/chat/conversations", async (req, res): Promise<void> => {
@@ -75,7 +83,7 @@ router.get("/chat/conversations", async (req, res): Promise<void> => {
 
 router.post("/chat/conversations", async (req, res): Promise<void> => {
   const { title, mode, jabker, jenjang, model, personaId } = req.body;
-  if (!title || !mode) {
+  if (typeof title !== "string" || !title.trim() || typeof mode !== "string" || !mode.trim()) {
     res.status(400).json({ error: "title and mode are required" });
     return;
   }
@@ -91,32 +99,39 @@ router.post("/chat/conversations", async (req, res): Promise<void> => {
     resolvedPersona = recommendPersona(confident ? group.klasifikasi : null).id;
   }
   const [conv] = await db
-    .update(conversations)
-    .set({ title: title.trim() })
-    .where(eq(conversations.id, id))
+    .insert(conversations)
+    .values({
+      userId: req.dbUser!.id,
+      title: title.trim(),
+      mode: mode.trim(),
+      jabker: typeof jabker === "string" ? jabker : null,
+      jenjang: typeof jenjang === "string" ? jenjang : null,
+      model: selectedModel,
+      personaId: resolvedPersona,
+    })
     .returning();
   res.json(conv);
 });
 
-router.delete("/chat/conversations/:id", async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+router.get("/chat/conversations/:id", async (req, res): Promise<void> => {
+  const convId = parseRouteId(req.params.id);
   const conv = await loadOwnedConversation(req, res, convId);
   if (!conv) return;
-    const msgs = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.conversationId, convId))
-      .orderBy(asc(messages.createdAt));
-    const evidence = await db
-      .select()
-      .from(evidenceItems)
-      .where(eq(evidenceItems.conversationId, convId))
-      .orderBy(asc(evidenceItems.createdAt));
+  const msgs = await db
+    .select()
+    .from(messages)
+    .where(eq(messages.conversationId, convId))
+    .orderBy(asc(messages.createdAt));
+  const evidence = await db
+    .select()
+    .from(evidenceItems)
+    .where(eq(evidenceItems.conversationId, convId))
+    .orderBy(asc(evidenceItems.createdAt));
   res.json({ ...conv, messages: msgs, evidence });
 });
 
 router.patch("/chat/conversations/:id", async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseRouteId(req.params.id);
   const { title } = req.body;
   if (!title || typeof title !== "string" || !title.trim()) {
     res.status(400).json({ error: "title is required" });
@@ -133,7 +148,7 @@ router.patch("/chat/conversations/:id", async (req, res): Promise<void> => {
 });
 
 router.delete("/chat/conversations/:id", async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseRouteId(req.params.id);
   const owned = await loadOwnedConversation(req, res, id);
   if (!owned) return;
   await db.delete(conversations).where(eq(conversations.id, id));
@@ -143,7 +158,7 @@ router.delete("/chat/conversations/:id", async (req, res): Promise<void> => {
 // ─── Evidence Items ───────────────────────────────────────────────────────────
 
 router.get("/chat/conversations/:id/evidence", async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseRouteId(req.params.id);
   const owned = await loadOwnedConversation(req, res, id);
   if (!owned) return;
   const items = await db
@@ -155,7 +170,7 @@ router.get("/chat/conversations/:id/evidence", async (req, res): Promise<void> =
 });
 
 router.post("/chat/conversations/:id/evidence", async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseRouteId(req.params.id);
   const {
     type, category, title, url, description, skkNotes,
     skkUnitCode, skkUnitName, socratiDialog, socratiCompleted, tier,
@@ -164,41 +179,34 @@ router.post("/chat/conversations/:id/evidence", async (req, res): Promise<void> 
     res.status(400).json({ error: "type and title are required" });
     return;
   }
-  const conv = await loadOwnedConversation(req, res, convId);
+  const conv = await loadOwnedConversation(req, res, id);
   if (!conv) return;
 
   const socratiStr = socratiDialog ? JSON.stringify(socratiDialog) : null;
 
   const [item] = await db
-    .update(evidenceItems)
-    .set({ socratiDialog: socratiStr, socratiCompleted: socratiCompleted === true })
-    .where(and(eq(evidenceItems.id, evidenceId), eq(evidenceItems.conversationId, id)))
+    .insert(evidenceItems)
+    .values({
+      conversationId: id,
+      type,
+      category: typeof category === "string" ? category : "",
+      title,
+      url: typeof url === "string" ? url : null,
+      description: typeof description === "string" ? description : null,
+      skkNotes: typeof skkNotes === "string" ? skkNotes : null,
+      skkUnitCode: typeof skkUnitCode === "string" ? skkUnitCode : null,
+      skkUnitName: typeof skkUnitName === "string" ? skkUnitName : null,
+      socratiDialog: socratiStr,
+      socratiCompleted: socratiCompleted === true,
+      tier: typeof tier === "string" ? tier : "self",
+    })
     .returning();
-  if (!item) { res.status(404).json({ error: "Evidence not found" }); return; }
   res.json(item);
 });
 
-// ─── Messages / Chat ──────────────────────────────────────────────────────────
-
-router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
-  const evidenceId = parseInt(req.params.evidenceId, 10);
-  const owned = await loadOwnedConversation(req, res, id);
-  if (!owned) return;
-  const [item] = await db
-    .update(evidenceItems)
-    .set({ socratiDialog: socratiStr, socratiCompleted: socratiCompleted === true })
-    .where(and(eq(evidenceItems.id, evidenceId), eq(evidenceItems.conversationId, id)))
-    .returning();
-  if (!item) { res.status(404).json({ error: "Evidence not found" }); return; }
-  res.json(item);
-});
-
-// ─── Messages / Chat ──────────────────────────────────────────────────────────
-
-router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
-  const evidenceId = parseInt(req.params.evidenceId, 10);
+router.patch("/chat/conversations/:id/evidence/:evidenceId", async (req, res): Promise<void> => {
+  const id = parseRouteId(req.params.id);
+  const evidenceId = parseRouteId(req.params.evidenceId);
   const owned = await loadOwnedConversation(req, res, id);
   if (!owned) return;
   const { socratiDialog, socratiCompleted } = req.body;
@@ -212,10 +220,26 @@ router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> =
   res.json(item);
 });
 
+router.delete("/chat/conversations/:id/evidence/:evidenceId", async (req, res): Promise<void> => {
+  const id = parseRouteId(req.params.id);
+  const evidenceId = parseRouteId(req.params.evidenceId);
+  const owned = await loadOwnedConversation(req, res, id);
+  if (!owned) return;
+  const [item] = await db
+    .delete(evidenceItems)
+    .where(and(eq(evidenceItems.id, evidenceId), eq(evidenceItems.conversationId, id)))
+    .returning();
+  if (!item) {
+    res.status(404).json({ error: "Evidence not found" });
+    return;
+  }
+  res.sendStatus(204);
+});
+
 // ─── Messages / Chat ──────────────────────────────────────────────────────────
 
 router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> => {
-  const convId = parseInt(req.params.id, 10);
+  const convId = parseRouteId(req.params.id);
   const owned = await loadOwnedConversation(req, res, convId);
   if (!owned) return;
   const msgs = await db
@@ -227,7 +251,7 @@ router.get("/chat/conversations/:id/messages", async (req, res): Promise<void> =
 });
 
 router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (req, res): Promise<void> => {
-  const convId = parseInt(req.params.id, 10);
+  const convId = parseRouteId(req.params.id);
   const { content } = req.body;
 
   if (!content || typeof content !== "string") {
@@ -401,8 +425,8 @@ router.post("/chat/conversations/:id/messages", chatMessageRateLimiter, async (r
 // ─── Manual Phase Advance ─────────────────────────────────────────────────────
 
 router.post("/chat/conversations/:id/advance-phase", async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
-  const conv = await loadOwnedConversation(req, res, convId);
+  const id = parseRouteId(req.params.id);
+  const conv = await loadOwnedConversation(req, res, id);
   if (!conv) return;
 
   const phases = ["profiling", "context", "core_interview", "evidence", "synthesis", "done"];

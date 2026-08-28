@@ -5,7 +5,8 @@
  * Setiap mutasi state signifikan otomatis mencatat entry di pkb_activity_journey.
  */
 
-import { Router } from "express";
+import { Router, type Request } from "express";
+import { getAuth } from "@clerk/express";
 import { requireAuth } from "../middlewares/auth";
 import { db } from "@workspace/db";
 import {
@@ -22,6 +23,32 @@ import { computeKomposisi, deriveKomposisiDefaults, validateKomposisiAttrs } fro
 const router = Router();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getAuthenticatedClerkId(req: Request): string | null {
+  // `requireAuth` guarantees this in production. Keep the guarded legacy
+  // property read for route-level middleware stubs that provide the identity
+  // directly rather than initializing Clerk.
+  const legacyAuth = Reflect.get(req, "auth");
+  if (
+    typeof legacyAuth === "object" &&
+    legacyAuth !== null &&
+    "userId" in legacyAuth &&
+    typeof legacyAuth.userId === "string" &&
+    legacyAuth.userId.length > 0
+  ) {
+    return legacyAuth.userId;
+  }
+
+  const clerkId = getAuth(req).userId;
+  return typeof clerkId === "string" && clerkId.length > 0 ? clerkId : null;
+}
+
+function parsePositiveIntegerParam(value: string | string[] | undefined): number | null {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) return null;
+
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
 
 async function getUserId(clerkId: string): Promise<number | null> {
   const { users } = await import("@workspace/db/schema");
@@ -113,8 +140,16 @@ async function autoWatchMarketplaceCourse(
 // ─── GET /api/kegiatan — list all activities for current user ─────────────────
 
 router.get("/kegiatan", requireAuth, async (req, res) => {
-  const userId = await getUserId(req.auth!.userId);
-  if (!userId) return res.status(401).json({ error: "user not found" });
+  const clerkId = getAuthenticatedClerkId(req);
+  if (!clerkId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
+  const userId = await getUserId(clerkId);
+  if (!userId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
 
   const activities = await db
     .select()
@@ -125,9 +160,15 @@ router.get("/kegiatan", requireAuth, async (req, res) => {
   // Attach SKK, doc counts, and latest journey entry per activity
   const ids = activities.map((a) => a.id);
   const [skks, docs, journeys] = await Promise.all([
-    ids.length ? db.select().from(pkbActivitySkk).where(inArray(pkbActivitySkk.activityId, ids)) : [],
-    ids.length ? db.select().from(pkbActivityDocs).where(inArray(pkbActivityDocs.activityId, ids)) : [],
-    ids.length ? db.select().from(pkbActivityJourney).where(inArray(pkbActivityJourney.activityId, ids)).orderBy(desc(pkbActivityJourney.createdAt)) : [],
+    ids.length
+      ? db.select().from(pkbActivitySkk).where(inArray(pkbActivitySkk.activityId, ids))
+      : Promise.resolve([] as (typeof pkbActivitySkk.$inferSelect)[]),
+    ids.length
+      ? db.select().from(pkbActivityDocs).where(inArray(pkbActivityDocs.activityId, ids))
+      : Promise.resolve([] as (typeof pkbActivityDocs.$inferSelect)[]),
+    ids.length
+      ? db.select().from(pkbActivityJourney).where(inArray(pkbActivityJourney.activityId, ids)).orderBy(desc(pkbActivityJourney.createdAt))
+      : Promise.resolve([] as (typeof pkbActivityJourney.$inferSelect)[]),
   ]);
 
   const result = activities.map((a) => ({
@@ -152,8 +193,16 @@ router.get("/kegiatan", requireAuth, async (req, res) => {
 // NOTE: harus terdaftar SEBELUM route /kegiatan/:id agar tidak tertelan.
 
 router.get("/kegiatan/komposisi", requireAuth, async (req, res) => {
-  const userId = await getUserId(req.auth!.userId);
-  if (!userId) return res.status(401).json({ error: "user not found" });
+  const clerkId = getAuthenticatedClerkId(req);
+  if (!clerkId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
+  const userId = await getUserId(clerkId);
+  if (!userId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
 
   const activities = await db
     .select({
@@ -173,13 +222,28 @@ router.get("/kegiatan/komposisi", requireAuth, async (req, res) => {
 // ─── GET /api/kegiatan/:id — full detail ──────────────────────────────────────
 
 router.get("/kegiatan/:id", requireAuth, async (req, res) => {
-  const userId = await getUserId(req.auth!.userId);
-  if (!userId) return res.status(401).json({ error: "user not found" });
+  const clerkId = getAuthenticatedClerkId(req);
+  if (!clerkId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
+  const userId = await getUserId(clerkId);
+  if (!userId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
 
-  const id = parseInt(req.params.id, 10);
+  const id = parsePositiveIntegerParam(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "id kegiatan tidak valid" });
+    return;
+  }
   const [act] = await db.select().from(pkbActivities)
     .where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
-  if (!act) return res.status(404).json({ error: "not found" });
+  if (!act) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
 
   const [skk, docs, journey, checklistRows] = await Promise.all([
     db.select().from(pkbActivitySkk).where(eq(pkbActivitySkk.activityId, id)),
@@ -194,8 +258,16 @@ router.get("/kegiatan/:id", requireAuth, async (req, res) => {
 // ─── POST /api/kegiatan — create ──────────────────────────────────────────────
 
 router.post("/kegiatan", requireAuth, async (req, res) => {
-  const userId = await getUserId(req.auth!.userId);
-  if (!userId) return res.status(401).json({ error: "user not found" });
+  const clerkId = getAuthenticatedClerkId(req);
+  if (!clerkId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
+  const userId = await getUserId(clerkId);
+  if (!userId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
 
   const {
     namaKegiatan, tanggalMulai, tanggalSelesai, tempatKegiatan, modePelaksanaan,
@@ -206,7 +278,8 @@ router.post("/kegiatan", requireAuth, async (req, res) => {
   } = req.body;
 
   if (!namaKegiatan || !tanggalMulai) {
-    return res.status(400).json({ error: "namaKegiatan dan tanggalMulai wajib diisi" });
+    res.status(400).json({ error: "namaKegiatan dan tanggalMulai wajib diisi" });
+    return;
   }
 
   const komposisiInput: Record<string, unknown> = {};
@@ -214,7 +287,10 @@ router.post("/kegiatan", requireAuth, async (req, res) => {
     if (key in req.body) komposisiInput[key] = req.body[key];
   }
   const komposisiAttrs = validateKomposisiAttrs(komposisiInput);
-  if ("error" in komposisiAttrs) return res.status(400).json({ error: komposisiAttrs.error });
+  if ("error" in komposisiAttrs) {
+    res.status(400).json({ error: komposisiAttrs.error });
+    return;
+  }
   const komposisiDefaults = deriveKomposisiDefaults(jenisPkb);
 
   const [act] = await db.insert(pkbActivities).values({
@@ -257,14 +333,32 @@ router.post("/kegiatan", requireAuth, async (req, res) => {
 // ─── PATCH /api/kegiatan/:id — update info ────────────────────────────────────
 
 router.patch("/kegiatan/:id", requireAuth, async (req, res) => {
-  const userId = await getUserId(req.auth!.userId);
-  if (!userId) return res.status(401).json({ error: "user not found" });
+  const clerkId = getAuthenticatedClerkId(req);
+  if (!clerkId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
+  const userId = await getUserId(clerkId);
+  if (!userId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
 
-  const id = parseInt(req.params.id, 10);
+  const id = parsePositiveIntegerParam(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "id kegiatan tidak valid" });
+    return;
+  }
   const [existing] = await db.select().from(pkbActivities)
     .where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
-  if (!existing) return res.status(404).json({ error: "not found" });
-  if (existing.status === "diverifikasi") return res.status(403).json({ error: "sudah diverifikasi, tidak bisa diedit" });
+  if (!existing) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
+  if (existing.status === "diverifikasi") {
+    res.status(403).json({ error: "sudah diverifikasi, tidak bisa diedit" });
+    return;
+  }
 
   const allowed = [
     "namaKegiatan","tanggalMulai","tanggalSelesai","tempatKegiatan","modePelaksanaan",
@@ -278,7 +372,10 @@ router.patch("/kegiatan/:id", requireAuth, async (req, res) => {
 
   // Atribut komposisi Nilai Kredit — divalidasi (enum/boolean/angka positif).
   const komposisiAttrs = validateKomposisiAttrs(req.body);
-  if ("error" in komposisiAttrs) return res.status(400).json({ error: komposisiAttrs.error });
+  if ("error" in komposisiAttrs) {
+    res.status(400).json({ error: komposisiAttrs.error });
+    return;
+  }
   Object.assign(updates, komposisiAttrs);
 
   await db.update(pkbActivities).set(updates).where(eq(pkbActivities.id, id));
@@ -335,14 +432,29 @@ router.patch("/kegiatan/:id", requireAuth, async (req, res) => {
 // ─── DELETE /api/kegiatan/:id ──────────────────────────────────────────────────
 
 router.delete("/kegiatan/:id", requireAuth, async (req, res) => {
-  const userId = await getUserId(req.auth!.userId);
-  if (!userId) return res.status(401).json({ error: "user not found" });
+  const clerkId = getAuthenticatedClerkId(req);
+  if (!clerkId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
+  const userId = await getUserId(clerkId);
+  if (!userId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
 
-  const id = parseInt(req.params.id, 10);
+  const id = parsePositiveIntegerParam(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "id kegiatan tidak valid" });
+    return;
+  }
   const [existing] = await db
     .select({ id: pkbActivities.id, userId: pkbActivities.userId, marketplaceId: pkbActivities.marketplaceId })
     .from(pkbActivities).where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
-  if (!existing) return res.status(404).json({ error: "not found" });
+  if (!existing) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
 
   await db.delete(pkbActivities).where(eq(pkbActivities.id, id));
 
@@ -378,13 +490,28 @@ router.delete("/kegiatan/:id", requireAuth, async (req, res) => {
 // ─── PUT /api/kegiatan/:id/skk — replace all SKK mappings ────────────────────
 
 router.put("/kegiatan/:id/skk", requireAuth, async (req, res) => {
-  const userId = await getUserId(req.auth!.userId);
-  if (!userId) return res.status(401).json({ error: "user not found" });
+  const clerkId = getAuthenticatedClerkId(req);
+  if (!clerkId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
+  const userId = await getUserId(clerkId);
+  if (!userId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
 
-  const id = parseInt(req.params.id, 10);
+  const id = parsePositiveIntegerParam(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "id kegiatan tidak valid" });
+    return;
+  }
   const [existing] = await db.select().from(pkbActivities)
     .where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
-  if (!existing) return res.status(404).json({ error: "not found" });
+  if (!existing) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
 
   const items: { skkCode: string; skkName: string; jabkerId?: string; jabkerName?: string }[] = req.body.skk ?? [];
   await db.delete(pkbActivitySkk).where(eq(pkbActivitySkk.activityId, id));
@@ -408,26 +535,44 @@ router.put("/kegiatan/:id/skk", requireAuth, async (req, res) => {
 // Client uploads file directly to GCS via presigned URL, then calls this to register.
 
 router.post("/kegiatan/:id/docs", requireAuth, async (req, res) => {
-  const userId = await getUserId(req.auth!.userId);
-  if (!userId) return res.status(401).json({ error: "user not found" });
+  const clerkId = getAuthenticatedClerkId(req);
+  if (!clerkId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
+  const userId = await getUserId(clerkId);
+  if (!userId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
 
-  const id = parseInt(req.params.id, 10);
+  const id = parsePositiveIntegerParam(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "id kegiatan tidak valid" });
+    return;
+  }
   const [existing] = await db.select({ id: pkbActivities.id, status: pkbActivities.status })
     .from(pkbActivities).where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
-  if (!existing) return res.status(404).json({ error: "not found" });
+  if (!existing) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
   if (existing.status === "diverifikasi") {
-    return res.status(403).json({ error: "Kegiatan sudah diverifikasi — bukti tidak dapat diubah" });
+    res.status(403).json({ error: "Kegiatan sudah diverifikasi — bukti tidak dapat diubah" });
+    return;
   }
 
   const { docType, filename, objectPath, mimeType, sizeBytes, caption } = req.body;
   if (!docType || !filename || !objectPath) {
-    return res.status(400).json({ error: "docType, filename, objectPath wajib" });
+    res.status(400).json({ error: "docType, filename, objectPath wajib" });
+    return;
   }
 
   // Verify this objectPath was issued by our presign endpoint to this exact user.
   // Prevents a user from registering a path they didn't personally upload.
   if (!consumeUploadToken(objectPath, userId)) {
-    return res.status(403).json({ error: "objectPath tidak valid atau sudah kadaluarsa — silakan upload ulang." });
+    res.status(403).json({ error: "objectPath tidak valid atau sudah kadaluarsa — silakan upload ulang." });
+    return;
   }
 
   // The token has been consumed. If the DB insert fails below we re-issue it so
@@ -443,7 +588,8 @@ router.post("/kegiatan/:id/docs", requireAuth, async (req, res) => {
     // TTL is short (5 min) — enough for backoff retries but not open-ended.
     issueUploadToken(objectPath, userId, 5 * 60 * 1000);
     req.log?.error({ err: dbErr }, "DB insert failed for doc registration — token re-issued");
-    return res.status(500).json({ error: "Gagal menyimpan dokumen — silakan coba lagi." });
+    res.status(500).json({ error: "Gagal menyimpan dokumen — silakan coba lagi." });
+    return;
   }
 
   const journeyEventMap: Record<string, JourneyEvent> = {
@@ -469,17 +615,33 @@ router.post("/kegiatan/:id/docs", requireAuth, async (req, res) => {
 // ─── DELETE /api/kegiatan/:id/docs/:docId ─────────────────────────────────────
 
 router.delete("/kegiatan/:id/docs/:docId", requireAuth, async (req, res) => {
-  const userId = await getUserId(req.auth!.userId);
-  if (!userId) return res.status(401).json({ error: "user not found" });
+  const clerkId = getAuthenticatedClerkId(req);
+  if (!clerkId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
+  const userId = await getUserId(clerkId);
+  if (!userId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
 
-  const id    = parseInt(req.params.id, 10);
-  const docId = parseInt(req.params.docId, 10);
+  const id = parsePositiveIntegerParam(req.params.id);
+  const docId = parsePositiveIntegerParam(req.params.docId);
+  if (id === null || docId === null) {
+    res.status(400).json({ error: "id kegiatan atau dokumen tidak valid" });
+    return;
+  }
 
   const [existing] = await db.select({ id: pkbActivities.id, status: pkbActivities.status })
     .from(pkbActivities).where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
-  if (!existing) return res.status(404).json({ error: "not found" });
+  if (!existing) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
   if (existing.status === "diverifikasi") {
-    return res.status(403).json({ error: "Kegiatan sudah diverifikasi — bukti tidak dapat diubah" });
+    res.status(403).json({ error: "Kegiatan sudah diverifikasi — bukti tidak dapat diubah" });
+    return;
   }
 
   // Fetch the doc row first so we can delete from object storage after DB removal.
@@ -607,13 +769,28 @@ Balas HANYA dengan JSON (tidak ada teks lain): {"suggestions":[{"skkCode":"...",
 // Returns suggestions without saving — client applies them via PUT /skk.
 
 router.post("/kegiatan/:id/suggest-skk", requireAuth, async (req, res) => {
-  const userId = await getUserId(req.auth!.userId);
-  if (!userId) return res.status(401).json({ error: "user not found" });
+  const clerkId = getAuthenticatedClerkId(req);
+  if (!clerkId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
+  const userId = await getUserId(clerkId);
+  if (!userId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
 
-  const id = parseInt(req.params.id, 10);
+  const id = parsePositiveIntegerParam(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "id kegiatan tidak valid" });
+    return;
+  }
   const [act] = await db.select().from(pkbActivities)
     .where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
-  if (!act) return res.status(404).json({ error: "not found" });
+  if (!act) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
 
   const { SKK_DATA } = await import("../lib/skk-data");
   const { getClientForModel, DEFAULT_MODEL } = await import("../lib/llm");
@@ -674,16 +851,40 @@ Balas HANYA dengan JSON (tidak ada teks lain): {"suggestions":[{"skkCode":"...",
 // The "ASKOM" label has been removed from this flow; submit now goes to Asosiasi.
 
 router.post("/kegiatan/:id/ajukan", requireAuth, async (req, res) => {
-  const userId = await getUserId(req.auth!.userId);
-  if (!userId) return res.status(401).json({ error: "user not found" });
+  const clerkId = getAuthenticatedClerkId(req);
+  if (!clerkId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
+  const userId = await getUserId(clerkId);
+  if (!userId) {
+    res.status(401).json({ error: "user not found" });
+    return;
+  }
 
-  const id = parseInt(req.params.id, 10);
+  const id = parsePositiveIntegerParam(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "id kegiatan tidak valid" });
+    return;
+  }
   const [act] = await db.select().from(pkbActivities)
     .where(and(eq(pkbActivities.id, id), eq(pkbActivities.userId, userId))).limit(1);
-  if (!act) return res.status(404).json({ error: "not found" });
-  if (act.status === "draft") return res.status(400).json({ error: "Lengkapi semua field wajib sebelum mengajukan" });
-  if (act.status === "diajukan") return res.status(400).json({ error: "Dokumentasi sudah dalam antrian verifikasi" });
-  if (act.status === "diverifikasi") return res.status(400).json({ error: "Dokumentasi sudah diverifikasi" });
+  if (!act) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
+  if (act.status === "draft") {
+    res.status(400).json({ error: "Lengkapi semua field wajib sebelum mengajukan" });
+    return;
+  }
+  if (act.status === "diajukan") {
+    res.status(400).json({ error: "Dokumentasi sudah dalam antrian verifikasi" });
+    return;
+  }
+  if (act.status === "diverifikasi") {
+    res.status(400).json({ error: "Dokumentasi sudah diverifikasi" });
+    return;
+  }
 
   await db.update(pkbActivities).set({
     status: "diajukan",

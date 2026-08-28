@@ -16,7 +16,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { getMyAplProfile, updateMyAplProfile, type AplProfile } from '@/lib/api';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import { parseYmd, formatYmd } from '@/lib/apl-dates';
 
 const AGAMA_OPTIONS = ['Islam', 'Kristen Protestan', 'Kristen Katolik', 'Hindu', 'Buddha', 'Konghucu'];
@@ -387,7 +389,7 @@ function DateField({
             mode="date"
             display="spinner"
             // iOS spinner fires onChange on every wheel move — update value, keep picker open.
-            onChange={(_event, date) => {
+            onChange={(_event: DateTimePickerEvent, date?: Date) => {
               if (date) onChange(formatYmd(date));
             }}
           />
@@ -409,7 +411,7 @@ function DateField({
           mode="date"
           display="default"
           // Android shows a modal dialog; onChange fires once on OK/Cancel.
-          onChange={(event, date) => {
+          onChange={(event: DateTimePickerEvent, date?: Date) => {
             setShow(false);
             if (event.type === 'set' && date) onChange(formatYmd(date));
           }}

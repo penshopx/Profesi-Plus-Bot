@@ -14,14 +14,17 @@
 
 import express from "express";
 import request from "supertest";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { db } from "@workspace/db";
 import { buildQuizContext } from "../lib/historical-pkb.js";
 
-// Both clients' helpers, imported from their real source files so the test
-// exercises exactly what ships.
-import { parseExumDegradation as parseWeb } from "../../../gustafta-pkb/src/lib/exum-degradation";
-import { parseExumDegradation as parseMobile } from "../../../gustafta-mobile/lib/exum-degradation";
+type DegradationParser = (content: string) => {
+  body: string;
+  degradationNote: string | null;
+};
+
+let parseWeb: DegradationParser;
+let parseMobile: DegradationParser;
 
 // ── db mock — queue-based chainable stub (same harness as exum-quiz-warning) ──
 
@@ -225,6 +228,19 @@ async function generateDegradedExum(app: express.Express): Promise<string> {
 
 describe("Exum degradation footer — server ↔ client contract", () => {
   let app: express.Express;
+
+  beforeAll(async () => {
+    // Runtime imports keep this cross-artifact contract test exact without
+    // pulling frontend source files into the API server's TypeScript rootDir.
+    const webModulePath = "../../../gustafta-pkb/src/lib/exum-degradation";
+    const mobileModulePath = "../../../gustafta-mobile/lib/exum-degradation";
+    const [web, mobile] = await Promise.all([
+      vi.importActual<{ parseExumDegradation: DegradationParser }>(webModulePath),
+      vi.importActual<{ parseExumDegradation: DegradationParser }>(mobileModulePath),
+    ]);
+    parseWeb = web.parseExumDegradation;
+    parseMobile = mobile.parseExumDegradation;
+  });
 
   beforeEach(async () => {
     dbState.queue = [];

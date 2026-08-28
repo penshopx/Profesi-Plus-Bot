@@ -25,6 +25,15 @@ import { sendPushNotification } from "../lib/push";
 
 const router = Router();
 
+/** Activity IDs are single, positive integer route parameters. */
+function parseActivityId(value: string | string[] | undefined): number | null {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    return null;
+  }
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
 /** Middleware: only users with role "admin" may call these routes. */
 async function requireAskom(
   req: import("express").Request,
@@ -92,7 +101,11 @@ router.get("/askom/submissions", requireAuth, requireAskom, async (req, res) => 
 // ─── GET /askom/submissions/:id ───────────────────────────────────────────────
 
 router.get("/askom/submissions/:id", requireAuth, requireAskom, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseActivityId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "id kegiatan tidak valid." });
+    return;
+  }
 
   const [act] = await db
     .select({
@@ -136,7 +149,11 @@ router.get("/askom/submissions/:id", requireAuth, requireAskom, async (req, res)
 // ─── POST /askom/submissions/:id/verify ──────────────────────────────────────
 
 router.post("/askom/submissions/:id/verify", requireAuth, requireAskom, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseActivityId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "id kegiatan tidak valid." });
+    return;
+  }
   const { note } = req.body as { note?: string };
 
   const [act] = await db
@@ -196,7 +213,11 @@ router.post("/askom/submissions/:id/verify", requireAuth, requireAskom, async (r
 // ─── POST /askom/submissions/:id/reject ──────────────────────────────────────
 
 router.post("/askom/submissions/:id/reject", requireAuth, requireAskom, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseActivityId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "id kegiatan tidak valid." });
+    return;
+  }
   const { note } = req.body as { note?: string };
 
   if (!note?.trim()) {

@@ -28,6 +28,15 @@ import { sendPushNotification } from "../lib/push";
 
 const router = Router();
 
+/** Activity IDs are single, positive integer route parameters. */
+function parseActivityId(value: string | string[] | undefined): number | null {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    return null;
+  }
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
 /** Middleware: only users with role "asosiasi" or "admin" may call these routes. */
 async function requireAsosiasi(
   req: import("express").Request,
@@ -70,7 +79,11 @@ router.get("/asosiasi/submissions", requireAuth, requireAsosiasi, async (req, re
 // ─── GET /asosiasi/submissions/:id ───────────────────────────────────────────
 
 router.get("/asosiasi/submissions/:id", requireAuth, requireAsosiasi, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseActivityId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "id kegiatan tidak valid." });
+    return;
+  }
 
   const [act] = await db
     .select({
@@ -99,7 +112,10 @@ router.get("/asosiasi/submissions/:id", requireAuth, requireAsosiasi, async (req
     .where(eq(pkbActivities.id, id))
     .limit(1);
 
-  if (!act) return res.status(404).json({ error: "not found" });
+  if (!act) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
 
   const [skk, docs, journey, checklist, checklistHistory] = await Promise.all([
     db.select().from(pkbActivitySkk).where(eq(pkbActivitySkk.activityId, id)),
@@ -131,13 +147,21 @@ router.get("/asosiasi/submissions/:id", requireAuth, requireAsosiasi, async (req
 // ─── POST /asosiasi/submissions/:id/checklist ─────────────────────────────────
 
 router.post("/asosiasi/submissions/:id/checklist", requireAuth, requireAsosiasi, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseActivityId(req.params.id);
+  if (id === null) {
+    res.status(400).json({ error: "id kegiatan tidak valid." });
+    return;
+  }
 
   const [act] = await db.select({ id: pkbActivities.id, status: pkbActivities.status, userId: pkbActivities.userId, updatedAt: pkbActivities.updatedAt })
     .from(pkbActivities).where(eq(pkbActivities.id, id)).limit(1);
-  if (!act) return res.status(404).json({ error: "not found" });
+  if (!act) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
   if (!["diajukan", "diverifikasi", "ditolak"].includes(act.status)) {
-    return res.status(400).json({ error: "Kegiatan belum diajukan ke Asosiasi." });
+    res.status(400).json({ error: "Kegiatan belum diajukan ke Asosiasi." });
+    return;
   }
 
   const { suratUndangan, daftarHadir, foto, penyelenggaraValid, catatan, expectedUpdatedAt } = req.body;
@@ -155,10 +179,12 @@ router.post("/asosiasi/submissions/:id/checklist", requireAuth, requireAsosiasi,
   if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== null) {
     const expected = new Date(expectedUpdatedAt);
     if (Number.isNaN(expected.getTime())) {
-      return res.status(400).json({ error: "expectedUpdatedAt tidak valid." });
+      res.status(400).json({ error: "expectedUpdatedAt tidak valid." });
+      return;
     }
     if (expected.getTime() !== act.updatedAt.getTime()) {
-      return res.status(409).json({ error: CONFLICT_MESSAGE, currentStatus: act.status });
+      res.status(409).json({ error: CONFLICT_MESSAGE, currentStatus: act.status });
+      return;
     }
   }
   // Phase 2 (write-time race) conditions the UPDATE on the exact revision we
@@ -170,7 +196,8 @@ router.post("/asosiasi/submissions/:id/checklist", requireAuth, requireAsosiasi,
 
   // Rejection must include a note so the owner knows what to fix.
   if (!allClear && (typeof catatan !== "string" || catatan.trim().length === 0)) {
-    return res.status(400).json({ error: "Catatan wajib diisi jika ada item checklist yang belum lengkap." });
+    res.status(400).json({ error: "Catatan wajib diisi jika ada item checklist yang belum lengkap." });
+    return;
   }
 
   // All writes (status transition, checklist upsert, journey entry) run
@@ -260,7 +287,8 @@ router.post("/asosiasi/submissions/:id/checklist", requireAuth, requireAsosiasi,
       // transaction rolled back, nothing was overwritten.
       const [fresh] = await db.select({ status: pkbActivities.status })
         .from(pkbActivities).where(eq(pkbActivities.id, id)).limit(1);
-      return res.status(409).json({ error: CONFLICT_MESSAGE, currentStatus: fresh?.status ?? null });
+      res.status(409).json({ error: CONFLICT_MESSAGE, currentStatus: fresh?.status ?? null });
+      return;
     }
     throw err;
   }

@@ -109,7 +109,9 @@ describe("clearStalePushTokens", () => {
     // The WHERE SQL is built with `sql` template tag.  The second call to sql
     // (the inner OR clause) receives the cutoff Date as its interpolated value.
     const { sql: sqlMock } = await import("drizzle-orm");
-    const sqlCalls = (sqlMock as ReturnType<typeof vi.fn>).mock.calls as unknown[][];
+    const sqlCalls = (
+      sqlMock as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls;
     // Find the call whose values array contains a Date
     const cutoffCall = sqlCalls.find((args) => {
       const values = args[1] !== undefined ? [args[1]] : [];

@@ -23,11 +23,16 @@ import { eq, and, asc, isNotNull } from "drizzle-orm";
 
 /** Middleware: only allow users with role='admin'. */
 function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-  if ((req as any).dbUser?.role !== "admin") {
+  if (req.dbUser?.role !== "admin") {
     res.status(403).json({ error: "Akses ditolak — hanya admin." });
     return;
   }
   next();
+}
+
+/** Route parameters may be repeated by Express; catalog identifiers never are. */
+function singleRouteParam(value: string | string[] | undefined): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 /**
@@ -142,7 +147,7 @@ router.get("/marketplace/watched", requireAuth, async (req, res) => {
 
 router.post("/marketplace/:courseId/watch", requireAuth, async (req, res) => {
   const uid = req.dbUser!.id;
-  const { courseId } = req.params;
+  const courseId = singleRouteParam(req.params.courseId);
   if (!courseId || courseId.length > 120) {
     res.status(400).json({ error: "courseId tidak valid" });
     return;
@@ -181,7 +186,11 @@ router.post("/marketplace/watched", requireAuth, async (req, res) => {
 
 router.delete("/marketplace/watched/:courseId", requireAuth, async (req, res) => {
   const uid = req.dbUser!.id;
-  const { courseId } = req.params;
+  const courseId = singleRouteParam(req.params.courseId);
+  if (!courseId) {
+    res.status(400).json({ error: "courseId tidak valid" });
+    return;
+  }
   await db
     .delete(marketplaceWatched)
     .where(and(
@@ -259,7 +268,11 @@ router.post("/marketplace/admin/courses", requireAuth, requireAdmin, async (req,
 
 /** PATCH /api/marketplace/admin/courses/:id — update a course */
 router.patch("/marketplace/admin/courses/:id", requireAuth, requireAdmin, async (req, res) => {
-  const { id } = req.params;
+  const id = singleRouteParam(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "id kursus tidak valid." });
+    return;
+  }
   const body = req.body as Record<string, unknown>;
 
   const existing = await db.select().from(marketplaceCourses).where(eq(marketplaceCourses.id, id)).limit(1);
@@ -298,7 +311,11 @@ router.patch("/marketplace/admin/courses/:id", requireAuth, requireAdmin, async 
 
 /** DELETE /api/marketplace/admin/courses/:id — delete a course (cascades to reviews) */
 router.delete("/marketplace/admin/courses/:id", requireAuth, requireAdmin, async (req, res) => {
-  const { id } = req.params;
+  const id = singleRouteParam(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "id kursus tidak valid." });
+    return;
+  }
   await db.delete(marketplaceCourses).where(eq(marketplaceCourses.id, id));
   res.json({ ok: true });
 });
@@ -307,7 +324,11 @@ router.delete("/marketplace/admin/courses/:id", requireAuth, requireAdmin, async
 
 /** POST /api/marketplace/admin/courses/:id/ai-reviews — add an AI review */
 router.post("/marketplace/admin/courses/:id/ai-reviews", requireAuth, requireAdmin, async (req, res) => {
-  const { id } = req.params;
+  const id = singleRouteParam(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "id kursus tidak valid." });
+    return;
+  }
   const body = req.body as Record<string, unknown>;
   if (!body.platform || !body.platformIcon || body.rating === undefined ||
       body.relevanceScore === undefined || !body.comment || !body.reviewedAt) {
@@ -329,8 +350,9 @@ router.post("/marketplace/admin/courses/:id/ai-reviews", requireAuth, requireAdm
 
 /** PATCH /api/marketplace/admin/courses/:id/ai-reviews/:reviewId */
 router.patch("/marketplace/admin/courses/:id/ai-reviews/:reviewId", requireAuth, requireAdmin, async (req, res) => {
-  const { id: courseId } = req.params;
-  const reviewId = Number(req.params.reviewId);
+  const courseId = singleRouteParam(req.params.id);
+  const reviewId = Number(singleRouteParam(req.params.reviewId));
+  if (!courseId) { res.status(400).json({ error: "id kursus tidak valid." }); return; }
   if (!Number.isFinite(reviewId)) { res.status(400).json({ error: "reviewId tidak valid." }); return; }
   const body = req.body as Record<string, unknown>;
   if (!validateReviewScores(body, res)) return;
@@ -350,8 +372,9 @@ router.patch("/marketplace/admin/courses/:id/ai-reviews/:reviewId", requireAuth,
 
 /** DELETE /api/marketplace/admin/courses/:id/ai-reviews/:reviewId */
 router.delete("/marketplace/admin/courses/:id/ai-reviews/:reviewId", requireAuth, requireAdmin, async (req, res) => {
-  const { id: courseId } = req.params;
-  const reviewId = Number(req.params.reviewId);
+  const courseId = singleRouteParam(req.params.id);
+  const reviewId = Number(singleRouteParam(req.params.reviewId));
+  if (!courseId) { res.status(400).json({ error: "id kursus tidak valid." }); return; }
   if (!Number.isFinite(reviewId)) { res.status(400).json({ error: "reviewId tidak valid." }); return; }
   await db.delete(marketplaceAiReviews)
     .where(and(eq(marketplaceAiReviews.id, reviewId), eq(marketplaceAiReviews.courseId, courseId)));
@@ -362,7 +385,11 @@ router.delete("/marketplace/admin/courses/:id/ai-reviews/:reviewId", requireAuth
 
 /** POST /api/marketplace/admin/courses/:id/askom-reviews — add an ASKOM endorsement */
 router.post("/marketplace/admin/courses/:id/askom-reviews", requireAuth, requireAdmin, async (req, res) => {
-  const { id } = req.params;
+  const id = singleRouteParam(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "id kursus tidak valid." });
+    return;
+  }
   const body = req.body as Record<string, unknown>;
   if (!body.reviewerName || !body.credential || !body.institution ||
       body.rating === undefined || body.relevanceScore === undefined ||
@@ -397,8 +424,9 @@ router.post("/marketplace/admin/courses/:id/askom-reviews", requireAuth, require
 
 /** PATCH /api/marketplace/admin/courses/:id/askom-reviews/:reviewId */
 router.patch("/marketplace/admin/courses/:id/askom-reviews/:reviewId", requireAuth, requireAdmin, async (req, res) => {
-  const { id: courseId } = req.params;
-  const reviewId = Number(req.params.reviewId);
+  const courseId = singleRouteParam(req.params.id);
+  const reviewId = Number(singleRouteParam(req.params.reviewId));
+  if (!courseId) { res.status(400).json({ error: "id kursus tidak valid." }); return; }
   if (!Number.isFinite(reviewId)) { res.status(400).json({ error: "reviewId tidak valid." }); return; }
   const body = req.body as Record<string, unknown>;
   if (!validateReviewScores(body, res)) return;
@@ -423,8 +451,9 @@ router.patch("/marketplace/admin/courses/:id/askom-reviews/:reviewId", requireAu
 
 /** DELETE /api/marketplace/admin/courses/:id/askom-reviews/:reviewId */
 router.delete("/marketplace/admin/courses/:id/askom-reviews/:reviewId", requireAuth, requireAdmin, async (req, res) => {
-  const { id: courseId } = req.params;
-  const reviewId = Number(req.params.reviewId);
+  const courseId = singleRouteParam(req.params.id);
+  const reviewId = Number(singleRouteParam(req.params.reviewId));
+  if (!courseId) { res.status(400).json({ error: "id kursus tidak valid." }); return; }
   if (!Number.isFinite(reviewId)) { res.status(400).json({ error: "reviewId tidak valid." }); return; }
   await db.delete(marketplaceAskomReviews)
     .where(and(eq(marketplaceAskomReviews.id, reviewId), eq(marketplaceAskomReviews.courseId, courseId)));
