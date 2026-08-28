@@ -275,6 +275,10 @@ function APL01Form({ profile, onSave }: { profile: Profile; onSave: () => void }
   const { toast } = useToast();
   const qc = useQueryClient();
   const [form, setForm] = useState<Partial<Profile>>({ ...profile });
+  const missingLabels = new Set(getMissingAplFields(form));
+  const labelByKey = new Map(APL01_FIELDS.map((field) => [field.key, field.label]));
+  const isMissing = (key: keyof Profile) => missingLabels.has(labelByKey.get(String(key)) ?? "");
+  const missingClass = "border-amber-500 bg-amber-50/60 focus-visible:ring-amber-500";
 
   const mut = useMutation({
     mutationFn: () => updateMyProfile(form),
@@ -292,19 +296,40 @@ function APL01Form({ profile, onSave }: { profile: Profile; onSave: () => void }
 
   const F = ({ label, id, type = "text", placeholder }: { label: string; id: keyof Profile; type?: string; placeholder?: string }) => (
     <div className="space-y-1.5">
-      <Label htmlFor={String(id)}>{label}</Label>
+      <Label htmlFor={String(id)}>{label} <span className="text-amber-600">*</span></Label>
       <Input
         id={String(id)}
         type={type}
         placeholder={placeholder}
         value={(form[id] as string) ?? ""}
         onChange={(e) => set(id, e.target.value)}
+        aria-invalid={isMissing(id)}
+        className={isMissing(id) ? missingClass : undefined}
       />
+      {isMissing(id) && <p className="text-xs text-amber-700">Wajib diisi</p>}
     </div>
   );
 
+  function submit() {
+    const missing = getMissingAplFields(form);
+    if (missing.length > 0) {
+      const first = APL01_FIELDS.find((field) => missing.includes(field.label));
+      if (first) {
+        document.getElementById(first.key)?.scrollIntoView({ behavior: "smooth", block: "center" });
+        window.setTimeout(() => document.getElementById(first.key)?.focus(), 350);
+      }
+      toast({
+        title: `${missing.length} kolom APL 01 belum diisi`,
+        description: "Lengkapi semua kolom yang ditandai sebelum menyimpan.",
+        variant: "destructive",
+      });
+      return;
+    }
+    mut.mutate();
+  }
+
   return (
-    <form onSubmit={(e) => { e.preventDefault(); mut.mutate(); }} className="space-y-8">
+    <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="space-y-8">
 
       {/* Identitas Diri */}
       <section className="space-y-4">
@@ -317,23 +342,25 @@ function APL01Form({ profile, onSave }: { profile: Profile; onSave: () => void }
           <F label="Tempat Lahir" id="tempatLahir" />
           <F label="Tanggal Lahir" id="tanggalLahir" type="date" />
           <div className="space-y-1.5">
-            <Label htmlFor="jenisKelamin">Jenis Kelamin</Label>
+            <Label htmlFor="jenisKelamin">Jenis Kelamin <span className="text-amber-600">*</span></Label>
             <Select value={form.jenisKelamin ?? ""} onValueChange={(v) => set("jenisKelamin", v)}>
-              <SelectTrigger id="jenisKelamin"><SelectValue placeholder="Pilih..." /></SelectTrigger>
+              <SelectTrigger id="jenisKelamin" aria-invalid={isMissing("jenisKelamin")} className={isMissing("jenisKelamin") ? missingClass : undefined}><SelectValue placeholder="Pilih..." /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="L">Laki-laki</SelectItem>
                 <SelectItem value="P">Perempuan</SelectItem>
               </SelectContent>
             </Select>
+            {isMissing("jenisKelamin") && <p className="text-xs text-amber-700">Wajib diisi</p>}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="agama">Agama</Label>
+            <Label htmlFor="agama">Agama <span className="text-amber-600">*</span></Label>
             <Select value={form.agama ?? ""} onValueChange={(v) => set("agama", v)}>
-              <SelectTrigger id="agama"><SelectValue placeholder="Pilih..." /></SelectTrigger>
+              <SelectTrigger id="agama" aria-invalid={isMissing("agama")} className={isMissing("agama") ? missingClass : undefined}><SelectValue placeholder="Pilih..." /></SelectTrigger>
               <SelectContent>
                 {AGAMA_OPTIONS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
               </SelectContent>
             </Select>
+            {isMissing("agama") && <p className="text-xs text-amber-700">Wajib diisi</p>}
           </div>
           <F label="Nomor HP" id="nomorHp" type="tel" placeholder="08XXXXXXXXXX" />
         </div>
@@ -346,14 +373,17 @@ function APL01Form({ profile, onSave }: { profile: Profile; onSave: () => void }
           <span>Alamat Tempat Tinggal</span>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="alamat">Alamat Lengkap</Label>
+          <Label htmlFor="alamat">Alamat Lengkap <span className="text-amber-600">*</span></Label>
           <Textarea
             id="alamat"
             placeholder="Jl. ..."
             value={(form.alamat as string) ?? ""}
             onChange={(e) => set("alamat", e.target.value)}
             rows={2}
+            aria-invalid={isMissing("alamat")}
+            className={isMissing("alamat") ? missingClass : undefined}
           />
+          {isMissing("alamat") && <p className="text-xs text-amber-700">Wajib diisi</p>}
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <F label="RT" id="rt" placeholder="001" />
@@ -376,13 +406,14 @@ function APL01Form({ profile, onSave }: { profile: Profile; onSave: () => void }
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="jenjangPendidikan">Jenjang Pendidikan</Label>
+            <Label htmlFor="jenjangPendidikan">Jenjang Pendidikan <span className="text-amber-600">*</span></Label>
             <Select value={form.jenjangPendidikan ?? ""} onValueChange={(v) => set("jenjangPendidikan", v)}>
-              <SelectTrigger id="jenjangPendidikan"><SelectValue placeholder="Pilih..." /></SelectTrigger>
+              <SelectTrigger id="jenjangPendidikan" aria-invalid={isMissing("jenjangPendidikan")} className={isMissing("jenjangPendidikan") ? missingClass : undefined}><SelectValue placeholder="Pilih..." /></SelectTrigger>
               <SelectContent>
                 {PENDIDIKAN_OPTIONS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
               </SelectContent>
             </Select>
+            {isMissing("jenjangPendidikan") && <p className="text-xs text-amber-700">Wajib diisi</p>}
           </div>
           <F label="Nama Institusi/Sekolah" id="namaInstitusi" />
           <F label="Jurusan/Program Studi" id="jurusan" />
@@ -402,14 +433,17 @@ function APL01Form({ profile, onSave }: { profile: Profile; onSave: () => void }
           <F label="Tahun Mulai Bekerja" id="tahunMulaiBekerja" type="number" placeholder="2015" />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="alamatPerusahaan">Alamat Perusahaan</Label>
+          <Label htmlFor="alamatPerusahaan">Alamat Perusahaan <span className="text-amber-600">*</span></Label>
           <Textarea
             id="alamatPerusahaan"
             placeholder="Jl. ..."
             value={(form.alamatPerusahaan as string) ?? ""}
             onChange={(e) => set("alamatPerusahaan", e.target.value)}
             rows={2}
+            aria-invalid={isMissing("alamatPerusahaan")}
+            className={isMissing("alamatPerusahaan") ? missingClass : undefined}
           />
+          {isMissing("alamatPerusahaan") && <p className="text-xs text-amber-700">Wajib diisi</p>}
         </div>
       </section>
 
