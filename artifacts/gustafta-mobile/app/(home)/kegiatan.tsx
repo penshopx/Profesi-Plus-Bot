@@ -22,11 +22,11 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as WebBrowser from 'expo-web-browser';
 import {
   listMyKegiatanPkb, createKegiatanPkb, updateKegiatanPkb, deleteKegiatanPkb,
-  updateKegiatanSkk, ajukanKegiatanPkb, getKegiatanDetail,
+  updateKegiatanSkk, ajukanKegiatanPkb, getKegiatanDetail, getKegiatanKomposisi,
   requestUploadUrl, registerKegiatanDoc, deleteKegiatanDoc, getDocDownloadUrl,
   abortUpload,
   type PkbActivity, type CreateKegiatanBody, type PkbSkkUnit,
-  type PkbActivityDoc, type PkbJourneyEntry,
+  type PkbActivityDoc, type PkbJourneyEntry, type KomposisiSummary,
 } from '@/lib/api';
 import { retryWithBackoff } from '@/lib/retry';
 import { useAuth } from '@clerk/expo';
@@ -82,6 +82,63 @@ function StatusBadge({ status, colors }: { status: string; colors: ReturnType<ty
   return (
     <View style={{ backgroundColor: m.bg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99 }}>
       <Text style={{ fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: m.text }}>{m.label}</Text>
+    </View>
+  );
+}
+
+function KomposisiCard({ colors }: { colors: ReturnType<typeof useColors> }) {
+  const { data, isLoading, isError, refetch } = useQuery<KomposisiSummary>({
+    queryKey: ['kegiatan-komposisi'],
+    queryFn: getKegiatanKomposisi,
+    staleTime: 30_000,
+  });
+
+  return (
+    <View style={{ borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, borderRadius: 16, padding: 14, gap: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center' }}>
+          <Feather name="pie-chart" size={17} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.foreground, fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold' }}>Komposisi Nilai Kredit</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 10, fontFamily: 'PlusJakartaSans_400Regular' }}>Pasal 20 Permen PUPR 12/2021</Text>
+        </View>
+        {data && (
+          <Feather name={data.allOk ? 'check-circle' : 'alert-circle'} size={20} color={data.allOk ? '#059669' : '#D97706'} />
+        )}
+      </View>
+
+      {isLoading ? (
+        <ActivityIndicator color={colors.primary} />
+      ) : isError ? (
+        <Pressable onPress={() => refetch()} style={{ paddingVertical: 8, alignItems: 'center' }}>
+          <Text style={{ color: colors.primary, fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold' }}>Gagal memuat — ketuk untuk mencoba lagi</Text>
+        </Pressable>
+      ) : data && (
+        <>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11, fontFamily: 'PlusJakartaSans_400Regular' }}>
+            {data.totalAngkaKredit} SKPK · {data.countedActivities} dari {data.totalActivities} kegiatan dihitung
+          </Text>
+          {data.rules.map((rule) => (
+            <View key={rule.id} style={{ gap: 5 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                <Text style={{ flex: 1, color: colors.foreground, fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold' }}>{rule.label}</Text>
+                <Text style={{ color: rule.ok ? '#059669' : '#D97706', fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold' }}>
+                  {rule.actualPct}% / {rule.requirement}
+                </Text>
+              </View>
+              <View style={{ height: 6, borderRadius: 99, backgroundColor: colors.muted, overflow: 'hidden' }}>
+                <View style={{ height: 6, width: `${Math.min(100, Math.max(0, rule.actualPct))}%`, backgroundColor: rule.ok ? '#059669' : '#D97706' }} />
+              </View>
+            </View>
+          ))}
+          {(data.missingAngkaKredit > 0 || data.missingAtribut > 0) && (
+            <Text style={{ color: '#D97706', fontSize: 10, fontFamily: 'PlusJakartaSans_400Regular' }}>
+              Lengkapi {data.missingAngkaKredit} kegiatan tanpa angka kredit dan {data.missingAtribut} kegiatan tanpa unsur/sifat.
+            </Text>
+          )}
+        </>
+      )}
     </View>
   );
 }
@@ -740,6 +797,7 @@ export function ActivityFormModal({ visible, initial, prefill, onClose, onSaved,
     mutationFn: (data: CreateKegiatanBody) => createKegiatanPkb(data),
     onSuccess: (act) => {
       qc.invalidateQueries({ queryKey: ['kegiatan'] });
+      qc.invalidateQueries({ queryKey: ['kegiatan-komposisi'] });
       if (prefill?.marketplaceId && userId) {
         qc.invalidateQueries({ queryKey: ['marketplace-watched', userId] });
       }
@@ -748,7 +806,11 @@ export function ActivityFormModal({ visible, initial, prefill, onClose, onSaved,
   });
   const updateMut = useMutation({
     mutationFn: (data: Partial<CreateKegiatanBody>) => updateKegiatanPkb(initial!.id, data),
-    onSuccess: (act) => { qc.invalidateQueries({ queryKey: ['kegiatan'] }); onSaved(act); },
+    onSuccess: (act) => {
+      qc.invalidateQueries({ queryKey: ['kegiatan'] });
+      qc.invalidateQueries({ queryKey: ['kegiatan-komposisi'] });
+      onSaved(act);
+    },
   });
 
   const isPending = createMut.isPending || updateMut.isPending;
@@ -1010,7 +1072,11 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
 
   const deleteMut = useMutation({
     mutationFn: () => deleteKegiatanPkb(activity.id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['kegiatan'] }); onClose(); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['kegiatan'] });
+      qc.invalidateQueries({ queryKey: ['kegiatan-komposisi'] });
+      onClose();
+    },
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -1022,6 +1088,7 @@ function ActivityDetail({ activity, onClose, onEdited, colors }: {
     try {
       await ajukanKegiatanPkb(activity.id);
       qc.invalidateQueries({ queryKey: ['kegiatan'] });
+      qc.invalidateQueries({ queryKey: ['kegiatan-komposisi'] });
       showAlert('Berhasil', activity.status === 'ditolak'
         ? 'Dokumentasi diajukan ulang untuk verifikasi.'
         : 'Dokumentasi berhasil diajukan untuk verifikasi.');
@@ -1434,6 +1501,8 @@ export default function KegiatanScreen({ isTab = false }: KegiatanScreenProps) {
           renderItem={({ item }) => (
             <ActivityCard activity={item} onPress={() => setSelectedActivity(item)} colors={colors} />
           )}
+          ListHeaderComponent={<KomposisiCard colors={colors} />}
+          ListHeaderComponentStyle={{ marginBottom: 12 }}
           contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: insets.bottom + 80 }}
           onRefresh={refetch}
           refreshing={isLoading}

@@ -513,6 +513,10 @@ export interface PkbActivity {
   linkRekaman?: string | null;
   jenisPkb?: string | null;
   jpPkb?: number | null;
+  unsurKegiatan?: 'utama' | 'penunjang' | null;
+  sifatKegiatan?: 'khusus' | 'umum' | null;
+  isPendidikanNonformal?: boolean;
+  angkaKredit?: number | null;
   status: string;
   askomNote?: string | null;
   createdAt: string;
@@ -546,12 +550,44 @@ export interface CreateKegiatanBody {
   linkRekaman?: string;
   jenisPkb?: string;
   jpPkb?: number;
+  unsurKegiatan?: 'utama' | 'penunjang' | null;
+  sifatKegiatan?: 'khusus' | 'umum' | null;
+  isPendidikanNonformal?: boolean;
+  angkaKredit?: number | null;
   /** Marketplace link — auto-marks course as watched server-side when present */
   marketplaceId?: string;
   courseTitle?: string;
   courseProvider?: string;
   courseJabkerList?: string[];
   courseSkkTagsList?: string[];
+}
+
+export interface KomposisiRule {
+  id: string;
+  label: string;
+  requirement: string;
+  actualPct: number;
+  thresholdPct: number;
+  direction: 'min' | 'max';
+  ok: boolean;
+  detail: string;
+}
+
+export interface KomposisiSummary {
+  reference: string;
+  totalAngkaKredit: number;
+  countedActivities: number;
+  totalActivities: number;
+  missingAngkaKredit: number;
+  missingAtribut: number;
+  allOk: boolean;
+  rules: KomposisiRule[];
+}
+
+export async function getKegiatanKomposisi(): Promise<KomposisiSummary> {
+  const res = await apiFetch('/kegiatan/komposisi');
+  if (!res.ok) throw new Error('Gagal memuat komposisi Nilai Kredit');
+  return res.json();
 }
 
 export async function createKegiatanPkb(body: CreateKegiatanBody): Promise<PkbActivity> {
