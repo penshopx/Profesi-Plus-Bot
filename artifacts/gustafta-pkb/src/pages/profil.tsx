@@ -5,7 +5,7 @@
  * APL 02: Daftar unit kompetensi yang diklaim beserta bukti dan status proficiency
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@clerk/react";
 import { Link } from "wouter";
@@ -271,20 +271,35 @@ function CompletenessBar({ profile }: { profile: Profile }) {
 
 // ─── APL 01 form ─────────────────────────────────────────────────────────────
 
-function APL01Form({ profile, onSave }: { profile: Profile; onSave: () => void }) {
+function APL01Form({
+  profile,
+  highlightMissing,
+  onSave,
+}: {
+  profile: Profile;
+  highlightMissing: boolean;
+  onSave: () => void;
+}) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [form, setForm] = useState<Partial<Profile>>({ ...profile });
+  const [showMissing, setShowMissing] = useState(highlightMissing);
   const missingLabels = new Set(getMissingAplFields(form));
   const labelByKey = new Map(APL01_FIELDS.map((field) => [field.key, field.label]));
-  const isMissing = (key: keyof Profile) => missingLabels.has(labelByKey.get(String(key)) ?? "");
+  const isMissing = (key: keyof Profile) =>
+    showMissing && missingLabels.has(labelByKey.get(String(key)) ?? "");
   const missingClass = "border-amber-500 bg-amber-50/60 focus-visible:ring-amber-500";
+
+  useEffect(() => {
+    if (highlightMissing) setShowMissing(true);
+  }, [highlightMissing]);
 
   const mut = useMutation({
     mutationFn: () => updateMyProfile(form),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-profile"] });
       toast({ title: "Profil disimpan ✓" });
+      setShowMissing(false);
       onSave();
     },
     onError: (e) => toast({ title: "Gagal menyimpan", description: String(e), variant: "destructive" }),
@@ -313,6 +328,7 @@ function APL01Form({ profile, onSave }: { profile: Profile; onSave: () => void }
   function submit() {
     const missing = getMissingAplFields(form);
     if (missing.length > 0) {
+      setShowMissing(true);
       const first = APL01_FIELDS.find((field) => missing.includes(field.label));
       if (first) {
         document.getElementById(first.key)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -714,7 +730,7 @@ export default function ProfilPage() {
   const { user } = useUser();
   const { data: profile, isLoading } = useQuery({ queryKey: ["my-profile"], queryFn: getMyProfile });
   const { data: claims = [] } = useQuery({ queryKey: ["my-claims"], queryFn: listMyClaims });
-  const [saved, setSaved] = useState(false);
+  const [highlightMissing, setHighlightMissing] = useState(false);
   const [missingFields, setMissingFields] = useState<string[] | null>(null);
   const [dateDialogOpen, setDateDialogOpen] = useState(false);
   const [signDate, setSignDate] = useState("");
@@ -751,6 +767,7 @@ export default function ProfilPage() {
    */
   function goToFirstBlankField() {
     skipDialogRestoreFocus.current = true;
+    setHighlightMissing(true);
     setMissingFields(null);
     setActiveTab("apl01");
     if (!profile) return;
@@ -942,7 +959,11 @@ export default function ProfilPage() {
                 {isLoading ? (
                   <div className="text-sm text-muted-foreground py-4">Memuat profil…</div>
                 ) : profile ? (
-                  <APL01Form profile={profile} onSave={() => setSaved(true)} />
+                  <APL01Form
+                    profile={profile}
+                    highlightMissing={highlightMissing}
+                    onSave={() => setHighlightMissing(false)}
+                  />
                 ) : null}
               </CardContent>
             </Card>
