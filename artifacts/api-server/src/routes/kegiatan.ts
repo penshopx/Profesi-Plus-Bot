@@ -17,7 +17,7 @@ import { eq, and, desc, inArray } from "drizzle-orm";
 import { consumeUploadToken, issueUploadToken } from "../lib/uploadTokenStore";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendPushNotification } from "../lib/push";
-import { computeKomposisi, validateKomposisiAttrs } from "../lib/komposisi";
+import { computeKomposisi, deriveKomposisiDefaults, validateKomposisiAttrs } from "../lib/komposisi";
 
 const router = Router();
 
@@ -209,8 +209,13 @@ router.post("/kegiatan", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "namaKegiatan dan tanggalMulai wajib diisi" });
   }
 
-  const komposisiAttrs = validateKomposisiAttrs({ unsurKegiatan, sifatKegiatan, isPendidikanNonformal, angkaKredit });
+  const komposisiInput: Record<string, unknown> = {};
+  for (const key of ["unsurKegiatan", "sifatKegiatan", "isPendidikanNonformal", "angkaKredit"]) {
+    if (key in req.body) komposisiInput[key] = req.body[key];
+  }
+  const komposisiAttrs = validateKomposisiAttrs(komposisiInput);
   if ("error" in komposisiAttrs) return res.status(400).json({ error: komposisiAttrs.error });
+  const komposisiDefaults = deriveKomposisiDefaults(jenisPkb);
 
   const [act] = await db.insert(pkbActivities).values({
     userId, namaKegiatan, tanggalMulai, tanggalSelesai: tanggalSelesai ?? null,
@@ -221,7 +226,8 @@ router.post("/kegiatan", requireAuth, async (req, res) => {
     jenisPkb: jenisPkb ?? null, jpPkb: jpPkb ?? null,
     unsurKegiatan: komposisiAttrs.unsurKegiatan ?? null,
     sifatKegiatan: komposisiAttrs.sifatKegiatan ?? null,
-    isPendidikanNonformal: komposisiAttrs.isPendidikanNonformal === true,
+    isPendidikanNonformal: komposisiAttrs.isPendidikanNonformal
+      ?? komposisiDefaults.isPendidikanNonformal,
     angkaKredit: komposisiAttrs.angkaKredit ?? null,
     status: "draft",
   }).returning();

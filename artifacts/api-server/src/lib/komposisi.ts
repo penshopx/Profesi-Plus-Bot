@@ -15,6 +15,26 @@
 export const UNSUR_KEGIATAN = ["utama", "penunjang"] as const;
 export const SIFAT_KEGIATAN = ["khusus", "umum"] as const;
 
+const NONFORMAL_JENIS_PKB = new Set([
+  "kursus",
+  "kursus online",
+  "mandiri",
+  "pelatihan mandiri",
+]);
+
+/**
+ * Default konservatif yang dapat diturunkan dari label jenis PKB saja.
+ * Unsur, sifat, dan angka kredit tetap membutuhkan konteks substansi/bukti.
+ */
+export function deriveKomposisiDefaults(jenisPkb: unknown): {
+  isPendidikanNonformal: boolean;
+} {
+  const normalized = typeof jenisPkb === "string"
+    ? jenisPkb.trim().toLocaleLowerCase("id-ID")
+    : "";
+  return { isPendidikanNonformal: NONFORMAL_JENIS_PKB.has(normalized) };
+}
+
 export interface KomposisiActivity {
   status: string;
   unsurKegiatan: string | null;

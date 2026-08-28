@@ -92,6 +92,11 @@ const STATUS_META: Record<string, { label: string; color: string; icon: typeof C
 };
 
 const JENIS_PKB = ["Seminar","Webinar","Diklatkerja","Workshop","Kursus Online","Pelatihan Mandiri","Lainnya"];
+
+function isNonformalJenisPkb(jenisPkb: string): boolean {
+  return ["kursus online", "kursus", "pelatihan mandiri", "mandiri"]
+    .includes(jenisPkb.trim().toLocaleLowerCase("id-ID"));
+}
 const MODE_OPTIONS = ["Online","Offline","Hybrid"];
 
 const DOC_TYPE_META: Record<string, { label: string; icon: typeof FileText; accept: string }> = {
@@ -342,9 +347,21 @@ function ActivityFormModal({ mode, initial, prefill, onClose, onSaved }: {
     angkaKredit:     initial?.angkaKredit != null ? String(initial.angkaKredit) : "",
   });
   const [skk, setSkk] = useState<SkkUnit[]>(initial?.skk ?? []);
+  const [nonformalAutoFilled, setNonformalAutoFilled] = useState(
+    mode === "create" && Boolean(form.jenisPkb),
+  );
 
   function set(field: string, value: unknown) {
     setForm(f => ({ ...f, [field]: value }));
+  }
+
+  function setJenisPkb(jenisPkb: string) {
+    setForm((current) => ({
+      ...current,
+      jenisPkb,
+      isPendidikanNonformal: isNonformalJenisPkb(jenisPkb),
+    }));
+    setNonformalAutoFilled(Boolean(jenisPkb));
   }
 
   async function save() {
@@ -452,7 +469,7 @@ function ActivityFormModal({ mode, initial, prefill, onClose, onSaved }: {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Jenis PKB</label>
-                  <select value={form.jenisPkb} onChange={e => set("jenisPkb", e.target.value)}
+                  <select value={form.jenisPkb} onChange={e => setJenisPkb(e.target.value)}
                     className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary">
                     <option value="">Pilih jenis...</option>
                     {JENIS_PKB.map(j => <option key={j} value={j}>{j}</option>)}
@@ -502,11 +519,19 @@ function ActivityFormModal({ mode, initial, prefill, onClose, onSaved }: {
                   </div>
                   <label className="flex items-center gap-2 text-[11px] text-muted-foreground pb-2 cursor-pointer">
                     <input type="checkbox" checked={form.isPendidikanNonformal}
-                      onChange={e => set("isPendidikanNonformal", e.target.checked)}
+                      onChange={e => {
+                        set("isPendidikanNonformal", e.target.checked);
+                        setNonformalAutoFilled(false);
+                      }}
                       className="w-3.5 h-3.5 accent-[var(--primary)]" />
                     Termasuk pendidikan nonformal
                   </label>
                 </div>
+                {nonformalAutoFilled && (
+                  <p className="text-[10px] text-primary leading-snug">
+                    Status pendidikan nonformal disarankan otomatis dari jenis PKB. Anda tetap dapat mengoreksinya.
+                  </p>
+                )}
                 <p className="text-[10px] text-muted-foreground leading-snug">
                   Sifat <strong>khusus</strong> = materi sesuai subklasifikasi SKK Anda. Atribut ini dipakai pemeriksa komposisi Nilai Kredit (utama ≥75%, nonformal ≤25%, terverifikasi ≥60%, khusus ≥60%).
                 </p>

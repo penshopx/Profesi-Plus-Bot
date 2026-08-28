@@ -7,7 +7,12 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { computeKomposisi, validateKomposisiAttrs, type KomposisiActivity } from "../lib/komposisi";
+import {
+  computeKomposisi,
+  deriveKomposisiDefaults,
+  validateKomposisiAttrs,
+  type KomposisiActivity,
+} from "../lib/komposisi";
 
 function act(over: Partial<KomposisiActivity>): KomposisiActivity {
   return {
@@ -147,4 +152,20 @@ describe("validateKomposisiAttrs", () => {
   it("ignores keys not present in the body", () => {
     expect(validateKomposisiAttrs({ namaKegiatan: "x" })).toEqual({});
   });
+});
+
+describe("deriveKomposisiDefaults", () => {
+  it.each(["Kursus Online", "kursus", "Pelatihan Mandiri", "MANDIRI"])(
+    "marks %s as pendidikan nonformal",
+    (jenisPkb) => {
+      expect(deriveKomposisiDefaults(jenisPkb)).toEqual({ isPendidikanNonformal: true });
+    },
+  );
+
+  it.each(["Seminar", "Webinar", "Diklatkerja", "Workshop", "Lainnya", "", null])(
+    "does not classify %s as pendidikan nonformal",
+    (jenisPkb) => {
+      expect(deriveKomposisiDefaults(jenisPkb)).toEqual({ isPendidikanNonformal: false });
+    },
+  );
 });
